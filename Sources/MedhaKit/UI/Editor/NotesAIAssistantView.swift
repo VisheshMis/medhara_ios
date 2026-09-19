@@ -109,6 +109,35 @@ public struct NotesAIAssistantView: View {
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
+
+                        // Engine & Knowledge Badges
+                        HStack(spacing: 6) {
+                            HStack(spacing: 3) {
+                                Image(systemName: settings.activeNotesProvider == .local ? "cpu" : "cloud.fill")
+                                    .font(.system(size: 9))
+                                Text(settings.activeNotesProvider == .local ? "Local AI (\(settings.activeNotesModel))" : settings.activeNotesProvider.displayName)
+                                    .font(.system(size: 9, weight: .medium))
+                            }
+                            .foregroundColor(settings.activeNotesProvider == .local ? .green : .blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background((settings.activeNotesProvider == .local ? Color.green : Color.blue).opacity(0.1))
+                            .cornerRadius(4)
+
+                            if settings.isWikipediaGroundingEnabled {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "globe")
+                                        .font(.system(size: 9))
+                                    Text("Wiki Grounded")
+                                        .font(.system(size: 9, weight: .medium))
+                                }
+                                .foregroundColor(.teal)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.teal.opacity(0.1))
+                                .cornerRadius(4)
+                            }
+                        }
                     }
                     .padding(12)
                     .background(Color(NSColor.controlBackgroundColor).opacity(0.6))

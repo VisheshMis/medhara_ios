@@ -962,12 +962,15 @@ struct TestRunner {
         // 22.5: AI Settings Masking & Persistence
         let aiSettings = AISettings.shared
         let originalKey = aiSettings.apiKey
+        let originalProvider = aiSettings.provider
+        aiSettings.provider = .gemini
         aiSettings.apiKey = "AIzaSyD-TestKey1234567890ABCDEF"
         assert(aiSettings.hasAPIKey == true, "Failed: hasAPIKey should be true")
         assert(aiSettings.maskedKey.hasPrefix("AIza"), "Failed: masked key prefix")
         assert(aiSettings.maskedKey.hasSuffix("CDEF"), "Failed: masked key suffix")
         assert(aiSettings.maskedKey.contains("••••"), "Failed: masked key contains bullets")
         aiSettings.apiKey = originalKey // restore
+        aiSettings.provider = originalProvider
 
         print("✅ testAISocraticEvaluationAndSettings passed")
 
@@ -1130,6 +1133,81 @@ struct TestRunner {
 
         print("✅ testNotesAIDownwardHierarchyAndDualConfiguration passed")
 
-        print("\n🎉 ALL 23 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 24. Local AI (Ollama/LM Studio) & Wikipedia Knowledge Grounding
+        // ==========================================
+        print("\n--- Running Suite 24: Local AI & Free Wikipedia Grounding ---")
+
+        // 24.1: Wikipedia Direct Summary & OpenSearch Resolution
+        print("Testing Wikipedia Service...")
+        let wikiService = WikipediaService.shared
+        let extract = await wikiService.fetchSummary(for: "Distributed computing")
+        assert(extract != nil, "Failed: Wikipedia extract for 'Distributed computing' should not be nil")
+        assert(extract?.title.lowercased().contains("distributed") == true, "Failed: Wikipedia title matches topic")
+        assert(extract?.extract.isEmpty == false, "Failed: Wikipedia extract content must not be empty")
+        assert(extract?.urlString?.contains("wikipedia.org") == true, "Failed: Wikipedia URL should point to wikipedia.org")
+
+        // 24.2: In-Memory Caching of Wikipedia Extracts
+        let cachedExtract = await wikiService.fetchSummary(for: "Distributed computing")
+        assert(cachedExtract == extract, "Failed: Second Wikipedia query should return cached extract")
+
+        // 24.3: OpenSearch Fallback for search queries
+        let opensearchExtract = await wikiService.fetchSummary(for: "Raft consensus algorithm")
+        assert(opensearchExtract != nil, "Failed: OpenSearch fallback for 'Raft consensus algorithm'")
+        assert(opensearchExtract?.extract.isEmpty == false, "Failed: OpenSearch fallback non-empty extract")
+
+        // 24.4: Local AI Provider & Settings Resolution
+        let localSettings = AISettings.shared
+        let prevProvider = localSettings.provider
+        let prevNotesProv = localSettings.notesProvider
+        let prevLocalEndpoint = localSettings.localEndpoint
+        let prevNotesLocalEndpoint = localSettings.notesLocalEndpoint
+        let prevUseShared = localSettings.useFlashcardSettingsForNotes
+        let prevWiki = localSettings.isWikipediaGroundingEnabled
+
+        localSettings.localEndpoint = "http://localhost:11434/v1"
+        localSettings.notesLocalEndpoint = "http://localhost:11434/v1"
+        localSettings.provider = .local
+        assert(localSettings.hasAPIKey == true, "Failed: Local AI should be active without requiring cloud API key")
+        assert(localSettings.provider.defaultModel == "qwen2.5:1.5b", "Failed: Default model for Local AI should be qwen2.5:1.5b")
+        assert(localSettings.localEndpoint == "http://localhost:11434/v1", "Failed: Default local endpoint is http://localhost:11434/v1")
+
+        // Notes AI with Local AI provider
+        localSettings.useFlashcardSettingsForNotes = false
+        localSettings.notesProvider = .local
+        assert(localSettings.hasNotesAPIKey == true, "Failed: Notes AI with .local should return hasNotesAPIKey == true")
+        assert(localSettings.activeNotesProvider.defaultModel == "qwen2.5:1.5b", "Failed: Notes AI active model should be qwen2.5:1.5b")
+        assert(localSettings.activeLocalEndpoint == "http://localhost:11434/v1", "Failed: Notes AI active endpoint")
+
+        // Custom local endpoint configuration
+        localSettings.notesLocalEndpoint = "http://localhost:1234/v1"
+        assert(localSettings.activeLocalEndpoint == "http://localhost:1234/v1", "Failed: Custom local endpoint should be respected")
+
+        // Wikipedia Grounding Toggle
+        assert(localSettings.isWikipediaGroundingEnabled == true, "Failed: Wikipedia grounding should be enabled by default")
+        localSettings.isWikipediaGroundingEnabled = false
+        assert(localSettings.isWikipediaGroundingEnabled == false, "Failed: Wikipedia grounding toggle to false")
+        localSettings.isWikipediaGroundingEnabled = true
+
+        // 24.5: Validation of Local AI Endpoint Connection
+        let valResult = await AISocraticService.shared.validateAPIKey(
+            key: "http://localhost:59999/v1",
+            provider: .local,
+            model: "qwen2.5:1.5b"
+        )
+        assert(valResult.isValid == false, "Failed: Offline local endpoint should return isValid == false")
+        assert(valResult.message.contains("Could not reach Local AI") || valResult.message.contains("Ollama"), "Failed: Error message should be informative for local AI")
+
+        // Restore settings
+        localSettings.provider = prevProvider
+        localSettings.notesProvider = prevNotesProv
+        localSettings.localEndpoint = prevLocalEndpoint
+        localSettings.notesLocalEndpoint = prevNotesLocalEndpoint
+        localSettings.useFlashcardSettingsForNotes = prevUseShared
+        localSettings.isWikipediaGroundingEnabled = prevWiki
+
+        print("✅ testLocalAIAndWikipediaGrounding passed")
+
+        print("\n🎉 ALL 24 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

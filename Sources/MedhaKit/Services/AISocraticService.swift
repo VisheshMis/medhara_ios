@@ -5,6 +5,7 @@ import Combine
 public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
     case gemini = "gemini"
     case openai = "openai"
+    case local = "local"
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .gemini: return "Google Gemini"
         case .openai: return "OpenAI"
+        case .local: return "Local AI (Ollama / Self-Hosted)"
         }
     }
 
@@ -19,6 +21,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .gemini: return "gemini-3.6-flash"
         case .openai: return "gpt-4o-mini"
+        case .local: return "qwen2.5:1.5b"
         }
     }
 
@@ -28,6 +31,8 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
             return ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
         case .openai:
             return ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+        case .local:
+            return ["qwen2.5:1.5b", "llama3.2:1b", "llama3.2:3b", "smollm2:1.7b", "mistral:7b"]
         }
     }
 
@@ -35,6 +40,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .gemini: return "https://aistudio.google.com/app/apikey"
         case .openai: return "https://platform.openai.com/api-keys"
+        case .local: return "https://ollama.com"
         }
     }
 }
@@ -52,6 +58,9 @@ public final class AISettings: ObservableObject {
     private let keyNotesApiKey = "medha_notes_ai_api_key"
     private let keyNotesProvider = "medha_notes_ai_provider"
     private let keyNotesModel = "medha_notes_ai_model"
+    private let keyLocalEndpoint = "medha_ai_local_endpoint"
+    private let keyNotesLocalEndpoint = "medha_notes_ai_local_endpoint"
+    private let keyWikipediaGrounding = "medha_ai_wikipedia_grounding"
 
     @Published public var apiKey: String {
         didSet { UserDefaults.standard.set(apiKey, forKey: keyApiKey) }
@@ -71,6 +80,20 @@ public final class AISettings: ObservableObject {
 
     @Published public var newCardsOnly: Bool {
         didSet { UserDefaults.standard.set(newCardsOnly, forKey: keyNewCardsOnly) }
+    }
+
+    // Local AI Endpoints
+    @Published public var localEndpoint: String {
+        didSet { UserDefaults.standard.set(localEndpoint, forKey: keyLocalEndpoint) }
+    }
+
+    @Published public var notesLocalEndpoint: String {
+        didSet { UserDefaults.standard.set(notesLocalEndpoint, forKey: keyNotesLocalEndpoint) }
+    }
+
+    // Free Online Wikipedia Grounding
+    @Published public var isWikipediaGroundingEnabled: Bool {
+        didSet { UserDefaults.standard.set(isWikipediaGroundingEnabled, forKey: keyWikipediaGrounding) }
     }
 
     // Notes AI Settings
@@ -106,6 +129,12 @@ public final class AISettings: ObservableObject {
             ? UserDefaults.standard.bool(forKey: keyNewCardsOnly)
             : true
 
+        let savedLocalEp = UserDefaults.standard.string(forKey: keyLocalEndpoint) ?? "http://localhost:11434/v1"
+        let savedNotesLocalEp = UserDefaults.standard.string(forKey: keyNotesLocalEndpoint) ?? "http://localhost:11434/v1"
+        let wikiGrounding = UserDefaults.standard.object(forKey: keyWikipediaGrounding) != nil
+            ? UserDefaults.standard.bool(forKey: keyWikipediaGrounding)
+            : true
+
         let useSharedForNotes = UserDefaults.standard.object(forKey: keyUseFlashcardSettingsForNotes) != nil
             ? UserDefaults.standard.bool(forKey: keyUseFlashcardSettingsForNotes)
             : true
@@ -123,6 +152,10 @@ public final class AISettings: ObservableObject {
         self.isSocraticEnabled = isEnabled
         self.newCardsOnly = newOnly
 
+        self.localEndpoint = savedLocalEp
+        self.notesLocalEndpoint = savedNotesLocalEp
+        self.isWikipediaGroundingEnabled = wikiGrounding
+
         self.useFlashcardSettingsForNotes = useSharedForNotes
         self.notesApiKey = savedNotesKey
         self.notesProvider = notesProv
@@ -130,10 +163,16 @@ public final class AISettings: ObservableObject {
     }
 
     public var hasAPIKey: Bool {
-        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if provider == .local {
+            return true // Local AI runs locally without a required cloud key
+        }
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     public var maskedKey: String {
+        if provider == .local {
+            return "No key needed (Local AI)"
+        }
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 8 else {
             return trimmed.isEmpty ? "No key configured" : "••••••••"
@@ -156,11 +195,23 @@ public final class AISettings: ObservableObject {
         useFlashcardSettingsForNotes ? model : notesModel
     }
 
+    public var activeLocalEndpoint: String {
+        let ep = useFlashcardSettingsForNotes ? localEndpoint : notesLocalEndpoint
+        let trimmed = ep.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "http://localhost:11434/v1" : trimmed
+    }
+
     public var hasNotesAPIKey: Bool {
-        !activeNotesApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if activeNotesProvider == .local {
+            return true // Local AI runs locally without a required cloud key
+        }
+        return !activeNotesApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     public var maskedNotesKey: String {
+        if activeNotesProvider == .local {
+            return "No key needed (Local AI)"
+        }
         let trimmed = activeNotesApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 8 else {
             return trimmed.isEmpty ? "No key configured" : "••••••••"
@@ -304,13 +355,20 @@ public final class AISocraticService: Sendable {
             throw ServiceError.missingAPIKey
         }
 
+        var effectiveTargetAnswer = targetAnswer
+        if settings.isWikipediaGroundingEnabled {
+            if let wiki = await WikipediaService.shared.fetchSummary(for: question) {
+                effectiveTargetAnswer += "\n[Wikipedia Verified Knowledge: \(wiki.extract.prefix(800))]"
+            }
+        }
+
         switch settings.provider {
         case .gemini:
             return try await evaluateWithGemini(
                 apiKey: settings.apiKey,
                 model: settings.model,
                 question: question,
-                targetAnswer: targetAnswer,
+                targetAnswer: effectiveTargetAnswer,
                 hint: hint,
                 userAnswer: userAnswer,
                 dialogueHistory: dialogueHistory
@@ -320,22 +378,33 @@ public final class AISocraticService: Sendable {
                 apiKey: settings.apiKey,
                 model: settings.model,
                 question: question,
-                targetAnswer: targetAnswer,
+                targetAnswer: effectiveTargetAnswer,
                 hint: hint,
                 userAnswer: userAnswer,
                 dialogueHistory: dialogueHistory
             )
+        case .local:
+            return try await evaluateWithOpenAI(
+                apiKey: "ollama",
+                model: settings.model,
+                question: question,
+                targetAnswer: effectiveTargetAnswer,
+                hint: hint,
+                userAnswer: userAnswer,
+                dialogueHistory: dialogueHistory,
+                customEndpoint: settings.activeLocalEndpoint
+            )
         }
     }
 
-    /// Validates the given API key with a test ping
+    /// Validates the given API key or local endpoint with a test ping
     public func validateAPIKey(
         key: String,
         provider: AIProvider,
         model: String
     ) async -> (isValid: Bool, message: String) {
         let cleanKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanKey.isEmpty else {
+        if provider != .local && cleanKey.isEmpty {
             return (false, "API key cannot be empty.")
         }
 
@@ -417,9 +486,49 @@ public final class AISocraticService: Sendable {
                     let bodyString = String(data: data, encoding: .utf8) ?? ""
                     return (false, "OpenAI error (\(httpResponse.statusCode)): \(bodyString.prefix(120))")
                 }
+
+            case .local:
+                let base = cleanKey.isEmpty ? AISettings.shared.activeLocalEndpoint : cleanKey
+                let normalizedBase = base.hasPrefix("http") ? base : "http://\(base)"
+                let trimmedBase = normalizedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                let urlString = "\(trimmedBase)/chat/completions"
+                guard let url = URL(string: urlString) else {
+                    return (false, "Invalid Local AI endpoint URL.")
+                }
+
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 6.0
+                request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                let payload: [String: Any] = [
+                    "model": model,
+                    "messages": [
+                        ["role": "user", "content": "Ping. Reply with {\"status\":\"ok\"}"]
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 10
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    return (false, "No response from Local AI.")
+                }
+
+                if httpResponse.statusCode == 200 {
+                    return (true, "Local AI reached successfully with model \(model)!")
+                } else {
+                    let errBody = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
+                    return (false, "Local AI error (\(httpResponse.statusCode)): \(errBody.prefix(100))")
+                }
             }
         } catch {
-            return (false, error.localizedDescription)
+            if provider == .local {
+                let base = cleanKey.isEmpty ? AISettings.shared.activeLocalEndpoint : cleanKey
+                return (false, "Could not reach Local AI at \(base). Ensure Ollama or LM Studio is running (e.g. 'ollama run \(model)').")
+            }
+            return (false, "Network error: \(error.localizedDescription)")
         }
     }
 
@@ -539,7 +648,7 @@ public final class AISocraticService: Sendable {
         return try parseEvaluationJSON(rawText: rawText)
     }
 
-    // MARK: - Private API Implementation (OpenAI)
+    // MARK: - Private API Implementation (OpenAI & Local)
     private func evaluateWithOpenAI(
         apiKey: String,
         model: String,
@@ -547,10 +656,15 @@ public final class AISocraticService: Sendable {
         targetAnswer: String,
         hint: String?,
         userAnswer: String,
-        dialogueHistory: [AISocraticTurn]
+        dialogueHistory: [AISocraticTurn],
+        customEndpoint: String? = nil
     ) async throws -> AISocraticEvaluation {
-        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
-            throw ServiceError.invalidResponse("Invalid OpenAI URL")
+        let endpointUrlString = customEndpoint != nil
+            ? "\(customEndpoint!.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/chat/completions"
+            : "https://api.openai.com/v1/chat/completions"
+
+        guard let url = URL(string: endpointUrlString) else {
+            throw ServiceError.invalidResponse("Invalid OpenAI or Local API URL")
         }
 
         var messages: [[String: String]] = [
@@ -592,7 +706,10 @@ public final class AISocraticService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue("Bearer \(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
+        let cleanKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanKey.isEmpty && cleanKey != "ollama" {
+            request.addValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -745,6 +862,21 @@ public final class AISocraticService: Sendable {
             promptBuilder += "Action: \(customInstruction ?? "Create structured hierarchical sub-notes downwards from this note.")\n"
         }
 
+        // Free Online Wikipedia Grounding
+        if settings.isWikipediaGroundingEnabled {
+            if let wiki = await WikipediaService.shared.fetchSummary(for: currentNoteTitle) {
+                promptBuilder += "\n### FACTUAL WIKIPEDIA GROUNDING (VERIFIED KNOWLEDGE)\n"
+                promptBuilder += "- Topic: \(wiki.title)\n"
+                if let desc = wiki.description {
+                    promptBuilder += "- Brief: \(desc)\n"
+                }
+                promptBuilder += "- Verified Summary: \(wiki.extract.prefix(1500))\n"
+                if let link = wiki.urlString {
+                    promptBuilder += "- Reference Link: \(link)\n"
+                }
+            }
+        }
+
         promptBuilder += "\nRemember: Generate a strictly downward hierarchy rooting from this note. Return valid JSON matching the schema."
 
         switch provider {
@@ -761,6 +893,14 @@ public final class AISocraticService: Sendable {
                 model: model,
                 prompt: promptBuilder,
                 fallbackTitle: currentNoteTitle
+            )
+        case .local:
+            return try await generateHierarchyWithOpenAI(
+                apiKey: "ollama",
+                model: model,
+                prompt: promptBuilder,
+                fallbackTitle: currentNoteTitle,
+                customEndpoint: settings.activeLocalEndpoint
             )
         }
     }
@@ -837,10 +977,15 @@ public final class AISocraticService: Sendable {
         apiKey: String,
         model: String,
         prompt: String,
-        fallbackTitle: String
+        fallbackTitle: String,
+        customEndpoint: String? = nil
     ) async throws -> HierarchicalGenerationResult {
-        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
-            throw ServiceError.invalidResponse("Invalid OpenAI URL")
+        let endpointUrlString = customEndpoint != nil
+            ? "\(customEndpoint!.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/chat/completions"
+            : "https://api.openai.com/v1/chat/completions"
+
+        guard let url = URL(string: endpointUrlString) else {
+            throw ServiceError.invalidResponse("Invalid OpenAI or Local API URL")
         }
 
         let messages: [[String: String]] = [
@@ -858,7 +1003,10 @@ public final class AISocraticService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue("Bearer \(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
+        let cleanKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanKey.isEmpty && cleanKey != "ollama" {
+            request.addValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
         let (data, response) = try await URLSession.shared.data(for: request)

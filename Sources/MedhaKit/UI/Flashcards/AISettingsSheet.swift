@@ -22,6 +22,7 @@ public struct AISettingsSheet: View {
 
     // Flashcards AI State
     @State private var inputKey: String = ""
+    @State private var localEndpoint: String = "http://localhost:11434/v1"
     @State private var selectedProvider: AIProvider = .gemini
     @State private var selectedModel: String = "gemini-3.6-flash"
     @State private var isEnabled: Bool = true
@@ -33,11 +34,15 @@ public struct AISettingsSheet: View {
     // Notes AI State
     @State private var useFlashcardSettingsForNotes: Bool = true
     @State private var notesInputKey: String = ""
+    @State private var notesLocalEndpoint: String = "http://localhost:11434/v1"
     @State private var notesSelectedProvider: AIProvider = .gemini
     @State private var notesSelectedModel: String = "gemini-3.6-flash"
     @State private var isTestingNotesKey: Bool = false
     @State private var notesTestResult: (isValid: Bool, message: String)? = nil
     @State private var isNotesKeyVisible: Bool = false
+
+    // Global Features
+    @State private var isWikipediaGroundingEnabled: Bool = true
 
     public init(onDismiss: @escaping () -> Void) {
         self.onDismiss = onDismiss
@@ -60,7 +65,7 @@ public struct AISettingsSheet: View {
                     Text("Medha AI Configuration")
                         .font(.system(size: 16, weight: .bold))
                     Text(selectedTab == .flashcards
-                         ? "Configure personal API key for Socratic active recall"
+                         ? "Configure Cloud API key or Local AI (< 4 GB RAM) for Socratic recall"
                          : "Configure downward hierarchical note generation and summarization")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
@@ -100,6 +105,36 @@ public struct AISettingsSheet: View {
                     } else {
                         notesAISettingsView
                     }
+
+                    // Wikipedia Grounding Section (Shared across both modes)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("FACTUAL KNOWLEDGE GROUNDING")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.secondary)
+
+                        Toggle(isOn: $isWikipediaGroundingEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("Free Wikipedia Knowledge Grounding")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Text("FREE")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Color.green.opacity(0.15))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(4)
+                                }
+                                Text("Queries Wikipedia's open REST API for verified factual context without any API key. Drastically boosts 1B–3B Local AI models.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+                    .padding(16)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(10)
                 }
                 .padding(20)
             }
@@ -123,10 +158,11 @@ public struct AISettingsSheet: View {
             .padding(16)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 560, height: 640)
+        .frame(width: 580, height: 680)
         .onAppear {
             // Load Flashcards AI settings
             inputKey = settings.apiKey
+            localEndpoint = settings.localEndpoint
             selectedProvider = settings.provider
             selectedModel = settings.model
             isEnabled = settings.isSocraticEnabled
@@ -135,8 +171,12 @@ public struct AISettingsSheet: View {
             // Load Notes AI settings
             useFlashcardSettingsForNotes = settings.useFlashcardSettingsForNotes
             notesInputKey = settings.notesApiKey
+            notesLocalEndpoint = settings.notesLocalEndpoint
             notesSelectedProvider = settings.notesProvider
             notesSelectedModel = settings.notesModel
+
+            // Global settings
+            isWikipediaGroundingEnabled = settings.isWikipediaGroundingEnabled
         }
     }
 
@@ -178,7 +218,7 @@ public struct AISettingsSheet: View {
 
         // Provider & API Key Section
         VStack(alignment: .leading, spacing: 14) {
-            Text("FLASHCARDS AI PROVIDER & API KEY")
+            Text("FLASHCARDS AI ENGINE & PROVIDER")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(.secondary)
 
@@ -200,7 +240,7 @@ public struct AISettingsSheet: View {
 
             // Model Picker
             VStack(alignment: .leading, spacing: 6) {
-                Text("Model")
+                Text(selectedProvider == .local ? "Model (Runs on ~1 GB RAM)" : "Model")
                     .font(.system(size: 12, weight: .semibold))
                 Picker("Model", selection: $selectedModel) {
                     ForEach(selectedProvider.availableModels, id: \.self) { mod in
@@ -210,51 +250,66 @@ public struct AISettingsSheet: View {
                 .pickerStyle(.menu)
             }
 
-            // API Key Input
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("API Key")
+            if selectedProvider == .local {
+                // Local AI Endpoint Input
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Local Server Endpoint")
                         .font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                    if let url = URL(string: selectedProvider.helpUrlString) {
-                        Link(destination: url) {
-                            HStack(spacing: 3) {
-                                Text(selectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
-                                Image(systemName: "arrow.up.right")
-                            }
-                            .font(.system(size: 11))
-                            .foregroundColor(.accentColor)
-                        }
-                    }
-                }
+                    TextField("http://localhost:11434/v1", text: $localEndpoint)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
 
-                HStack(spacing: 8) {
-                    if isKeyVisible {
-                        TextField("Paste API key here...", text: $inputKey)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12, design: .monospaced))
-                    } else {
-                        SecureField("Paste API key here...", text: $inputKey)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12, design: .monospaced))
-                    }
-
-                    Button(action: { isKeyVisible.toggle() }) {
-                        Image(systemName: isKeyVisible ? "eye.slash" : "eye")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .help(isKeyVisible ? "Hide key" : "Show key")
-                }
-
-                if selectedProvider == .gemini {
-                    Text("💡 Google Gemini offers a generous free tier with zero setup cost.")
+                    Text("💡 Compatible with Ollama, LM Studio, or local servers. Run: `ollama run qwen2.5:1.5b`")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+            } else {
+                // Cloud API Key Input
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("API Key")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        if let url = URL(string: selectedProvider.helpUrlString) {
+                            Link(destination: url) {
+                                HStack(spacing: 3) {
+                                    Text(selectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
+                                    Image(systemName: "arrow.up.right")
+                                }
+                                .font(.system(size: 11))
+                                .foregroundColor(.accentColor)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        if isKeyVisible {
+                            TextField("Paste API key here...", text: $inputKey)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12, design: .monospaced))
+                        } else {
+                            SecureField("Paste API key here...", text: $inputKey)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12, design: .monospaced))
+                        }
+
+                        Button(action: { isKeyVisible.toggle() }) {
+                            Image(systemName: isKeyVisible ? "eye.slash" : "eye")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .help(isKeyVisible ? "Hide key" : "Show key")
+                    }
+
+                    if selectedProvider == .gemini {
+                        Text("💡 Google Gemini offers a generous free tier with zero setup cost.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
 
-            // Test Key Button & Status
+            // Test Connection Button & Status
             HStack(spacing: 12) {
                 Button(action: testConnection) {
                     HStack(spacing: 6) {
@@ -262,15 +317,15 @@ public struct AISettingsSheet: View {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "bolt.fill")
+                            Image(systemName: selectedProvider == .local ? "desktopcomputer" : "bolt.fill")
                         }
-                        Text(isTestingKey ? "Testing..." : "Test Connection")
+                        Text(isTestingKey ? "Testing..." : (selectedProvider == .local ? "Test Local Server" : "Test Connection"))
                     }
                     .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(inputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isTestingKey)
+                .disabled((selectedProvider != .local && inputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isTestingKey)
 
                 if let res = testResult {
                     HStack(spacing: 4) {
@@ -298,7 +353,7 @@ public struct AISettingsSheet: View {
                     .font(.system(size: 12, weight: .bold))
             }
 
-            Text("1. When reviewing a card, type your explanation from memory.\n2. The AI evaluates your understanding.\n3. If your explanation is incomplete or has a gap, the AI asks a Socratic counter-question to guide you.\n4. Once your understanding is spot-on, the card answer unlocks and you can rate your recall with FSRS.\n5. You can skip or reveal the answer directly at any time.")
+            Text("1. When reviewing a card, type your explanation from memory.\n2. The AI evaluates your understanding (grounded with Wikipedia facts).\n3. If your explanation is incomplete or has a gap, the AI asks a Socratic counter-question.\n4. Once spot-on, the answer unlocks and you rate your recall with FSRS.\n5. You can skip or reveal the answer directly at any time.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .lineSpacing(3)
@@ -319,9 +374,9 @@ public struct AISettingsSheet: View {
 
             Toggle(isOn: $useFlashcardSettingsForNotes) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Use Flashcards AI Settings (Shared Key)")
+                    Text("Use Flashcards AI Settings (Shared)")
                         .font(.system(size: 13, weight: .medium))
-                    Text("Automatically use the same provider, model, and API key configured for Flashcards")
+                    Text("Automatically use the same engine, model, and key/endpoint configured for Flashcards")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -339,7 +394,7 @@ public struct AISettingsSheet: View {
                     Image(systemName: "link.circle.fill")
                         .font(.system(size: 16))
                         .foregroundColor(.purple)
-                    Text("Inheriting Settings from Flashcards AI")
+                    Text("Inheriting Engine from Flashcards AI")
                         .font(.system(size: 13, weight: .semibold))
                 }
 
@@ -359,30 +414,41 @@ public struct AISettingsSheet: View {
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                 }
 
-                HStack {
-                    Text("Key:")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                    let trimmed = inputKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                    Text(trimmed.count > 8 ? "\(trimmed.prefix(4))••••\(trimmed.suffix(4))" : (trimmed.isEmpty ? "Not configured yet" : "••••••••"))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(trimmed.isEmpty ? .orange : .primary)
-                }
+                if selectedProvider == .local {
+                    HStack {
+                        Text("Endpoint:")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Text(localEndpoint)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.purple)
+                    }
+                } else {
+                    HStack {
+                        Text("Key:")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                        let trimmed = inputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Text(trimmed.count > 8 ? "\(trimmed.prefix(4))••••\(trimmed.suffix(4))" : (trimmed.isEmpty ? "Not configured yet" : "••••••••"))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(trimmed.isEmpty ? .orange : .primary)
+                    }
 
-                if inputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("⚠️ Flashcards AI does not have an API key set yet. Switch to the Flashcards AI tab to enter your key or toggle off shared settings to use an independent key.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.orange)
-                        .padding(.top, 4)
+                    if inputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("⚠️ Flashcards AI does not have an API key set yet. Switch to Flashcards AI tab to enter your key or toggle off shared settings.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange)
+                            .padding(.top, 4)
+                    }
                 }
             }
             .padding(16)
             .background(Color.purple.opacity(0.06))
             .cornerRadius(10)
         } else {
-            // Independent Provider & API Key
+            // Independent Provider & Settings
             VStack(alignment: .leading, spacing: 14) {
-                Text("INDEPENDENT NOTES AI PROVIDER & API KEY")
+                Text("INDEPENDENT NOTES AI ENGINE")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.secondary)
 
@@ -414,41 +480,56 @@ public struct AISettingsSheet: View {
                     .pickerStyle(.menu)
                 }
 
-                // API Key Input
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("API Key")
+                if notesSelectedProvider == .local {
+                    // Independent Local AI Endpoint Input
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Local Server Endpoint")
                             .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        if let url = URL(string: notesSelectedProvider.helpUrlString) {
-                            Link(destination: url) {
-                                HStack(spacing: 3) {
-                                    Text(notesSelectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
-                                    Image(systemName: "arrow.up.right")
+                        TextField("http://localhost:11434/v1", text: $notesLocalEndpoint)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+
+                        Text("💡 E.g. Ollama (`localhost:11434`) or LM Studio. Run: `ollama run qwen2.5:1.5b`")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    // API Key Input
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("API Key")
+                                .font(.system(size: 12, weight: .semibold))
+                            Spacer()
+                            if let url = URL(string: notesSelectedProvider.helpUrlString) {
+                                Link(destination: url) {
+                                    HStack(spacing: 3) {
+                                        Text(notesSelectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
+                                        Image(systemName: "arrow.up.right")
+                                    }
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.accentColor)
                                 }
-                                .font(.system(size: 11))
-                                .foregroundColor(.accentColor)
                             }
                         }
-                    }
 
-                    HStack(spacing: 8) {
-                        if isNotesKeyVisible {
-                            TextField("Paste Notes AI API key here...", text: $notesInputKey)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 12, design: .monospaced))
-                        } else {
-                            SecureField("Paste Notes AI API key here...", text: $notesInputKey)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 12, design: .monospaced))
-                        }
+                        HStack(spacing: 8) {
+                            if isNotesKeyVisible {
+                                TextField("Paste Notes AI API key here...", text: $notesInputKey)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 12, design: .monospaced))
+                            } else {
+                                SecureField("Paste Notes AI API key here...", text: $notesInputKey)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
 
-                        Button(action: { isNotesKeyVisible.toggle() }) {
-                            Image(systemName: isNotesKeyVisible ? "eye.slash" : "eye")
-                                .font(.system(size: 12))
+                            Button(action: { isNotesKeyVisible.toggle() }) {
+                                Image(systemName: isNotesKeyVisible ? "eye.slash" : "eye")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .help(isNotesKeyVisible ? "Hide key" : "Show key")
                         }
-                        .buttonStyle(.plain)
-                        .help(isNotesKeyVisible ? "Hide key" : "Show key")
                     }
                 }
 
@@ -460,15 +541,15 @@ public struct AISettingsSheet: View {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
-                                Image(systemName: "bolt.fill")
+                                Image(systemName: notesSelectedProvider == .local ? "desktopcomputer" : "bolt.fill")
                             }
-                            Text(isTestingNotesKey ? "Testing..." : "Test Connection")
+                            Text(isTestingNotesKey ? "Testing..." : (notesSelectedProvider == .local ? "Test Local Server" : "Test Connection"))
                         }
                         .font(.system(size: 12, weight: .medium))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isTestingNotesKey)
+                    .disabled((notesSelectedProvider != .local && notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isTestingNotesKey)
 
                     if let res = notesTestResult {
                         HStack(spacing: 4) {
@@ -511,9 +592,11 @@ public struct AISettingsSheet: View {
         isTestingKey = true
         testResult = nil
 
+        let keyToTest = selectedProvider == .local ? localEndpoint : inputKey
+
         Task {
             let res = await AISocraticService.shared.validateAPIKey(
-                key: inputKey,
+                key: keyToTest,
                 provider: selectedProvider,
                 model: selectedModel
             )
@@ -528,9 +611,11 @@ public struct AISettingsSheet: View {
         isTestingNotesKey = true
         notesTestResult = nil
 
+        let keyToTest = notesSelectedProvider == .local ? notesLocalEndpoint : notesInputKey
+
         Task {
             let res = await AISocraticService.shared.validateAPIKey(
-                key: notesInputKey,
+                key: keyToTest,
                 provider: notesSelectedProvider,
                 model: notesSelectedModel
             )
@@ -543,6 +628,7 @@ public struct AISettingsSheet: View {
 
     private func saveSettings() {
         settings.apiKey = inputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.localEndpoint = localEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.provider = selectedProvider
         settings.model = selectedModel
         settings.isSocraticEnabled = isEnabled
@@ -550,8 +636,12 @@ public struct AISettingsSheet: View {
 
         settings.useFlashcardSettingsForNotes = useFlashcardSettingsForNotes
         settings.notesApiKey = notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.notesLocalEndpoint = notesLocalEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.notesProvider = notesSelectedProvider
         settings.notesModel = notesSelectedModel
+
+        settings.isWikipediaGroundingEnabled = isWikipediaGroundingEnabled
     }
 }
+
 
