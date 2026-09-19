@@ -260,8 +260,12 @@ public struct BlockRowView: View {
     }
 
     private func handleArrowUp() {
-        if let index = store.blocks.firstIndex(where: { $0.id == block.id }), index > 0 {
-            store.focusedBlockId = store.blocks[index - 1].id
+        if let index = store.blocks.firstIndex(where: { $0.id == block.id }) {
+            if index > 0 {
+                store.focusedBlockId = store.blocks[index - 1].id
+            } else {
+                store.focusedBlockId = nil
+            }
         }
     }
 

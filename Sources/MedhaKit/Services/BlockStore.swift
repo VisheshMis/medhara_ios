@@ -426,6 +426,13 @@ public final class BlockStore: ObservableObject {
     }
 
     public func renameDocument(docId: String, newTitle: String) {
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].content = newTitle
+            documents[idx].updatedAt = Date()
+        }
+        if selectedDocId == docId {
+            currentDoc?.content = newTitle
+        }
         do {
             try dbManager.dbWriter.write { db in
                 if var doc = try Block.fetchOne(db, key: docId) {
@@ -433,10 +440,6 @@ public final class BlockStore: ObservableObject {
                     doc.updatedAt = Date()
                     try doc.update(db)
                 }
-            }
-            loadDocuments()
-            if selectedDocId == docId {
-                currentDoc?.content = newTitle
             }
         } catch {
             print("Error renaming document: \(error)")
@@ -717,6 +720,7 @@ public final class BlockStore: ObservableObject {
 
     public func selectDocument(id: String?) {
         selectedDocId = id
+        focusedBlockId = nil
         guard let id = id else {
             currentDoc = nil
             blocks = []

@@ -42,6 +42,9 @@ public struct ParagraphBlockView: View {
                 onSlashTrigger: onSlashTrigger,
                 onAutoConvertToBullet: {
                     store.convertBlockType(id: block.id, to: .bulletList)
+                },
+                onFocus: {
+                    store.focusedBlockId = block.id
                 }
             )
             .frame(minHeight: 22)
@@ -207,7 +210,10 @@ public struct HeadingBlockView: View {
             onCommitReturn: onCommitReturn,
             onDeleteEmpty: onDeleteEmpty,
             onArrowUp: onArrowUp,
-            onArrowDown: onArrowDown
+            onArrowDown: onArrowDown,
+            onFocus: {
+                store.focusedBlockId = block.id
+            }
         )
         .frame(minHeight: minHeight)
         .fixedSize(horizontal: false, vertical: true)
@@ -276,7 +282,10 @@ public struct TaskBlockView: View {
                 onTab: onTab,
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
-                onArrowDown: onArrowDown
+                onArrowDown: onArrowDown,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                }
             )
             .frame(minHeight: 22)
             .fixedSize(horizontal: false, vertical: true)
@@ -334,7 +343,10 @@ public struct BulletBlockView: View {
                 onTab: onTab,
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
-                onArrowDown: onArrowDown
+                onArrowDown: onArrowDown,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                }
             )
             .frame(minHeight: 22)
             .fixedSize(horizontal: false, vertical: true)
@@ -391,7 +403,10 @@ public struct CodeBlockView: View {
                 textColor: .textColor,
                 placeholder: "// Monospace code block...",
                 onCommitReturn: onCommitReturn,
-                onDeleteEmpty: onDeleteEmpty
+                onDeleteEmpty: onDeleteEmpty,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                }
             )
             .padding(10)
             .frame(minHeight: 60)
@@ -433,7 +448,10 @@ public struct QuoteBlockView: View {
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
                 onArrowUp: onArrowUp,
-                onArrowDown: onArrowDown
+                onArrowDown: onArrowDown,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                }
             )
             .frame(minHeight: 22)
             .fixedSize(horizontal: false, vertical: true)
@@ -482,7 +500,10 @@ public struct CalloutBlockView: View {
                 textColor: .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
-                onDeleteEmpty: onDeleteEmpty
+                onDeleteEmpty: onDeleteEmpty,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                }
             )
             .frame(minHeight: 22)
             .fixedSize(horizontal: false, vertical: true)

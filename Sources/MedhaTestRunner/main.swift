@@ -1251,6 +1251,27 @@ struct TestRunner {
 
         print("✅ testBulletListFormattingAndMultilineCollision passed")
 
-        print("\n🎉 ALL 25 TEST SUITES PASSED SUCCESSFULLY!")
+        // --- Running Suite 26: Note Title Focus Stability & Keystroke Isolation ---
+        print("\n--- Running Suite 26: Note Title Focus Stability & Keystroke Isolation ---")
+
+        let db26 = DatabaseManager(inMemory: true)
+        let store26 = BlockStore(dbManager: db26)
+        let note = store26.createDocument(title: "Initial Title")
+        store26.selectDocument(id: note.id)
+
+        // Verify selectDocument resets focusedBlockId to nil
+        assert(store26.focusedBlockId == nil, "Failed: selectDocument should reset focusedBlockId to nil")
+
+        // Verify renameDocument updates in-memory published properties immediately
+        store26.renameDocument(docId: note.id, newTitle: "Updated Title")
+        assert(store26.currentDoc?.content == "Updated Title", "Failed: currentDoc should reflect new title")
+        assert(store26.documents.first(where: { $0.id == note.id })?.content == "Updated Title", "Failed: documents list should reflect new title")
+
+        // Verify focusedBlockId remains nil during title edits
+        assert(store26.focusedBlockId == nil, "Failed: focusedBlockId should remain nil while editing title")
+
+        print("✅ testNoteTitleFocusStability passed")
+
+        print("\n🎉 ALL 26 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

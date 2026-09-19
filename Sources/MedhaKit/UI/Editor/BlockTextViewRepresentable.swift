@@ -15,6 +15,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
     public var onArrowDown: () -> Void
     public var onSlashTrigger: () -> Void
     public var onAutoConvertToBullet: () -> Void
+    public var onFocus: () -> Void
 
     public init(
         text: Binding<String>,
@@ -29,7 +30,8 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         onArrowUp: @escaping () -> Void = {},
         onArrowDown: @escaping () -> Void = {},
         onSlashTrigger: @escaping () -> Void = {},
-        onAutoConvertToBullet: @escaping () -> Void = {}
+        onAutoConvertToBullet: @escaping () -> Void = {},
+        onFocus: @escaping () -> Void = {}
     ) {
         self._text = text
         self.isFocused = isFocused
@@ -44,6 +46,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         self.onArrowDown = onArrowDown
         self.onSlashTrigger = onSlashTrigger
         self.onAutoConvertToBullet = onAutoConvertToBullet
+        self.onFocus = onFocus
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -137,18 +140,31 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
 
         context.coordinator.parent = self
 
-        if isFocused && nsView.window?.firstResponder != nsView {
-            DispatchQueue.main.async {
-                nsView.window?.makeFirstResponder(nsView)
+        if isFocused {
+            if !context.coordinator.wasFocused {
+                context.coordinator.wasFocused = true
+                DispatchQueue.main.async {
+                    if nsView.window?.firstResponder != nsView {
+                        nsView.window?.makeFirstResponder(nsView)
+                    }
+                }
             }
+        } else {
+            context.coordinator.wasFocused = false
         }
     }
 
     public final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: BlockTextViewRepresentable
+        var wasFocused: Bool = false
 
         init(_ parent: BlockTextViewRepresentable) {
             self.parent = parent
+        }
+
+        public func textDidBeginEditing(_ notification: Notification) {
+            wasFocused = true
+            parent.onFocus()
         }
 
         public func textDidChange(_ notification: Notification) {
@@ -259,5 +275,14 @@ public final class CustomNSTextView: NSTextView {
         }
 
         super.keyDown(with: event)
+    }
+
+    public override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            coordinator?.wasFocused = true
+            coordinator?.parent.onFocus()
+        }
+        return result
     }
 }

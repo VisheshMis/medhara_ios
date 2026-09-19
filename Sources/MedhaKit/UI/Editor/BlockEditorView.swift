@@ -4,6 +4,7 @@ public struct BlockEditorView: View {
     @ObservedObject public var store: BlockStore
     @State private var isIconPickerPresented: Bool = false
     @State private var isAddFlashcardPresented: Bool = false
+    @FocusState private var isTitleFocused: Bool
 
     private let availableIcons = ["doc.text", "brain.head.profile", "lightbulb", "sparkles", "folder", "star", "bookmark", "tag", "checklist", "terminal", "cube"]
 
@@ -24,8 +25,25 @@ public struct BlockEditorView: View {
                                         get: { doc.content },
                                         set: { store.renameDocument(docId: doc.id, newTitle: $0) }
                                     ))
+                                    .focused($isTitleFocused)
                                     .font(.system(size: 28, weight: .bold))
                                     .textFieldStyle(.plain)
+                                    .id("document-title-\(doc.id)")
+                                    .onSubmit {
+                                        if let first = store.blocks.first {
+                                            isTitleFocused = false
+                                            store.focusedBlockId = first.id
+                                        } else {
+                                            let newBlock = store.createBlock(type: .paragraph, content: "")
+                                            isTitleFocused = false
+                                            store.focusedBlockId = newBlock.id
+                                        }
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    store.focusedBlockId = nil
+                                    isTitleFocused = true
                                 }
                             }
                             .padding(.bottom, 6)
@@ -65,8 +83,17 @@ public struct BlockEditorView: View {
                     }
                     .onChange(of: store.focusedBlockId) { _, newId in
                         if let id = newId {
+                            isTitleFocused = false
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 proxy.scrollTo(id, anchor: .center)
+                            }
+                        }
+                    }
+                    .onChange(of: isTitleFocused) { _, focused in
+                        if focused {
+                            store.focusedBlockId = nil
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                proxy.scrollTo("document-title-\(doc.id)", anchor: .top)
                             }
                         }
                     }
