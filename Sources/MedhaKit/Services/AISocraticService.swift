@@ -17,7 +17,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 
     public var defaultModel: String {
         switch self {
-        case .gemini: return "gemini-2.5-flash"
+        case .gemini: return "gemini-3.6-flash"
         case .openai: return "gpt-4o-mini"
         }
     }
@@ -25,7 +25,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
     public var availableModels: [String] {
         switch self {
         case .gemini:
-            return ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            return ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
         case .openai:
             return ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
         }
@@ -73,7 +73,11 @@ public final class AISettings: ObservableObject {
         let savedKey = UserDefaults.standard.string(forKey: keyApiKey) ?? ""
         let savedProviderRaw = UserDefaults.standard.string(forKey: keyProvider) ?? AIProvider.gemini.rawValue
         let prov = AIProvider(rawValue: savedProviderRaw) ?? .gemini
-        let savedModel = UserDefaults.standard.string(forKey: keyModel) ?? prov.defaultModel
+        var savedModel = UserDefaults.standard.string(forKey: keyModel) ?? prov.defaultModel
+        if savedModel == "gemini-2.5-flash" || savedModel.isEmpty {
+            savedModel = "gemini-3.6-flash"
+            UserDefaults.standard.set("gemini-3.6-flash", forKey: keyModel)
+        }
         let isEnabled = UserDefaults.standard.object(forKey: keySocraticEnabled) != nil
             ? UserDefaults.standard.bool(forKey: keySocraticEnabled)
             : true
@@ -274,7 +278,8 @@ public final class AISocraticService: Sendable {
         do {
             switch provider {
             case .gemini:
-                let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(cleanKey)"
+                let targetModel = (model == "gemini-2.5-flash") ? "gemini-3.6-flash" : model
+                let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(targetModel):generateContent?key=\(cleanKey)"
                 guard let url = URL(string: urlString) else {
                     return (false, "Invalid endpoint URL.")
                 }
@@ -301,10 +306,21 @@ public final class AISocraticService: Sendable {
                 }
 
                 if httpResponse.statusCode == 200 {
-                    return (true, "Key verified successfully!")
+                    return (true, "Key verified successfully with \(targetModel)!")
                 } else {
                     let bodyString = String(data: data, encoding: .utf8) ?? ""
-                    return (false, "Gemini error (\(httpResponse.statusCode)): \(bodyString.prefix(120))")
+                    if bodyString.contains("gemini-3.6-flash") && targetModel != "gemini-3.6-flash" {
+                        return await validateAPIKey(key: cleanKey, provider: provider, model: "gemini-3.6-flash")
+                    }
+                    var cleanMsg = "Status \(httpResponse.statusCode)"
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let errorObj = json["error"] as? [String: Any],
+                       let msg = errorObj["message"] as? String {
+                        cleanMsg = msg
+                    } else {
+                        cleanMsg = String(bodyString.prefix(120))
+                    }
+                    return (false, "Gemini error: \(cleanMsg)")
                 }
 
             case .openai:
@@ -413,7 +429,33 @@ public final class AISocraticService: Sendable {
 
         guard httpResponse.statusCode == 200 else {
             let errText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
-            throw ServiceError.invalidResponse("Gemini API Error: \(errText)")
+
+            // Auto-recovery: If gemini-2.5-flash was rejected/deprecated or 404, automatically migrate to gemini-3.6-flash and retry!
+            if model != "gemini-3.6-flash" && (httpResponse.statusCode == 404 || errText.contains("gemini-3.6-flash") || errText.contains("NOT_FOUND") || errText.contains("no longer available")) {
+                await MainActor.run {
+                    AISettings.shared.model = "gemini-3.6-flash"
+                }
+                return try await evaluateWithGemini(
+                    apiKey: apiKey,
+                    model: "gemini-3.6-flash",
+                    question: question,
+                    targetAnswer: targetAnswer,
+                    hint: hint,
+                    userAnswer: userAnswer,
+                    dialogueHistory: dialogueHistory
+                )
+            }
+
+            // Clean, human-friendly error extraction
+            var cleanMessage = "Status \(httpResponse.statusCode)"
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorObj = json["error"] as? [String: Any],
+               let msg = errorObj["message"] as? String {
+                cleanMessage = msg
+            } else {
+                cleanMessage = errText
+            }
+            throw ServiceError.invalidResponse("Gemini API Error: \(cleanMessage)")
         }
 
         return try parseGeminiResponse(data: data)

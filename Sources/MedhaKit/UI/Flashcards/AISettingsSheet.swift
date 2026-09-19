@@ -7,7 +7,7 @@ public struct AISettingsSheet: View {
 
     @State private var inputKey: String = ""
     @State private var selectedProvider: AIProvider = .gemini
-    @State private var selectedModel: String = "gemini-2.5-flash"
+    @State private var selectedModel: String = "gemini-3.6-flash"
     @State private var isEnabled: Bool = true
     @State private var newCardsOnly: Bool = true
 
