@@ -43,6 +43,7 @@ public enum QuickFilter: String, CaseIterable, Identifiable {
 
 public enum MainViewDestination: String, CaseIterable, Identifiable, Sendable {
     case editor = "Notes & Folders"
+    case graph = "Knowledge Graph"
     case flashcards = "Flashcard Decks (FSRS)"
     case palace = "Memory Palace"
 
@@ -51,6 +52,7 @@ public enum MainViewDestination: String, CaseIterable, Identifiable, Sendable {
     public var systemIcon: String {
         switch self {
         case .editor: return "doc.text"
+        case .graph: return "point.3.connected.trianglepath.dotted"
         case .flashcards: return "rectangle.on.rectangle.angled"
         case .palace: return "building.columns.fill"
         }
@@ -92,6 +94,14 @@ public final class BlockStore: ObservableObject {
 
     // Links (LINKS_TO arbitrary directed graph)
     @Published public var docLinks: [DocLink] = []
+
+    // Knowledge Graph State & Index
+    @Published public var graphFilterConfig = GraphFilterConfig()
+    @Published public var graphGroupRules: [GraphGroupRule] = [
+        GraphGroupRule(name: "By Top-Level Folder", ruleType: .topLevelAncestor, hexColor: "#00E676")
+    ]
+    @Published public var graphPhysicsConfig = GraphPhysicsConfig.load()
+    public var documentTags: [String: Set<String>] = [:]
 
     // Inspector
     @Published public var isInspectorPresented: Bool = true
@@ -827,11 +837,24 @@ public final class BlockStore: ObservableObject {
                     try docLink.insert(db)
                 }
             }
-            loadDocLinks()
-        } catch {
-            print("Error syncing links for block: \(error)")
+        // Extract and index hashtags (#tag) on save
+        let tagRegex = try? NSRegularExpression(pattern: #"(?:^|\s)#([a-zA-Z0-9_\-]+)"#)
+        if let matches = tagRegex?.matches(in: block.content, range: NSRange(location: 0, length: (block.content as NSString).length)) {
+            let ns = block.content as NSString
+            var foundTags: Set<String> = []
+            for match in matches where match.numberOfRanges > 1 {
+                let tag = ns.substring(with: match.range(at: 1)).lowercased()
+                foundTags.insert(tag)
+            }
+            if !foundTags.isEmpty {
+                documentTags[block.rootDocId, default: []].formUnion(foundTags)
+            }
         }
+        loadDocLinks()
+    } catch {
+        print("Error syncing links for block: \(error)")
     }
+}
 
     public func toggleTask(id: String) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
@@ -1096,6 +1119,302 @@ public final class BlockStore: ObservableObject {
                 }
 
                 return (nodes, Array(edgeSet))
+            }
+        } catch {
+            return ([], [])
+        }
+    }
+
+    public func resolveTopLevelAncestorId(docId: String, parentMap: [String: String]) -> String {
+        var current = docId
+        var visited: Set<String> = []
+        while let parent = parentMap[current], !visited.contains(parent) {
+            visited.insert(current)
+            current = parent
+        }
+        return current
+    }
+
+    public func getGlobalGraphData(filter: GraphFilterConfig = GraphFilterConfig()) -> (nodes: [GraphNode], edges: [GraphEdge]) {
+        do {
+            return try dbManager.dbWriter.read { db in
+                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue).fetchAll(db)
+                var docMap: [String: Block] = [:]
+                var parentMap: [String: String] = [:]
+                for doc in docs {
+                    docMap[doc.id] = doc
+                    if let pid = doc.parentId {
+                        parentMap[doc.id] = pid
+                    }
+                }
+
+                var edgeSet: Set<GraphEdge> = []
+
+                if filter.showLinks {
+                    // Transclusion edges
+                    let refSql = """
+                    SELECT DISTINCT b.rootDocId AS sourceDocId, target.rootDocId AS targetDocId
+                    FROM block b
+                    JOIN block target ON target.id = b.refTargetId
+                    WHERE b.rootDocId != target.rootDocId;
+                    """
+                    let refRows = try Row.fetchAll(db, sql: refSql)
+                    for row in refRows {
+                        let source: String = row["sourceDocId"]
+                        let target: String = row["targetDocId"]
+                        edgeSet.insert(GraphEdge(sourceId: source, targetId: target, type: .linksTo))
+                    }
+
+                    // WikiLink edges (resolved)
+                    let resolvedLinks = try DocLink.filter(DocLink.Columns.targetDocId != nil).fetchAll(db)
+                    for link in resolvedLinks {
+                        guard let targetId = link.targetDocId, link.sourceDocId != targetId else { continue }
+                        edgeSet.insert(GraphEdge(sourceId: link.sourceDocId, targetId: targetId, type: .linksTo))
+                    }
+                }
+
+                if filter.showContains {
+                    // Hierarchy tree edges: parent -> child
+                    for doc in docs {
+                        if let parentId = doc.parentId, docMap[parentId] != nil {
+                            edgeSet.insert(GraphEdge(sourceId: parentId, targetId: doc.id, type: .contains))
+                        }
+                    }
+                }
+
+                // Unresolved links handling
+                var unresolvedNodes: [GraphNode] = []
+                if filter.showLinks && filter.showUnresolved {
+                    let unresolvedLinks = try DocLink.filter(DocLink.Columns.targetDocId == nil).fetchAll(db)
+                    var ghostMap: [String: String] = [:]
+                    for link in unresolvedLinks {
+                        let titleKey = link.targetTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !titleKey.isEmpty else { continue }
+                        let lowerKey = titleKey.lowercased()
+                        let ghostId: String
+                        if let existingId = ghostMap[lowerKey] {
+                            ghostId = existingId
+                        } else {
+                            ghostId = "unresolved-\(lowerKey)"
+                            ghostMap[lowerKey] = ghostId
+                            unresolvedNodes.append(GraphNode(
+                                id: ghostId,
+                                title: titleKey,
+                                isCurrentDoc: false,
+                                isUnresolved: true,
+                                blockCount: 0
+                            ))
+                        }
+                        edgeSet.insert(GraphEdge(sourceId: link.sourceDocId, targetId: ghostId, type: .linksTo))
+                    }
+                }
+
+                // Degree calculation across active edge set
+                var inDegrees: [String: Int] = [:]
+                var outDegrees: [String: Int] = [:]
+                for edge in edgeSet {
+                    outDegrees[edge.sourceId, default: 0] += 1
+                    inDegrees[edge.targetId, default: 0] += 1
+                }
+
+                var allNodes: [GraphNode] = []
+
+                for doc in docs {
+                    let inDeg = inDegrees[doc.id, default: 0]
+                    let outDeg = outDegrees[doc.id, default: 0]
+                    let totalDeg = inDeg + outDeg
+
+                    // Filter orphans if requested
+                    if !filter.showOrphans && totalDeg == 0 {
+                        continue
+                    }
+
+                    let topAncestor = self.resolveTopLevelAncestorId(docId: doc.id, parentMap: parentMap)
+                    let docTags = Array(self.documentTags[doc.id] ?? [])
+                    let count = try Block.filter(Block.Columns.rootDocId == doc.id).fetchCount(db)
+
+                    allNodes.append(GraphNode(
+                        id: doc.id,
+                        title: doc.content.isEmpty ? "Untitled" : doc.content,
+                        isCurrentDoc: doc.id == self.selectedDocId,
+                        isUnresolved: false,
+                        parentId: doc.parentId,
+                        topLevelAncestorId: topAncestor,
+                        tags: docTags,
+                        blockCount: count,
+                        inDegree: inDeg,
+                        outDegree: outDeg
+                    ))
+                }
+
+                for ghost in unresolvedNodes {
+                    let inDeg = inDegrees[ghost.id, default: 0]
+                    let outDeg = outDegrees[ghost.id, default: 0]
+                    allNodes.append(GraphNode(
+                        id: ghost.id,
+                        title: ghost.title,
+                        isCurrentDoc: false,
+                        isUnresolved: true,
+                        blockCount: 0,
+                        inDegree: inDeg,
+                        outDegree: outDeg
+                    ))
+                }
+
+                let finalNodeIds = Set(allNodes.map { $0.id })
+                let validEdges = edgeSet.filter { finalNodeIds.contains($0.sourceId) && finalNodeIds.contains($0.targetId) }
+
+                return (allNodes, Array(validEdges))
+            }
+        } catch {
+            return ([], [])
+        }
+    }
+
+    public func getLocalGraphData(docId: String, depth: Int = 1, includeContains: Bool = false) -> (nodes: [GraphNode], edges: [GraphEdge]) {
+        do {
+            return try dbManager.dbWriter.read { db in
+                let targetDoc = try Block.fetchOne(db, key: docId)
+                guard targetDoc != nil else { return ([], []) }
+
+                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue).fetchAll(db)
+                var docMap: [String: Block] = [:]
+                var parentMap: [String: String] = [:]
+                for doc in docs {
+                    docMap[doc.id] = doc
+                    if let pid = doc.parentId {
+                        parentMap[doc.id] = pid
+                    }
+                }
+
+                var allEdges: [GraphEdge] = []
+
+                // 1. Transclusion edges
+                let refSql = """
+                SELECT DISTINCT b.rootDocId AS sourceDocId, target.rootDocId AS targetDocId
+                FROM block b
+                JOIN block target ON target.id = b.refTargetId
+                WHERE b.rootDocId != target.rootDocId;
+                """
+                let refRows = try Row.fetchAll(db, sql: refSql)
+                for row in refRows {
+                    let source: String = row["sourceDocId"]
+                    let target: String = row["targetDocId"]
+                    allEdges.append(GraphEdge(sourceId: source, targetId: target, type: .linksTo))
+                }
+
+                // 2. WikiLink edges
+                let links = try DocLink.filter(DocLink.Columns.targetDocId != nil).fetchAll(db)
+                for link in links {
+                    guard let targetId = link.targetDocId, link.sourceDocId != targetId else { continue }
+                    allEdges.append(GraphEdge(sourceId: link.sourceDocId, targetId: targetId, type: .linksTo))
+                }
+
+                if includeContains {
+                    for doc in docs {
+                        if let parentId = doc.parentId, docMap[parentId] != nil {
+                            allEdges.append(GraphEdge(sourceId: parentId, targetId: doc.id, type: .contains))
+                        }
+                    }
+                }
+
+                // Unresolved links
+                let unresolvedLinks = try DocLink.filter(DocLink.Columns.targetDocId == nil).fetchAll(db)
+                var ghostMap: [String: String] = [:]
+                var unresolvedNodes: [GraphNode] = []
+                for link in unresolvedLinks {
+                    let titleKey = link.targetTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !titleKey.isEmpty else { continue }
+                    let lowerKey = titleKey.lowercased()
+                    let ghostId = ghostMap[lowerKey] ?? "unresolved-\(lowerKey)"
+                    if ghostMap[lowerKey] == nil {
+                        ghostMap[lowerKey] = ghostId
+                        unresolvedNodes.append(GraphNode(
+                            id: ghostId,
+                            title: titleKey,
+                            isUnresolved: true,
+                            blockCount: 0
+                        ))
+                    }
+                    allEdges.append(GraphEdge(sourceId: link.sourceDocId, targetId: ghostId, type: .linksTo))
+                }
+
+                // Adjacency map (undirected for hop discovery)
+                var adj: [String: Set<String>] = [:]
+                for edge in allEdges {
+                    adj[edge.sourceId, default: []].insert(edge.targetId)
+                    adj[edge.targetId, default: []].insert(edge.sourceId)
+                }
+
+                // BFS up to `depth` hops
+                var visited: Set<String> = [docId]
+                var queue: [(id: String, hop: Int)] = [(docId, 0)]
+
+                while !queue.isEmpty {
+                    let (current, hop) = queue.removeFirst()
+                    if hop < depth {
+                        for neighbor in adj[current] ?? [] {
+                            if !visited.contains(neighbor) {
+                                visited.insert(neighbor)
+                                queue.append((neighbor, hop + 1))
+                            }
+                        }
+                    }
+                }
+
+                // Filter edges to only those connecting visited nodes
+                var scopedEdges: [GraphEdge] = []
+                for edge in allEdges {
+                    if visited.contains(edge.sourceId) && visited.contains(edge.targetId) {
+                        let isInbound = (edge.targetId == docId)
+                        let isOutbound = (edge.sourceId == docId)
+                        scopedEdges.append(GraphEdge(
+                            sourceId: edge.sourceId,
+                            targetId: edge.targetId,
+                            type: edge.type,
+                            isInboundToActive: isInbound,
+                            isOutboundFromActive: isOutbound
+                        ))
+                    }
+                }
+
+                var inDeg: [String: Int] = [:]
+                var outDeg: [String: Int] = [:]
+                for edge in scopedEdges {
+                    outDeg[edge.sourceId, default: 0] += 1
+                    inDeg[edge.targetId, default: 0] += 1
+                }
+
+                var scopedNodes: [GraphNode] = []
+                for nodeDocId in visited {
+                    if let doc = docMap[nodeDocId] {
+                        let count = try Block.filter(Block.Columns.rootDocId == doc.id).fetchCount(db)
+                        scopedNodes.append(GraphNode(
+                            id: doc.id,
+                            title: doc.content.isEmpty ? "Untitled" : doc.content,
+                            isCurrentDoc: doc.id == docId,
+                            isUnresolved: false,
+                            parentId: doc.parentId,
+                            topLevelAncestorId: self.resolveTopLevelAncestorId(docId: doc.id, parentMap: parentMap),
+                            tags: Array(self.documentTags[doc.id] ?? []),
+                            blockCount: count,
+                            inDegree: inDeg[doc.id, default: 0],
+                            outDegree: outDeg[doc.id, default: 0]
+                        ))
+                    } else if let ghost = unresolvedNodes.first(where: { $0.id == nodeDocId }) {
+                        scopedNodes.append(GraphNode(
+                            id: ghost.id,
+                            title: ghost.title,
+                            isCurrentDoc: false,
+                            isUnresolved: true,
+                            blockCount: 0,
+                            inDegree: inDeg[ghost.id, default: 0],
+                            outDegree: outDeg[ghost.id, default: 0]
+                        ))
+                    }
+                }
+
+                return (scopedNodes, scopedEdges)
             }
         } catch {
             return ([], [])

@@ -2,101 +2,106 @@ import SwiftUI
 
 public struct LocalGraphView: View {
     @ObservedObject public var store: BlockStore
-    @State private var hoveredNodeId: String? = nil
+    @StateObject private var simulation = ForceSimulation()
+    @State private var depth: Int = 1
+    @State private var includeHierarchy: Bool = false
 
-    public var body: some View {
-        let (nodes, edges) = store.getGraphData()
-
-        GeometryReader { geometry in
-            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let radius = min(geometry.size.width, geometry.size.height) * 0.36
-
-            // Compute positions
-            let positions = computeNodePositions(nodes: nodes, center: center, radius: radius)
-
-            ZStack {
-                Color(NSColor.controlBackgroundColor).opacity(0.3)
-
-                // Edges
-                Path { path in
-                    for edge in edges {
-                        if let start = positions[edge.sourceId], let end = positions[edge.targetId] {
-                            path.move(to: start)
-                            path.addLine(to: end)
-                        }
-                    }
-                }
-                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1.5)
-
-                // Nodes
-                ForEach(nodes) { node in
-                    if let pos = positions[node.id] {
-                        let isSelected = node.id == store.selectedDocId
-
-                        VStack(spacing: 4) {
-                            ZStack {
-                                Circle()
-                                    .fill(isSelected ? Color.accentColor : Color(NSColor.windowBackgroundColor))
-                                    .frame(width: isSelected ? 22 : 16, height: isSelected ? 22 : 16)
-                                    .shadow(color: isSelected ? Color.accentColor.opacity(0.5) : Color.black.opacity(0.1), radius: isSelected ? 6 : 2)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(isSelected ? Color.white : Color.accentColor, lineWidth: isSelected ? 2 : 1.5)
-                                    )
-
-                                if isSelected {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 6, height: 6)
-                                }
-                            }
-
-                            Text(node.title)
-                                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? .accentColor : .secondary)
-                                .lineLimit(1)
-                                .background(Color(NSColor.windowBackgroundColor).opacity(0.8))
-                                .cornerRadius(3)
-                        }
-                        .position(pos)
-                        .onHover { hovering in
-                            hoveredNodeId = hovering ? node.id : nil
-                        }
-                        .onTapGesture {
-                            store.selectDocument(id: node.id)
-                        }
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .padding(8)
+    public init(store: BlockStore) {
+        self.store = store
     }
 
-    private func computeNodePositions(
-        nodes: [GraphNode],
-        center: CGPoint,
-        radius: CGFloat
-    ) -> [String: CGPoint] {
-        var positions: [String: CGPoint] = [:]
-        guard !nodes.isEmpty else { return positions }
+    public var body: some View {
+        let activeId = store.selectedDocId ?? ""
+        let localData = store.getLocalGraphData(docId: activeId, depth: depth, includeContains: includeHierarchy)
 
-        // Place current document at center
-        if let current = nodes.first(where: { $0.id == store.selectedDocId }) {
-            positions[current.id] = center
+        VStack(spacing: 0) {
+            // Header with Depth controls & Inbound/Outbound Legend
+            VStack(spacing: 8) {
+                HStack {
+                    Text("LOCAL GRAPH")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    // Depth Control (1 - 3 hops)
+                    Picker("Hops", selection: $depth) {
+                        Text("1 Hop").tag(1)
+                        Text("2 Hops").tag(2)
+                        Text("3 Hops").tag(3)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 155)
+                    .controlSize(.mini)
+                }
+
+                HStack(spacing: 12) {
+                    // Inbound / Outbound Legend
+                    HStack(spacing: 4) {
+                        Circle().fill(Color(hexString: "#00E676")).frame(width: 7, height: 7)
+                        Text("Outbound →").font(.system(size: 9)).foregroundColor(.secondary)
+                    }
+
+                    HStack(spacing: 4) {
+                        Circle().fill(Color(hexString: "#00E5FF")).frame(width: 7, height: 7)
+                        Text("Inbound ←").font(.system(size: 9)).foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle(isOn: $includeHierarchy) {
+                        Text("Tree").font(.system(size: 9))
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.mini)
+                    .tint(includeHierarchy ? .purple : .secondary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+
+            Divider()
+
+            if localData.nodes.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 28))
+                        .foregroundColor(.secondary)
+                    Text("No connections for active note")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Add a [[WikiLink]] or transclusion to link notes.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(20)
+            } else {
+                // Interactive Embedded Canvas
+                GraphCanvasView(
+                    nodes: localData.nodes,
+                    edges: localData.edges,
+                    filterConfig: GraphFilterConfig(showLinks: true, showContains: includeHierarchy, showUnresolved: true, showOrphans: true),
+                    groupRules: store.graphGroupRules,
+                    isLocalGraph: true,
+                    activeDocId: store.selectedDocId,
+                    onNodeSelected: { docId in
+                        store.selectDocument(id: docId)
+                    },
+                    onUnresolvedSelected: { title in
+                        _ = store.createDocFromUnresolvedLink(title: title, sourceDocId: activeId)
+                    },
+                    simulation: simulation
+                )
+            }
         }
-
-        let otherNodes = nodes.filter { $0.id != store.selectedDocId }
-        guard !otherNodes.isEmpty else { return positions }
-
-        let angleStep = (2 * CGFloat.pi) / CGFloat(otherNodes.count)
-        for (i, node) in otherNodes.enumerated() {
-            let angle = CGFloat(i) * angleStep - CGFloat.pi / 2
-            let x = center.x + radius * cos(angle)
-            let y = center.y + radius * sin(angle)
-            positions[node.id] = CGPoint(x: x, y: y)
+        .onChange(of: store.selectedDocId) { _, _ in
+            simulation.restart(targetAlpha: 0.8)
         }
-
-        return positions
+        .onChange(of: depth) { _, _ in
+            simulation.restart(targetAlpha: 0.9)
+        }
     }
 }

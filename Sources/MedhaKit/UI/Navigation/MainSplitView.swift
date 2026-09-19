@@ -37,6 +37,8 @@ public struct MainSplitView: View {
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
                     }
+                case .graph:
+                    GlobalGraphView(store: store)
                 case .flashcards:
                     FlashcardManagerView(store: store)
                 case .palace:

@@ -36,6 +36,22 @@ public struct SidebarView: View {
                 .listRowBackground(store.activeMainView == .editor && store.selectedNotebookId == nil ? Color.accentColor.opacity(0.15) : Color.clear)
 
                 Button(action: {
+                    store.activeMainView = .graph
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                            .foregroundColor(store.activeMainView == .graph ? .accentColor : .secondary)
+                            .frame(width: 18)
+                        Text("Knowledge Graph")
+                            .font(.system(size: 13, weight: store.activeMainView == .graph ? .semibold : .regular))
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(store.activeMainView == .graph ? Color.accentColor.opacity(0.15) : Color.clear)
+
+                Button(action: {
                     store.activeMainView = .flashcards
                 }) {
                     HStack(spacing: 8) {

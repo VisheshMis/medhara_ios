@@ -85,28 +85,3 @@ public struct BacklinkItem: Identifiable, Equatable, Sendable {
         self.isUnresolved = isUnresolved
     }
 }
-
-public struct GraphNode: Identifiable, Equatable, Hashable, Sendable {
-    public let id: String
-    public let title: String
-    public let isCurrentDoc: Bool
-    public let blockCount: Int
-
-    public init(id: String, title: String, isCurrentDoc: Bool = false, blockCount: Int = 1) {
-        self.id = id
-        self.title = title
-        self.isCurrentDoc = isCurrentDoc
-        self.blockCount = blockCount
-    }
-}
-
-public struct GraphEdge: Identifiable, Equatable, Hashable, Sendable {
-    public var id: String { "\(sourceId)->\(targetId)" }
-    public let sourceId: String
-    public let targetId: String
-
-    public init(sourceId: String, targetId: String) {
-        self.sourceId = sourceId
-        self.targetId = targetId
-    }
-}

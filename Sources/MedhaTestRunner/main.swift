@@ -1273,6 +1273,129 @@ struct TestRunner {
 
         print("✅ testNoteTitleFocusStability passed")
 
-        print("\n🎉 ALL 26 TEST SUITES PASSED SUCCESSFULLY!")
+        // --- Running Suite 27: Graph View & Physics Engine Verification ---
+        print("\n--- Running Suite 27: Graph View & Physics Engine Verification ---")
+
+        let db27 = DatabaseManager(inMemory: true)
+        let store27 = BlockStore(dbManager: db27)
+
+        // 1. Create Hierarchy and Documents
+        let folderP = store27.createDocument(title: "Neuroscience Folder")
+        let docC1 = store27.createDocument(title: "Synaptic Plasticity", parentDocId: folderP.id)
+        let docC2 = store27.createDocument(title: "Long-Term Potentiation", parentDocId: folderP.id)
+        let orphanDoc = store27.createDocument(title: "Isolated Thought")
+
+        // 2. Create wiki-links (LINKS_TO) and unresolved link
+        store27.selectDocument(id: docC1.id)
+        let linkBlock = store27.createBlock(
+            type: .paragraph,
+            content: "Study [[Long-Term Potentiation]] and future concept [[Spike Timing Dependent Plasticity]] #memory #neuro"
+        )
+        store27.syncLinksForBlock(linkBlock)
+
+        // Verify tags were indexed
+        let c1Tags = store27.documentTags[docC1.id] ?? []
+        assert(c1Tags.contains("memory"), "Failed: documentTags should contain 'memory'")
+        assert(c1Tags.contains("neuro"), "Failed: documentTags should contain 'neuro'")
+
+        // 3. Test LINKS_TO Only Preset
+        let linksOnlyConfig = GraphFilterConfig(showLinks: true, showContains: false, showUnresolved: true, showOrphans: false)
+        let linksOnlyGraph = store27.getGlobalGraphData(filter: linksOnlyConfig)
+
+        assert(linksOnlyGraph.edges.contains(where: { $0.sourceId == docC1.id && $0.targetId == docC2.id && $0.type == .linksTo }), "Failed: LINKS_TO edge C1->C2 missing")
+        assert(!linksOnlyGraph.edges.contains(where: { $0.type == .contains }), "Failed: contains edges should not appear in linksOnly preset")
+        assert(!linksOnlyGraph.nodes.contains(where: { $0.id == orphanDoc.id }), "Failed: orphanDoc should be hidden when showOrphans is false")
+
+        // 4. Test Unresolved Ghost Node
+        let unresolvedGhost = linksOnlyGraph.nodes.first(where: { $0.isUnresolved })
+        assert(unresolvedGhost != nil, "Failed: unresolved ghost node should exist")
+        assert(unresolvedGhost?.title == "Spike Timing Dependent Plasticity", "Failed: ghost title mismatch")
+        assert(unresolvedGhost?.radius == 5.5, "Failed: unresolved ghost should have 5.5 radius")
+
+        // 5. Test Tree Only Preset (CONTAINS)
+        let treeOnlyConfig = GraphFilterConfig(showLinks: false, showContains: true, showUnresolved: false, showOrphans: true)
+        let treeGraph = store27.getGlobalGraphData(filter: treeOnlyConfig)
+
+        assert(treeGraph.edges.contains(where: { $0.sourceId == folderP.id && $0.targetId == docC1.id && $0.type == .contains }), "Failed: P->C1 contains edge missing")
+        assert(treeGraph.edges.contains(where: { $0.sourceId == folderP.id && $0.targetId == docC2.id && $0.type == .contains }), "Failed: P->C2 contains edge missing")
+        assert(!treeGraph.edges.contains(where: { $0.type == .linksTo }), "Failed: linksTo edges should not appear in treeOnly preset")
+        assert(treeGraph.nodes.contains(where: { $0.id == orphanDoc.id }), "Failed: orphanDoc should appear when showOrphans is true")
+
+        // 6. Test Blended Preset (Both LINKS_TO and CONTAINS)
+        let blendedConfig = GraphFilterConfig(showLinks: true, showContains: true, showUnresolved: true, showOrphans: true)
+        let blendedGraph = store27.getGlobalGraphData(filter: blendedConfig)
+
+        let hasLinkEdge = blendedGraph.edges.contains(where: { $0.sourceId == docC1.id && $0.targetId == docC2.id && $0.type == .linksTo })
+        let hasContainsEdge = blendedGraph.edges.contains(where: { $0.sourceId == folderP.id && $0.targetId == docC1.id && $0.type == .contains })
+        assert(hasLinkEdge && hasContainsEdge, "Failed: Blended graph must contain both LINKS_TO and CONTAINS edges simultaneously")
+
+        // 7. Test Local Graph Scoped BFS & Directionality (Inbound vs Outbound)
+        let gDocA = store27.createDocument(title: "Node Alpha")
+        let gDocB = store27.createDocument(title: "Node Beta")
+        let gDocC = store27.createDocument(title: "Node Gamma")
+        let gDocD = store27.createDocument(title: "Node Delta")
+
+        store27.selectDocument(id: gDocA.id)
+        let bA = store27.createBlock(type: .paragraph, content: "Links to [[Node Beta]]")
+        store27.syncLinksForBlock(bA)
+
+        store27.selectDocument(id: gDocB.id)
+        let bB = store27.createBlock(type: .paragraph, content: "Links to [[Node Gamma]]")
+        store27.syncLinksForBlock(bB)
+
+        store27.selectDocument(id: gDocC.id)
+        let bC = store27.createBlock(type: .paragraph, content: "Links to [[Node Delta]]")
+        store27.syncLinksForBlock(bC)
+
+        // Depth 1 from Beta: should contain Alpha (inbound) and Gamma (outbound). Should NOT contain Delta (2 hops)
+        let localBeta1 = store27.getLocalGraphData(docId: gDocB.id, depth: 1)
+        assert(localBeta1.nodes.contains(where: { $0.id == gDocA.id }), "Local Depth 1: Alpha must be present")
+        assert(localBeta1.nodes.contains(where: { $0.id == gDocB.id }), "Local Depth 1: Beta must be present")
+        assert(localBeta1.nodes.contains(where: { $0.id == gDocC.id }), "Local Depth 1: Gamma must be present")
+        assert(!localBeta1.nodes.contains(where: { $0.id == gDocD.id }), "Local Depth 1: Delta must NOT be present at depth 1")
+
+        let gDocAId = gDocA.id
+        let gDocBId = gDocB.id
+        let gDocCId = gDocC.id
+        let edgeInbound = localBeta1.edges.first(where: { $0.sourceId == gDocAId && $0.targetId == gDocBId })
+        assert(edgeInbound?.isInboundToActive == true, "Failed: Edge A->B must be marked inbound to Beta")
+        assert(edgeInbound?.isOutboundFromActive == false, "Failed: Edge A->B must not be outbound from Beta")
+
+        let edgeOutbound = localBeta1.edges.first(where: { $0.sourceId == gDocBId && $0.targetId == gDocCId })
+        assert(edgeOutbound?.isOutboundFromActive == true, "Failed: Edge B->C must be marked outbound from Beta")
+        assert(edgeOutbound?.isInboundToActive == false, "Failed: Edge B->C must not be inbound to Beta")
+
+        // Depth 2 from Beta: should now reach Delta!
+        let localBeta2 = store27.getLocalGraphData(docId: gDocB.id, depth: 2)
+        assert(localBeta2.nodes.contains(where: { $0.id == gDocD.id }), "Local Depth 2: Delta must be included at depth 2")
+        // 8. Test Physics Simulation: Cooling Alpha, Settling, and Pinning
+        let sim = ForceSimulation()
+        sim.setNetwork(nodes: blendedGraph.nodes, edges: blendedGraph.edges, center: CGPoint(x: 400, y: 300), preserveExistingPositions: false)
+
+        assert(sim.alpha == 1.0, "Simulation initial alpha should be 1.0")
+        assert(!sim.isAtRest, "Simulation should be running initially")
+
+        // Test Pinning
+        let testNodeId = docC1.id
+        sim.pinNode(id: testNodeId, at: CGPoint(x: 150, y: 150))
+        assert(sim.nodes[testNodeId]?.isPinned == true, "Node should be pinned")
+
+        // Step simulation until cooling alpha rests (< 0.002)
+        sim.tickUntilRest(maxTicks: 400)
+        assert(sim.isAtRest, "Simulation should have cooled down and reached rest")
+        assert(sim.alpha <= sim.alphaMin, "Simulation alpha should have decayed below alphaMin")
+
+        // Pinned node must stay exactly where pinned
+        let pinnedPoint = sim.nodes[testNodeId]?.point
+        assert(pinnedPoint == CGPoint(x: 150, y: 150), "Pinned node should not move during force simulation ticks")
+
+        // Unpin and restart
+        sim.unpinNode(id: testNodeId)
+        assert(sim.nodes[testNodeId]?.isPinned == false, "Node should be unpinned")
+        assert(!sim.isAtRest, "Simulation should awaken on unpin")
+
+        print("✅ testGraphViewAndPhysicsEngine passed")
+
+        print("\n🎉 ALL 27 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

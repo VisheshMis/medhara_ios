@@ -36,6 +36,11 @@ struct MedhaApp: App {
                     store.isInspectorPresented.toggle()
                 }
                 .keyboardShortcut("i", modifiers: .command)
+
+                Button("Knowledge Graph") {
+                    store.activeMainView = (store.activeMainView == .graph ? .editor : .graph)
+                }
+                .keyboardShortcut("g", modifiers: .command)
             }
         }
     }
