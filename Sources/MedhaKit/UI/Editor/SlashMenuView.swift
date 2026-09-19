@@ -85,6 +85,7 @@ public struct SlashMenuView: View {
                             Button(action: {
                                 cleanSlashFromBlock()
                                 store.isNotesAIAssistantPresented = true
+                                store.isInspectorPresented = false
                                 onDismiss()
                             }) {
                                 HStack(spacing: 8) {

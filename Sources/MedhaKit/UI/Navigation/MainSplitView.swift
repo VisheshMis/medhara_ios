@@ -25,14 +25,13 @@ public struct MainSplitView: View {
                         }
 
                         BlockEditorView(store: store)
+                            .frame(minWidth: 420, maxWidth: .infinity)
 
                         if store.isNotesAIAssistantPresented {
                             Divider()
                             NotesAIAssistantView(store: store)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-
-                        if store.isInspectorPresented {
+                        } else if store.isInspectorPresented {
                             Divider()
                             InspectorView(store: store)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -104,12 +103,13 @@ public struct MainSplitView: View {
 
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                store.isInspectorPresented.toggle()
+                                store.toggleInspector()
                             }
                         }) {
                             Label("Inspector", systemImage: "sidebar.right")
                         }
                         .help("Toggle Inspector (⌘I)")
+                        .foregroundColor((store.isInspectorPresented && !store.isNotesAIAssistantPresented) ? .accentColor : .primary)
                     }
                 }
             }

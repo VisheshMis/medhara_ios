@@ -109,6 +109,18 @@ public final class BlockStore: ObservableObject {
 
     public func toggleNotesAIAssistant() {
         isNotesAIAssistantPresented.toggle()
+        if isNotesAIAssistantPresented {
+            isInspectorPresented = false
+        }
+    }
+
+    public func toggleInspector() {
+        if isInspectorPresented && !isNotesAIAssistantPresented {
+            isInspectorPresented = false
+        } else {
+            isInspectorPresented = true
+            isNotesAIAssistantPresented = false
+        }
     }
 
     // Overlays

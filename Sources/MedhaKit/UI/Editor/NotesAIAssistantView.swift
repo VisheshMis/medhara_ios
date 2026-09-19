@@ -140,7 +140,7 @@ public struct NotesAIAssistantView: View {
                         }
                     }
                     .padding(12)
-                    .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                    .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(8)
 
                     // Generation Mode Selection
@@ -151,16 +151,22 @@ public struct NotesAIAssistantView: View {
 
                         Picker("Mode", selection: $selectedMode) {
                             ForEach(NotesGenerationMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                                Text(mode.shortTitle).tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
 
-                        Text(selectedMode.description)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .top, spacing: 4) {
+                            Text(selectedMode.rawValue)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("—")
+                                .foregroundColor(.secondary)
+                            Text(selectedMode.description)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     // Custom Instruction input
@@ -184,21 +190,20 @@ public struct NotesAIAssistantView: View {
                     }
 
                     // Target Output Destination Picker
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("TARGET DESTINATION")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.secondary)
 
-                        Picker("Destination", selection: $selectedDestination) {
+                        Picker("", selection: $selectedDestination) {
                             ForEach(HierarchyDestination.allCases) { dest in
-                                HStack {
-                                    Image(systemName: dest.systemIcon)
-                                    Text(dest.rawValue)
-                                }
-                                .tag(dest)
+                                Text("\(dest.systemIcon == "folder.badge.plus" ? "📁 " : (dest.systemIcon == "list.bullet.indent" ? "📝 " : "📑 "))\(dest.rawValue)")
+                                    .tag(dest)
                             }
                         }
+                        .labelsHidden()
                         .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         Text(selectedDestination.description)
                             .font(.system(size: 11))
@@ -291,7 +296,7 @@ public struct NotesAIAssistantView: View {
                 .padding(14)
             }
         }
-        .frame(minWidth: 260, idealWidth: 300, maxWidth: 360)
+        .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
         .background(Color(NSColor.windowBackgroundColor))
         .sheet(isPresented: $isApprovalSheetPresented) {
             if let res = generatedResult, let currentDoc = store.currentDoc {

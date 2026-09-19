@@ -1101,6 +1101,14 @@ public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
+    public var shortTitle: String {
+        switch self {
+        case .expandSubtopics: return "Expand"
+        case .summarizeAndSplit: return "Split"
+        case .custom: return "Custom"
+        }
+    }
+
     public var systemIcon: String {
         switch self {
         case .expandSubtopics: return "arrow.turn.right.down"
