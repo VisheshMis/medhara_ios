@@ -406,12 +406,27 @@ public struct CalloutBlockView: View {
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
 
+    // Light Neo Green palette
+    private let neoGreen = Color(red: 0.16, green: 0.86, blue: 0.53)
+
     public var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lightbulb.fill")
-                .foregroundColor(.orange)
-                .font(.system(size: 15))
-                .padding(.top, 2)
+            // Subtle vertical accent bar on the left
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(neoGreen.opacity(0.85))
+                .frame(width: 3)
+                .padding(.vertical, 2)
+
+            // Refined mini lightbulb badge
+            ZStack {
+                Circle()
+                    .fill(neoGreen.opacity(0.14))
+                    .frame(width: 20, height: 20)
+                Image(systemName: "lightbulb.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(neoGreen)
+            }
+            .padding(.top, 2)
 
             BlockTextViewRepresentable(
                 text: Binding(
@@ -419,20 +434,21 @@ public struct CalloutBlockView: View {
                     set: { store.updateBlockContent(id: block.id, content: $0) }
                 ),
                 isFocused: isFocused,
-                font: .systemFont(ofSize: 14),
+                font: .systemFont(ofSize: 13.5, weight: .regular),
                 textColor: .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty
             )
-            .frame(minHeight: 24)
+            .frame(minHeight: 22)
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.08))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(neoGreen.opacity(0.06))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                .stroke(neoGreen.opacity(0.18), lineWidth: 1)
         )
     }
 }

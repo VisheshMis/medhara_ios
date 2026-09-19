@@ -193,10 +193,31 @@ public struct BlockRowView: View {
                     .transition(.opacity)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.top, topPadding)
+        .padding(.bottom, bottomPadding)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
+        }
+    }
+
+    private var topPadding: CGFloat {
+        switch block.type {
+        case .heading1: return 20
+        case .heading2: return 16
+        case .heading3: return 12
+        case .callout: return 5
+        default: return 2
+        }
+    }
+
+    private var bottomPadding: CGFloat {
+        switch block.type {
+        case .heading1: return 6
+        case .heading2: return 5
+        case .heading3: return 4
+        case .callout: return 6
+        default: return 2
         }
     }
 

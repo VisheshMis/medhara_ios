@@ -47,6 +47,12 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         Coordinator(self)
     }
 
+    private var customParagraphStyle: NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = 4.0
+        return style
+    }
+
     public func makeNSView(context: Context) -> CustomNSTextView {
         let textView = CustomNSTextView()
         textView.delegate = context.coordinator
@@ -62,7 +68,19 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 0, height: 2)
         textView.placeholderString = placeholder
         textView.coordinator = context.coordinator
+
+        let style = customParagraphStyle
+        textView.defaultParagraphStyle = style
+        textView.typingAttributes = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: style
+        ]
+
         textView.string = text
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: storage.length))
+        }
         return textView
     }
 
@@ -73,6 +91,18 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         nsView.font = font
         nsView.textColor = textColor
         nsView.placeholderString = placeholder
+
+        let style = customParagraphStyle
+        nsView.defaultParagraphStyle = style
+        nsView.typingAttributes = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: style
+        ]
+        if let storage = nsView.textStorage, storage.length > 0 {
+            storage.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: storage.length))
+        }
+
         context.coordinator.parent = self
 
         if isFocused && nsView.window?.firstResponder != nsView {
