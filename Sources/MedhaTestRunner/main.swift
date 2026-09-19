@@ -971,6 +971,165 @@ struct TestRunner {
 
         print("✅ testAISocraticEvaluationAndSettings passed")
 
-        print("\n🎉 ALL 22 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 23. Notes AI Downward Hierarchy & Dual Configuration Test
+        // ==========================================
+        print("\n--- Running Suite 23: Notes AI Downward Hierarchy & Dual Configuration ---")
+
+        // 23.1: Dual AI Configuration (Shared vs Independent)
+        let aiConfig = AISettings.shared
+        let origFCKey = aiConfig.apiKey
+        let origFCProv = aiConfig.provider
+        let origFCModel = aiConfig.model
+        let origNotesShared = aiConfig.useFlashcardSettingsForNotes
+        let origNotesKey = aiConfig.notesApiKey
+        let origNotesProv = aiConfig.notesProvider
+        let origNotesModel = aiConfig.notesModel
+
+        aiConfig.apiKey = "AIzaSyFlashcardSharedKey123456"
+        aiConfig.provider = .gemini
+        aiConfig.model = "gemini-3.6-flash"
+        aiConfig.useFlashcardSettingsForNotes = true
+
+        assert(aiConfig.activeNotesApiKey == "AIzaSyFlashcardSharedKey123456", "Failed: Notes AI should inherit shared API key")
+        assert(aiConfig.activeNotesProvider == .gemini, "Failed: Notes AI should inherit shared provider")
+        assert(aiConfig.activeNotesModel == "gemini-3.6-flash", "Failed: Notes AI should inherit shared model")
+        assert(aiConfig.hasNotesAPIKey == true, "Failed: hasNotesAPIKey should be true when shared key is present")
+
+        // Switch to independent Notes AI configuration
+        aiConfig.useFlashcardSettingsForNotes = false
+        aiConfig.notesApiKey = "sk-proj-OpenAINotesIndependentKey987654"
+        aiConfig.notesProvider = .openai
+        aiConfig.notesModel = "gpt-4o-mini"
+
+        assert(aiConfig.activeNotesApiKey == "sk-proj-OpenAINotesIndependentKey987654", "Failed: Notes AI should use independent key when unlinked")
+        assert(aiConfig.activeNotesProvider == .openai, "Failed: Notes AI should use independent provider")
+        assert(aiConfig.activeNotesModel == "gpt-4o-mini", "Failed: Notes AI should use independent model")
+        assert(aiConfig.maskedNotesKey.hasPrefix("sk-p"), "Failed: Masked notes key prefix")
+        assert(aiConfig.maskedNotesKey.hasSuffix("7654"), "Failed: Masked notes key suffix")
+
+        // Restore original settings
+        aiConfig.apiKey = origFCKey
+        aiConfig.provider = origFCProv
+        aiConfig.model = origFCModel
+        aiConfig.useFlashcardSettingsForNotes = origNotesShared
+        aiConfig.notesApiKey = origNotesKey
+        aiConfig.notesProvider = origNotesProv
+        aiConfig.notesModel = origNotesModel
+
+        // 23.2: Downward Hierarchy JSON Parsing with Nested Structure
+        let mockHierarchyJSON = """
+        {
+          "rootTitle": "Distributed Consensus Protocols",
+          "overview": "A downward breakdown of consensus algorithms into Paxos and Raft subtopics.",
+          "items": [
+            {
+              "title": "Paxos Family",
+              "summary": "The theoretical foundation of distributed consensus by Leslie Lamport.",
+              "blocks": [
+                {
+                  "typeString": "paragraph",
+                  "content": "Paxos operates in phases: Prepare/Promise and Accept/Accepted."
+                },
+                {
+                  "typeString": "bulletList",
+                  "content": "Single-decree Paxos reaches consensus on a single value."
+                },
+                {
+                  "typeString": "bulletList",
+                  "content": "Multi-Paxos amortizes the prepare phase for a log of values."
+                }
+              ],
+              "children": [
+                {
+                  "title": "Multi-Paxos Optimization",
+                  "summary": "Electing a stable leader to avoid Phase 1 round-trips.",
+                  "blocks": [
+                    {
+                      "typeString": "callout",
+                      "content": "Stable leader reduces consensus to one round-trip."
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "title": "Raft Protocol",
+              "summary": "An algorithm designed for understandability with explicit leader election.",
+              "blocks": [
+                {
+                  "typeString": "paragraph",
+                  "content": "Decomposes consensus into Leader Election, Log Replication, and Safety."
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+        """
+
+        let parsedResult = try AISocraticService.shared.parseHierarchicalJSON(rawText: mockHierarchyJSON)
+        assert(parsedResult.rootTitle == "Distributed Consensus Protocols", "Failed: Root title parsed")
+        assert(parsedResult.items.count == 2, "Failed: Top-level subtopics count")
+        assert(parsedResult.items[0].title == "Paxos Family", "Failed: First subtopic title")
+        assert(parsedResult.items[0].blocks.count == 3, "Failed: First subtopic block count")
+        assert(parsedResult.items[0].children.count == 1, "Failed: Sub-subtopic child count")
+        assert(parsedResult.items[0].children[0].title == "Multi-Paxos Optimization", "Failed: Child title")
+        assert(parsedResult.items[0].totalNodeCount == 2, "Failed: Total node count for Paxos branch")
+        assert(parsedResult.items[1].title == "Raft Protocol", "Failed: Second subtopic title")
+
+        // 23.3: Strict Downward Hierarchy Guarantee & Tree Commitment (.treeSubNotes)
+        let rootNote = store.createDocument(title: "Distributed Systems Study Guide")
+        let preDocCount = store.documents.count
+
+        // Commit parsed hierarchy as child documents
+        store.commitHierarchicalNotes(rootDocId: rootNote.id, result: parsedResult, destination: .treeSubNotes)
+
+        let postDocCount = store.documents.count
+        assert(postDocCount == preDocCount + 3, "Failed: Exactly 3 child documents should be added to the tree")
+
+        // Verify Strict Downward Invariant:
+        // All level-1 child notes MUST have parentId == rootNote.id
+        let level1Docs = store.documents.filter { $0.parentId == rootNote.id }
+        assert(level1Docs.count == 2, "Failed: Exactly 2 direct child documents under rootNote")
+        assert(level1Docs.contains(where: { $0.content == "Paxos Family" }), "Failed: Paxos Family is direct child")
+        assert(level1Docs.contains(where: { $0.content == "Raft Protocol" }), "Failed: Raft Protocol is direct child")
+
+        // Sub-child MUST have parentId == Paxos Family doc ID
+        let paxosDoc = level1Docs.first(where: { $0.content == "Paxos Family" })!
+        let paxosChildren = store.documents.filter { $0.parentId == paxosDoc.id }
+        assert(paxosChildren.count == 1, "Failed: Exactly 1 sub-child under Paxos Family")
+        assert(paxosChildren[0].content == "Multi-Paxos Optimization", "Failed: Multi-Paxos is child of Paxos Family")
+
+        // Verify Root note itself was NOT modified or reparented
+        let fetchedRoot = store.getBlock(id: rootNote.id)
+        assert(fetchedRoot?.parentId == nil, "Failed: Root note parentId remains unchanged (nil)")
+        assert(fetchedRoot?.content == "Distributed Systems Study Guide", "Failed: Root note content remains unchanged")
+
+        // 23.4: In-Document Block Outline Commitment (.documentBlocks)
+        let preBlockCount = store.blocks.count
+        store.selectDocument(id: rootNote.id)
+        store.commitHierarchicalNotes(rootDocId: rootNote.id, result: parsedResult, destination: .documentBlocks)
+        store.reloadBlocks()
+
+        let postBlockCount = store.blocks.count
+        assert(postBlockCount > preBlockCount, "Failed: Blocks should be appended to the current root document")
+        assert(store.blocks.contains(where: { $0.type == .heading2 && $0.content == "Paxos Family" }), "Failed: Heading2 Paxos Family added")
+        assert(store.blocks.contains(where: { $0.type == .heading3 && $0.content == "Multi-Paxos Optimization" }), "Failed: Heading3 Multi-Paxos added")
+        assert(store.blocks.contains(where: { $0.type == .callout && $0.content.contains("Stable leader") }), "Failed: Callout block added")
+
+        // 23.5: NotesGenerationMode & HierarchyDestination UI Models
+        assert(NotesGenerationMode.allCases.count == 3, "Failed: 3 generation modes")
+        assert(HierarchyDestination.allCases.count == 3, "Failed: 3 hierarchy destinations")
+        assert(store.isNotesAIAssistantPresented == false, "Failed: Default assistant visibility is false")
+        store.toggleNotesAIAssistant()
+        assert(store.isNotesAIAssistantPresented == true, "Failed: Toggled assistant visibility is true")
+        store.toggleNotesAIAssistant()
+        assert(store.isNotesAIAssistantPresented == false, "Failed: Toggled assistant visibility back to false")
+
+        print("✅ testNotesAIDownwardHierarchyAndDualConfiguration passed")
+
+        print("\n🎉 ALL 23 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

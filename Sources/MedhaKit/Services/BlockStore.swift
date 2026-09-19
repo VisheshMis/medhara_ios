@@ -104,6 +104,13 @@ public final class BlockStore: ObservableObject {
         isDocumentTreeVisible.toggle()
     }
 
+    // Notes AI Assistant Sidebar Visibility
+    @Published public var isNotesAIAssistantPresented: Bool = false
+
+    public func toggleNotesAIAssistant() {
+        isNotesAIAssistantPresented.toggle()
+    }
+
     // Overlays
     @Published public var isCommandPalettePresented: Bool = false
     @Published public var isBlockPickerPresented: Bool = false
@@ -463,6 +470,167 @@ public final class BlockStore: ObservableObject {
             }
         } catch {
             print("Error deleting document hierarchy: \(error)")
+        }
+    }
+
+    // MARK: - Notes AI Hierarchy Commitment
+    public func commitHierarchicalNotes(
+        rootDocId: String,
+        result: HierarchicalGenerationResult,
+        destination: HierarchyDestination
+    ) {
+        guard let parentDoc = documents.first(where: { $0.id == rootDocId }) ?? getBlock(id: rootDocId) else {
+            return
+        }
+
+        let now = Date()
+        let targetNbId = parentDoc.notebookId ?? selectedNotebookId ?? notebooks.first?.id ?? "nb-default"
+
+        do {
+            try dbManager.dbWriter.write { db in
+                // 1. If destination includes .treeSubNotes or .both: create child documents in the downward tree
+                if destination == .treeSubNotes || destination == .both {
+                    func insertSubtree(nodes: [HierarchicalNode], parentId: String, currentSort: inout Int) throws {
+                        for node in nodes where node.isSelected {
+                            let docId = Block.generateId()
+                            let docBlock = Block(
+                                id: docId,
+                                rootDocId: docId,
+                                parentId: parentId, // STRICT DOWNWARD HIERARCHY
+                                type: .doc,
+                                content: node.title,
+                                sortOrder: currentSort,
+                                createdAt: now,
+                                updatedAt: now,
+                                notebookId: targetNbId
+                            )
+                            try docBlock.insert(db)
+                            currentSort += 1
+
+                            // Insert blocks inside this newly created child document
+                            var innerSort = 0
+                            if !node.summary.isEmpty {
+                                let summaryBlock = Block(
+                                    id: Block.generateId(),
+                                    rootDocId: docId,
+                                    parentId: docId,
+                                    type: .paragraph,
+                                    content: node.summary,
+                                    sortOrder: innerSort,
+                                    createdAt: now,
+                                    updatedAt: now
+                                )
+                                try summaryBlock.insert(db)
+                                innerSort += 1
+                            }
+
+                            for item in node.blocks {
+                                let contentBlock = Block(
+                                    id: Block.generateId(),
+                                    rootDocId: docId,
+                                    parentId: docId,
+                                    type: item.blockType,
+                                    content: item.content,
+                                    sortOrder: innerSort,
+                                    createdAt: now,
+                                    updatedAt: now
+                                )
+                                try contentBlock.insert(db)
+                                innerSort += 1
+                            }
+
+                            if innerSort == 0 {
+                                let emptyBlock = Block(
+                                    id: Block.generateId(),
+                                    rootDocId: docId,
+                                    parentId: docId,
+                                    type: .paragraph,
+                                    content: "",
+                                    sortOrder: 0,
+                                    createdAt: now,
+                                    updatedAt: now
+                                )
+                                try emptyBlock.insert(db)
+                            }
+
+                            // Recursively insert downward children
+                            if !node.children.isEmpty {
+                                try insertSubtree(nodes: node.children, parentId: docId, currentSort: &currentSort)
+                            }
+                        }
+                    }
+
+                    var sortCounter = (try Block.filter(Block.Columns.parentId == rootDocId).fetchCount(db))
+                    try insertSubtree(nodes: result.items, parentId: rootDocId, currentSort: &sortCounter)
+                }
+
+                // 2. If destination includes .documentBlocks or .both: insert blocks directly into current document body
+                if destination == .documentBlocks || destination == .both {
+                    var currentBlockSort = ((try Block.filter(Block.Columns.rootDocId == rootDocId && Block.Columns.type != BlockType.doc.rawValue)
+                        .order(Block.Columns.sortOrder)
+                        .fetchAll(db).last?.sortOrder) ?? -1) + 1
+
+                    func insertBlocksOutline(nodes: [HierarchicalNode], depth: Int) throws {
+                        for node in nodes where node.isSelected {
+                            let headingType: BlockType = depth == 0 ? .heading2 : .heading3
+                            let titleBlock = Block(
+                                id: Block.generateId(),
+                                rootDocId: rootDocId,
+                                parentId: rootDocId,
+                                type: headingType,
+                                content: node.title,
+                                sortOrder: currentBlockSort,
+                                createdAt: now,
+                                updatedAt: now
+                            )
+                            try titleBlock.insert(db)
+                            currentBlockSort += 1
+
+                            if !node.summary.isEmpty {
+                                let sumBlock = Block(
+                                    id: Block.generateId(),
+                                    rootDocId: rootDocId,
+                                    parentId: rootDocId,
+                                    type: .callout,
+                                    content: node.summary,
+                                    sortOrder: currentBlockSort,
+                                    createdAt: now,
+                                    updatedAt: now
+                                )
+                                try sumBlock.insert(db)
+                                currentBlockSort += 1
+                            }
+
+                            for item in node.blocks {
+                                let b = Block(
+                                    id: Block.generateId(),
+                                    rootDocId: rootDocId,
+                                    parentId: rootDocId,
+                                    type: item.blockType,
+                                    content: item.content,
+                                    sortOrder: currentBlockSort,
+                                    createdAt: now,
+                                    updatedAt: now
+                                )
+                                try b.insert(db)
+                                currentBlockSort += 1
+                            }
+
+                            if !node.children.isEmpty {
+                                try insertBlocksOutline(nodes: node.children, depth: depth + 1)
+                            }
+                        }
+                    }
+
+                    try insertBlocksOutline(nodes: result.items, depth: 0)
+                }
+            }
+
+            expandedDocIds.insert(rootDocId)
+            loadDocuments()
+            reloadBlocks()
+        } catch {
+            print("Error committing hierarchical notes: \(error)")
         }
     }
 

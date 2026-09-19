@@ -48,6 +48,10 @@ public final class AISettings: ObservableObject {
     private let keyModel = "medha_ai_model"
     private let keySocraticEnabled = "medha_ai_socratic_enabled"
     private let keyNewCardsOnly = "medha_ai_new_cards_only"
+    private let keyUseFlashcardSettingsForNotes = "medha_notes_ai_use_flashcard_settings"
+    private let keyNotesApiKey = "medha_notes_ai_api_key"
+    private let keyNotesProvider = "medha_notes_ai_provider"
+    private let keyNotesModel = "medha_notes_ai_model"
 
     @Published public var apiKey: String {
         didSet { UserDefaults.standard.set(apiKey, forKey: keyApiKey) }
@@ -69,6 +73,23 @@ public final class AISettings: ObservableObject {
         didSet { UserDefaults.standard.set(newCardsOnly, forKey: keyNewCardsOnly) }
     }
 
+    // Notes AI Settings
+    @Published public var useFlashcardSettingsForNotes: Bool {
+        didSet { UserDefaults.standard.set(useFlashcardSettingsForNotes, forKey: keyUseFlashcardSettingsForNotes) }
+    }
+
+    @Published public var notesApiKey: String {
+        didSet { UserDefaults.standard.set(notesApiKey, forKey: keyNotesApiKey) }
+    }
+
+    @Published public var notesProvider: AIProvider {
+        didSet { UserDefaults.standard.set(notesProvider.rawValue, forKey: keyNotesProvider) }
+    }
+
+    @Published public var notesModel: String {
+        didSet { UserDefaults.standard.set(notesModel, forKey: keyNotesModel) }
+    }
+
     public init() {
         let savedKey = UserDefaults.standard.string(forKey: keyApiKey) ?? ""
         let savedProviderRaw = UserDefaults.standard.string(forKey: keyProvider) ?? AIProvider.gemini.rawValue
@@ -85,11 +106,27 @@ public final class AISettings: ObservableObject {
             ? UserDefaults.standard.bool(forKey: keyNewCardsOnly)
             : true
 
+        let useSharedForNotes = UserDefaults.standard.object(forKey: keyUseFlashcardSettingsForNotes) != nil
+            ? UserDefaults.standard.bool(forKey: keyUseFlashcardSettingsForNotes)
+            : true
+        let savedNotesKey = UserDefaults.standard.string(forKey: keyNotesApiKey) ?? ""
+        let savedNotesProvRaw = UserDefaults.standard.string(forKey: keyNotesProvider) ?? AIProvider.gemini.rawValue
+        let notesProv = AIProvider(rawValue: savedNotesProvRaw) ?? .gemini
+        var savedNotesModel = UserDefaults.standard.string(forKey: keyNotesModel) ?? notesProv.defaultModel
+        if savedNotesModel == "gemini-2.5-flash" || savedNotesModel.isEmpty {
+            savedNotesModel = "gemini-3.6-flash"
+        }
+
         self.apiKey = savedKey
         self.provider = prov
         self.model = savedModel
         self.isSocraticEnabled = isEnabled
         self.newCardsOnly = newOnly
+
+        self.useFlashcardSettingsForNotes = useSharedForNotes
+        self.notesApiKey = savedNotesKey
+        self.notesProvider = notesProv
+        self.notesModel = savedNotesModel
     }
 
     public var hasAPIKey: Bool {
@@ -98,6 +135,33 @@ public final class AISettings: ObservableObject {
 
     public var maskedKey: String {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 8 else {
+            return trimmed.isEmpty ? "No key configured" : "••••••••"
+        }
+        let prefix = trimmed.prefix(4)
+        let suffix = trimmed.suffix(4)
+        return "\(prefix)••••\(suffix)"
+    }
+
+    // Active Notes AI resolution
+    public var activeNotesApiKey: String {
+        useFlashcardSettingsForNotes ? apiKey : notesApiKey
+    }
+
+    public var activeNotesProvider: AIProvider {
+        useFlashcardSettingsForNotes ? provider : notesProvider
+    }
+
+    public var activeNotesModel: String {
+        useFlashcardSettingsForNotes ? model : notesModel
+    }
+
+    public var hasNotesAPIKey: Bool {
+        !activeNotesApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public var maskedNotesKey: String {
+        let trimmed = activeNotesApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 8 else {
             return trimmed.isEmpty ? "No key configured" : "••••••••"
         }
@@ -593,4 +657,436 @@ public final class AISocraticService: Sendable {
             throw ServiceError.parsingError("Decoding error: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Downward Hierarchical Notes Generation
+    public static let hierarchicalSystemPrompt = """
+    You are an expert knowledge architect and structured note-taking assistant inside the Medha PKM system.
+    Your mission is to analyze the user's current note and generate a structured DOWNWARD hierarchy of subtopics and sub-subtopics.
+
+    CRITICAL CONSTRAINTS:
+    1. The generated tree MUST only expand DOWNWARD starting from the current note as the root. Never attempt to reparent, modify, or create siblings above or outside this note.
+    2. Each subtopic should be clear, concise, and logically organized into branches.
+    3. Provide meaningful summary content and a list of formatted blocks (headings, bullet points, paragraphs, callouts, or tasks) for each node.
+    4. Sub-nodes can have further children (sub-subtopics) when depth permits.
+
+    You MUST respond in strict, valid JSON conforming to this exact schema:
+    {
+      "rootTitle": "string (the current note title)",
+      "overview": "string (brief overview of the generated structure)",
+      "items": [
+        {
+          "title": "string (subtopic title)",
+          "summary": "string (concise 1-2 sentence overview of this sub-note)",
+          "blocks": [
+            {
+              "typeString": "heading2",
+              "content": "string"
+            },
+            {
+              "typeString": "paragraph",
+              "content": "string"
+            },
+            {
+              "typeString": "bulletList",
+              "content": "string"
+            }
+          ],
+          "children": [
+            {
+              "title": "string (sub-subtopic title)",
+              "summary": "string",
+              "blocks": [
+                {
+                  "typeString": "paragraph",
+                  "content": "string"
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    """
+
+    public func generateDownwardHierarchy(
+        currentNoteTitle: String,
+        currentNoteContent: String,
+        mode: NotesGenerationMode,
+        customInstruction: String? = nil
+    ) async throws -> HierarchicalGenerationResult {
+        let settings = AISettings.shared
+        guard settings.hasNotesAPIKey else {
+            throw ServiceError.missingAPIKey
+        }
+
+        let apiKey = settings.activeNotesApiKey
+        let provider = settings.activeNotesProvider
+        let model = settings.activeNotesModel
+
+        var promptBuilder = "### ACTIVE CURRENT NOTE (ROOT OF NEW HIERARCHY)\n"
+        promptBuilder += "- Current Title: \(currentNoteTitle)\n"
+        if !currentNoteContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            promptBuilder += "- Current Note Body & Blocks:\n\(currentNoteContent.prefix(4000))\n"
+        } else {
+            promptBuilder += "- Current Note Body: (Empty note, please expand from title)\n"
+        }
+
+        promptBuilder += "\n### TASK & INSTRUCTION\n"
+        switch mode {
+        case .expandSubtopics:
+            promptBuilder += "Action: Expand this note into structured subtopics and sub-subtopics.\n"
+            if let custom = customInstruction, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                promptBuilder += "Focus Area: \(custom)\n"
+            }
+        case .summarizeAndSplit:
+            promptBuilder += "Action: Analyze the current note's content and split it into a downward tree of modular sub-topic notes.\n"
+        case .custom:
+            promptBuilder += "Action: \(customInstruction ?? "Create structured hierarchical sub-notes downwards from this note.")\n"
+        }
+
+        promptBuilder += "\nRemember: Generate a strictly downward hierarchy rooting from this note. Return valid JSON matching the schema."
+
+        switch provider {
+        case .gemini:
+            return try await generateHierarchyWithGemini(
+                apiKey: apiKey,
+                model: model,
+                prompt: promptBuilder,
+                fallbackTitle: currentNoteTitle
+            )
+        case .openai:
+            return try await generateHierarchyWithOpenAI(
+                apiKey: apiKey,
+                model: model,
+                prompt: promptBuilder,
+                fallbackTitle: currentNoteTitle
+            )
+        }
+    }
+
+    private func generateHierarchyWithGemini(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        fallbackTitle: String
+    ) async throws -> HierarchicalGenerationResult {
+        let targetModel = (model == "gemini-2.5-flash") ? "gemini-3.6-flash" : model
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(targetModel):generateContent?key=\(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))"
+        guard let url = URL(string: urlString) else {
+            throw ServiceError.invalidResponse("Invalid Gemini URL")
+        }
+
+        let requestBody: [String: Any] = [
+            "system_instruction": [
+                "parts": [
+                    ["text": Self.hierarchicalSystemPrompt]
+                ]
+            ],
+            "contents": [
+                [
+                    "role": "user",
+                    "parts": [
+                        ["text": prompt]
+                    ]
+                ]
+            ],
+            "generationConfig": [
+                "response_mime_type": "application/json",
+                "temperature": 0.4
+            ]
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ServiceError.invalidResponse("No HTTP response")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let errText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
+            var cleanMsg = "Status \(httpResponse.statusCode)"
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorObj = json["error"] as? [String: Any],
+               let msg = errorObj["message"] as? String {
+                cleanMsg = msg
+            } else {
+                cleanMsg = errText
+            }
+            throw ServiceError.invalidResponse("Gemini API Error: \(cleanMsg)")
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let candidates = json["candidates"] as? [[String: Any]],
+              let firstCandidate = candidates.first,
+              let content = firstCandidate["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]],
+              let firstPart = parts.first,
+              let rawText = firstPart["text"] as? String else {
+            throw ServiceError.parsingError("Malformed Gemini JSON response")
+        }
+
+        return try parseHierarchicalJSON(rawText: rawText, fallbackTitle: fallbackTitle)
+    }
+
+    private func generateHierarchyWithOpenAI(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        fallbackTitle: String
+    ) async throws -> HierarchicalGenerationResult {
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
+            throw ServiceError.invalidResponse("Invalid OpenAI URL")
+        }
+
+        let messages: [[String: String]] = [
+            ["role": "system", "content": Self.hierarchicalSystemPrompt],
+            ["role": "user", "content": prompt]
+        ]
+
+        let requestBody: [String: Any] = [
+            "model": model,
+            "messages": messages,
+            "response_format": ["type": "json_object"],
+            "temperature": 0.4
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("Bearer \(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ServiceError.invalidResponse("No HTTP response")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let errText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
+            var cleanMsg = "Status \(httpResponse.statusCode)"
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorObj = json["error"] as? [String: Any],
+               let msg = errorObj["message"] as? String {
+                cleanMsg = msg
+            } else {
+                cleanMsg = errText
+            }
+            throw ServiceError.invalidResponse("OpenAI API Error: \(cleanMsg)")
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let rawText = message["content"] as? String else {
+            throw ServiceError.parsingError("Malformed OpenAI JSON payload structure.")
+        }
+
+        return try parseHierarchicalJSON(rawText: rawText, fallbackTitle: fallbackTitle)
+    }
+
+    public func parseHierarchicalJSON(rawText: String, fallbackTitle: String = "Current Note") throws -> HierarchicalGenerationResult {
+        var clean = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") {
+            clean = String(clean.dropFirst(7))
+        } else if clean.hasPrefix("```") {
+            clean = String(clean.dropFirst(3))
+        }
+        if clean.hasSuffix("```") {
+            clean = String(clean.dropLast(3))
+        }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = clean.data(using: .utf8) else {
+            throw ServiceError.parsingError("Could not convert text to data.")
+        }
+
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode(HierarchicalGenerationResult.self, from: data)
+        } catch {
+            // Fallback dictionary decoding
+            if let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let rootTitle = (dict["rootTitle"] as? String) ?? fallbackTitle
+                let overview = (dict["overview"] as? String) ?? "Generated Hierarchy"
+                let rawItems = (dict["items"] as? [[String: Any]]) ?? []
+                let items = parseRawNodes(rawItems)
+                return HierarchicalGenerationResult(rootTitle: rootTitle, overview: overview, items: items)
+            }
+            throw ServiceError.parsingError("Failed to decode hierarchical JSON: \(error.localizedDescription)")
+        }
+    }
+
+    private func parseRawNodes(_ rawNodes: [[String: Any]]) -> [HierarchicalNode] {
+        return rawNodes.map { nodeDict in
+            let title = (nodeDict["title"] as? String) ?? "Untitled Subtopic"
+            let summary = (nodeDict["summary"] as? String) ?? ""
+            let rawBlocks = (nodeDict["blocks"] as? [[String: Any]]) ?? []
+            let blocks = rawBlocks.map { bDict in
+                let t = (bDict["typeString"] as? String) ?? "paragraph"
+                let c = (bDict["content"] as? String) ?? ""
+                return HierarchicalBlockItem(typeString: t, content: c)
+            }
+            let rawChildren = (nodeDict["children"] as? [[String: Any]]) ?? []
+            let children = parseRawNodes(rawChildren)
+
+            return HierarchicalNode(
+                title: title,
+                summary: summary,
+                blocks: blocks,
+                children: children
+            )
+        }
+    }
 }
+
+// MARK: - Generation Modes
+public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
+    case expandSubtopics = "Expand Subtopics"
+    case summarizeAndSplit = "Summarize & Split"
+    case custom = "Custom Instruction"
+
+    public var id: String { rawValue }
+
+    public var systemIcon: String {
+        switch self {
+        case .expandSubtopics: return "arrow.turn.right.down"
+        case .summarizeAndSplit: return "scissors"
+        case .custom: return "text.badge.sparkles"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .expandSubtopics:
+            return "Break down this note into structured downward subtopics and sub-subtopics."
+        case .summarizeAndSplit:
+            return "Analyze the long text in this note and split it into modular child sub-notes."
+        case .custom:
+            return "Provide a custom instruction to direct the downward hierarchy generation."
+        }
+    }
+}
+
+// MARK: - Hierarchical Data Models
+public struct HierarchicalBlockItem: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var typeString: String
+    public var content: String
+
+    public init(id: UUID = UUID(), typeString: String, content: String) {
+        self.id = id
+        self.typeString = typeString
+        self.content = content
+    }
+
+    public var blockType: BlockType {
+        switch typeString {
+        case "heading1": return .heading1
+        case "heading2": return .heading2
+        case "heading3": return .heading3
+        case "bulletList": return .bulletList
+        case "taskList": return .taskList
+        case "codeBlock": return .codeBlock
+        case "quote": return .quote
+        case "callout": return .callout
+        default: return .paragraph
+        }
+    }
+}
+
+public struct HierarchicalNode: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var title: String
+    public var summary: String
+    public var blocks: [HierarchicalBlockItem]
+    public var children: [HierarchicalNode]
+    public var isSelected: Bool
+
+    public init(
+        id: UUID = UUID(),
+        title: String,
+        summary: String = "",
+        blocks: [HierarchicalBlockItem] = [],
+        children: [HierarchicalNode] = [],
+        isSelected: Bool = true
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.blocks = blocks
+        self.children = children
+        self.isSelected = isSelected
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case summary
+        case blocks
+        case children
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = UUID()
+        self.title = try container.decode(String.self, forKey: .title)
+        self.summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        self.blocks = try container.decodeIfPresent([HierarchicalBlockItem].self, forKey: .blocks) ?? []
+        self.children = try container.decodeIfPresent([HierarchicalNode].self, forKey: .children) ?? []
+        self.isSelected = true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(blocks, forKey: .blocks)
+        try container.encode(children, forKey: .children)
+    }
+
+    public var totalNodeCount: Int {
+        1 + children.reduce(0) { $0 + $1.totalNodeCount }
+    }
+}
+
+public struct HierarchicalGenerationResult: Codable, Sendable, Equatable {
+    public var rootTitle: String
+    public var overview: String
+    public var items: [HierarchicalNode]
+
+    public init(rootTitle: String, overview: String, items: [HierarchicalNode]) {
+        self.rootTitle = rootTitle
+        self.overview = overview
+        self.items = items
+    }
+}
+
+public enum HierarchyDestination: String, CaseIterable, Identifiable, Sendable {
+    case treeSubNotes = "Tree Sub-Notes"
+    case documentBlocks = "Document Blocks"
+    case both = "Both (Tree & Blocks)"
+
+    public var id: String { rawValue }
+
+    public var systemIcon: String {
+        switch self {
+        case .treeSubNotes: return "folder.badge.plus"
+        case .documentBlocks: return "text.badge.plus"
+        case .both: return "square.stack.3d.down.right"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .treeSubNotes: return "Create modular child documents in the left tree hierarchy"
+        case .documentBlocks: return "Insert outline headings and blocks directly into active document"
+        case .both: return "Create both child documents in the tree and insert outline blocks here"
+        }
+    }
+}
+

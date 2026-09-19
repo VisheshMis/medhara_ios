@@ -26,6 +26,12 @@ public struct MainSplitView: View {
 
                         BlockEditorView(store: store)
 
+                        if store.isNotesAIAssistantPresented {
+                            Divider()
+                            NotesAIAssistantView(store: store)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+
                         if store.isInspectorPresented {
                             Divider()
                             InspectorView(store: store)
@@ -60,6 +66,16 @@ public struct MainSplitView: View {
                             Label("New Note", systemImage: "plus")
                         }
                         .help("New Note (⌘N)")
+
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                store.toggleNotesAIAssistant()
+                            }
+                        }) {
+                            Label("AI Assistant", systemImage: "sparkles")
+                        }
+                        .help("Toggle AI Notes Assistant")
+                        .foregroundColor(store.isNotesAIAssistantPresented ? .purple : .primary)
                     }
 
                     Button(action: {
