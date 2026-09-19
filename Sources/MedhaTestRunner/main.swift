@@ -1120,7 +1120,8 @@ struct TestRunner {
         assert(postBlockCount > preBlockCount, "Failed: Blocks should be appended to the current root document")
         assert(store.blocks.contains(where: { $0.type == .heading2 && $0.content == "Paxos Family" }), "Failed: Heading2 Paxos Family added")
         assert(store.blocks.contains(where: { $0.type == .heading3 && $0.content == "Multi-Paxos Optimization" }), "Failed: Heading3 Multi-Paxos added")
-        assert(store.blocks.contains(where: { $0.type == .callout && $0.content.contains("Stable leader") }), "Failed: Callout block added")
+        assert(store.blocks.contains(where: { $0.type == .paragraph && $0.content.contains("Stable leader") }), "Failed: Converted to clean paragraph block")
+        assert(!store.blocks.contains(where: { $0.type == .callout }), "Failed: No callout blocks should be generated in outline")
 
         // 23.5: NotesGenerationMode & HierarchyDestination UI Models
         assert(NotesGenerationMode.allCases.count == 3, "Failed: 3 generation modes")

@@ -783,7 +783,7 @@ public final class AISocraticService: Sendable {
     CRITICAL CONSTRAINTS:
     1. The generated tree MUST only expand DOWNWARD starting from the current note as the root. Never attempt to reparent, modify, or create siblings above or outside this note.
     2. Each subtopic should be clear, concise, and logically organized into branches.
-    3. Provide meaningful summary content and a list of formatted blocks (headings, bullet points, paragraphs, callouts, or tasks) for each node.
+    3. Provide clean formatted blocks (headings, bullet points, paragraphs, or tasks) for each node. Do NOT generate callout blocks.
     4. Sub-nodes can have further children (sub-subtopics) when depth permits.
 
     You MUST respond in strict, valid JSON conforming to this exact schema:

@@ -540,11 +540,12 @@ public final class BlockStore: ObservableObject {
                             }
 
                             for item in node.blocks {
+                                let bType = item.blockType == .callout ? .paragraph : item.blockType
                                 let contentBlock = Block(
                                     id: Block.generateId(),
                                     rootDocId: docId,
                                     parentId: docId,
-                                    type: item.blockType,
+                                    type: bType,
                                     content: item.content,
                                     sortOrder: innerSort,
                                     createdAt: now,
@@ -601,27 +602,13 @@ public final class BlockStore: ObservableObject {
                             try titleBlock.insert(db)
                             currentBlockSort += 1
 
-                            if !node.summary.isEmpty {
-                                let sumBlock = Block(
-                                    id: Block.generateId(),
-                                    rootDocId: rootDocId,
-                                    parentId: rootDocId,
-                                    type: .callout,
-                                    content: node.summary,
-                                    sortOrder: currentBlockSort,
-                                    createdAt: now,
-                                    updatedAt: now
-                                )
-                                try sumBlock.insert(db)
-                                currentBlockSort += 1
-                            }
-
                             for item in node.blocks {
+                                let bType = item.blockType == .callout ? .paragraph : item.blockType
                                 let b = Block(
                                     id: Block.generateId(),
                                     rootDocId: rootDocId,
                                     parentId: rootDocId,
-                                    type: item.blockType,
+                                    type: bType,
                                     content: item.content,
                                     sortOrder: currentBlockSort,
                                     createdAt: now,
