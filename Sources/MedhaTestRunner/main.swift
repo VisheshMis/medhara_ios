@@ -876,6 +876,101 @@ struct TestRunner {
 
         print("✅ testMockNotesDecksAndMemoryPalaces passed")
 
-        print("\n🎉 ALL 21 TEST SUITES PASSED SUCCESSFULLY!")
+        // 22. Socratic AI Active Recall & Evaluation Suite
+        print("Running testAISocraticEvaluationAndSettings...")
+
+        // 22.1: JSON Parsing for Spot-On Evaluation
+        let spotOnJSON = """
+        {
+            "isSpotOn": true,
+            "status": "spot_on",
+            "feedback": "Brilliant! You precisely explained why Raft utilizes randomized election timeouts to prevent split votes.",
+            "counterQuestion": null,
+            "suggestedRating": 4
+        }
+        """
+        let evalSpotOn = try AISocraticService.shared.parseEvaluationJSON(rawText: spotOnJSON)
+        assert(evalSpotOn.isSpotOn == true, "Failed: Spot-on flag should be true")
+        assert(evalSpotOn.status == "spot_on", "Failed: Status should be spot_on")
+        assert(evalSpotOn.counterQuestion == nil, "Failed: Counter-question should be nil for spot-on")
+        assert(evalSpotOn.suggestedRating == 4, "Failed: Suggested rating should be 4 (Easy)")
+
+        // 22.2: JSON Parsing with Markdown Code Fences for Probing Evaluation
+        let probingJSONWithFences = """
+        ```json
+        {
+            "isSpotOn": false,
+            "status": "probing",
+            "feedback": "You correctly noted that LSM-trees write to an in-memory MemTable first.",
+            "counterQuestion": "What append-only structure on disk ensures durability if power is lost before the MemTable is flushed?",
+            "suggestedRating": 2
+        }
+        ```
+        """
+        let evalProbing = try AISocraticService.shared.parseEvaluationJSON(rawText: probingJSONWithFences)
+        assert(evalProbing.isSpotOn == false, "Failed: Spot-on flag should be false for probing")
+        assert(evalProbing.status == "probing", "Failed: Status should be probing")
+        assert(evalProbing.counterQuestion?.contains("append-only structure") == true, "Failed: Counter question parsed correctly")
+        assert(evalProbing.suggestedRating == 2, "Failed: Suggested rating should be 2 (Hard)")
+
+        // 22.3: Multi-turn Dialogue Model
+        let turn1 = AISocraticTurn(
+            roundNumber: 1,
+            userAnswer: "LSM trees write to an in-memory buffer.",
+            feedback: evalProbing.feedback,
+            counterQuestion: evalProbing.counterQuestion,
+            isSpotOn: false
+        )
+        assert(turn1.roundNumber == 1, "Failed: Turn round number")
+        assert(turn1.isSpotOn == false, "Failed: Turn spot-on flag")
+        assert(turn1.counterQuestion != nil, "Failed: Turn counter question")
+
+        let turn2 = AISocraticTurn(
+            roundNumber: 2,
+            userAnswer: "A Write-Ahead Log (WAL) provides durability on disk before flushing to SSTables.",
+            feedback: evalSpotOn.feedback,
+            counterQuestion: nil,
+            isSpotOn: true
+        )
+        assert(turn2.roundNumber == 2, "Failed: Turn 2 round number")
+        assert(turn2.isSpotOn == true, "Failed: Turn 2 spot-on flag")
+        assert(turn2.counterQuestion == nil, "Failed: Turn 2 counter-question nil")
+
+        // 22.4: First-Time Card Detection Logic
+        let firstTimeCard = Flashcard(
+            docId: "doc-test-1",
+            notebookId: "nb-1",
+            front: "What is Raft?",
+            back: "A consensus algorithm designed for understandability.",
+            fsrsState: .newCard,
+            reps: 0
+        )
+        assert(firstTimeCard.reps == 0, "Failed: First-time card has reps == 0")
+        assert(firstTimeCard.fsrsState == .newCard, "Failed: First-time card has state == newCard")
+
+        let reviewedCard = Flashcard(
+            docId: "doc-test-2",
+            notebookId: "nb-1",
+            front: "What is Paxos?",
+            back: "A foundational distributed consensus protocol.",
+            fsrsState: .review,
+            reps: 4
+        )
+        assert(reviewedCard.reps > 0, "Failed: Reviewed card has reps > 0")
+        assert(reviewedCard.fsrsState != .newCard, "Failed: Reviewed card is not new")
+
+        // 22.5: AI Settings Masking & Persistence
+        let aiSettings = AISettings.shared
+        let originalKey = aiSettings.apiKey
+        aiSettings.apiKey = "AIzaSyD-TestKey1234567890ABCDEF"
+        assert(aiSettings.hasAPIKey == true, "Failed: hasAPIKey should be true")
+        assert(aiSettings.maskedKey.hasPrefix("AIza"), "Failed: masked key prefix")
+        assert(aiSettings.maskedKey.hasSuffix("CDEF"), "Failed: masked key suffix")
+        assert(aiSettings.maskedKey.contains("••••"), "Failed: masked key contains bullets")
+        aiSettings.apiKey = originalKey // restore
+
+        print("✅ testAISocraticEvaluationAndSettings passed")
+
+        print("\n🎉 ALL 22 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

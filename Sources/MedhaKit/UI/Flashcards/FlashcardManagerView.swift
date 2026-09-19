@@ -33,6 +33,7 @@ public struct FlashcardManagerView: View {
     @State private var isStudyModeActive: Bool = false
     @State private var isAddCardSheetPresented: Bool = false
     @State private var isCreateDeckSheetPresented: Bool = false
+    @State private var isAISettingsSheetPresented: Bool = false
     @State private var filterSelection: FlashcardFilter = .all
     @State private var searchQuery: String = ""
     @State private var notesViewMode: NotesDeckViewMode = .folders
@@ -130,6 +131,9 @@ public struct FlashcardManagerView: View {
                 store: store,
                 isPresented: $isCreateDeckSheetPresented
             )
+        }
+        .sheet(isPresented: $isAISettingsSheetPresented) {
+            AISettingsSheet(onDismiss: { isAISettingsSheetPresented = false })
         }
     }
 
@@ -416,6 +420,16 @@ public struct FlashcardManagerView: View {
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.bordered)
+
+                // AI Socratic Settings Button
+                Button(action: {
+                    isAISettingsSheetPresented = true
+                }) {
+                    Label("AI Socratic", systemImage: "sparkles")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .help("Configure Socratic AI written recall & API key")
             }
             .padding(16)
             .background(Color(NSColor.windowBackgroundColor))
@@ -997,12 +1011,22 @@ public struct AddFlashcardSheet: View {
 // MARK: - Study Session View
 public struct FlashcardStudySessionView: View {
     @ObservedObject public var store: BlockStore
+    @ObservedObject public var aiSettings: AISettings = AISettings.shared
     public var deck: Deck? = nil
     public let onDismiss: () -> Void
 
     @State private var currentIndex: Int = 0
     @State private var isAnswerRevealed: Bool = false
     @State private var sessionCards: [Flashcard] = []
+
+    // AI Socratic State
+    @State private var isAISocraticActive: Bool = true
+    @State private var isAISettingsSheetPresented: Bool = false
+    @State private var writtenAnswer: String = ""
+    @State private var dialogueHistory: [AISocraticTurn] = []
+    @State private var isAIEvaluating: Bool = false
+    @State private var evaluationError: String? = nil
+    @State private var latestEvaluation: AISocraticEvaluation? = nil
 
     public init(store: BlockStore, deck: Deck? = nil, onDismiss: @escaping () -> Void) {
         self.store = store
@@ -1013,6 +1037,21 @@ public struct FlashcardStudySessionView: View {
     private var currentCard: Flashcard? {
         guard currentIndex >= 0 && currentIndex < sessionCards.count else { return nil }
         return sessionCards[currentIndex]
+    }
+
+    private var isCurrentCardFirstTime: Bool {
+        guard let card = currentCard else { return false }
+        return card.reps == 0 || card.fsrsState == .newCard
+    }
+
+    private var isSocraticActiveForCurrentCard: Bool {
+        guard isAISocraticActive && aiSettings.isSocraticEnabled && aiSettings.hasAPIKey else {
+            return false
+        }
+        if aiSettings.newCardsOnly {
+            return isCurrentCardFirstTime
+        }
+        return true
     }
 
     public var body: some View {
@@ -1043,11 +1082,44 @@ public struct FlashcardStudySessionView: View {
 
                 Spacer()
 
-                Button("Finish") {
-                    onDismiss()
+                // AI Socratic Quick Toggle & Settings
+                HStack(spacing: 8) {
+                    Button(action: {
+                        if !aiSettings.hasAPIKey {
+                            isAISettingsSheetPresented = true
+                        } else {
+                            isAISocraticActive.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .foregroundColor(isAISocraticActive && aiSettings.hasAPIKey ? .purple : .secondary)
+                            Text(isAISocraticActive && aiSettings.hasAPIKey ? "AI Tutor: ON" : "AI Tutor: OFF")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(isAISocraticActive && aiSettings.hasAPIKey ? .purple : .secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(isAISocraticActive && aiSettings.hasAPIKey ? Color.purple.opacity(0.12) : Color.gray.opacity(0.12))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help(aiSettings.hasAPIKey ? "Toggle Socratic AI written recall" : "Configure API key to enable Socratic AI Tutor")
+
+                    Button(action: { isAISettingsSheetPresented = true }) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("AI Socratic Settings & API Key")
+
+                    Button("Finish") {
+                        onDismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
             .padding(14)
             .background(Color(NSColor.windowBackgroundColor))
@@ -1071,77 +1143,256 @@ public struct FlashcardStudySessionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let card = currentCard {
                 // Interactive Card
-                VStack(spacing: 24) {
+                VStack(spacing: 20) {
                     Spacer()
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Card Category / Folder
-                        if let doc = store.documents.first(where: { $0.id == card.docId }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "folder.fill")
-                                    .font(.system(size: 10))
-                                Text(doc.content.isEmpty ? "Folder" : doc.content)
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .foregroundColor(.accentColor)
-                        }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Card Header: Category + Socratic Tag
+                            HStack {
+                                if let doc = store.documents.first(where: { $0.id == card.docId }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "folder.fill")
+                                            .font(.system(size: 10))
+                                        Text(doc.content.isEmpty ? "Folder" : doc.content)
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    .foregroundColor(.accentColor)
+                                }
 
-                        // Question / Front
-                        Text(card.front)
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.primary)
+                                Spacer()
 
-                        if let hint = card.hint, !hint.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "lightbulb")
-                                Text("Hint: \(hint)")
-                            }
-                            .font(.system(size: 12).italic())
-                            .foregroundColor(.orange)
-                        }
-
-                        if isAnswerRevealed {
-                            Divider()
-                                .padding(.vertical, 8)
-
-                            // Answer / Back
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("ANSWER")
+                                if isSocraticActiveForCurrentCard {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "sparkles")
+                                        Text(isCurrentCardFirstTime ? "First-Time Card (Written Recall)" : "Socratic AI Active")
+                                    }
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.secondary)
-
-                                Text(card.back)
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.purple)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Color.purple.opacity(0.12))
+                                    .cornerRadius(5)
+                                }
                             }
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+
+                            // Question / Front
+                            Text(card.front)
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            if let hint = card.hint, !hint.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lightbulb")
+                                    Text("Hint: \(hint)")
+                                }
+                                .font(.system(size: 12).italic())
+                                .foregroundColor(.orange)
+                            }
+
+                            // Socratic Dialogue History
+                            if !dialogueHistory.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    ForEach(dialogueHistory) { turn in
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            // User Answer
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Image(systemName: "person.circle.fill")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.secondary)
+                                                Text(turn.userAnswer)
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.primary)
+                                            }
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color(NSColor.textBackgroundColor).opacity(0.6))
+                                            .cornerRadius(6)
+
+                                            // AI Feedback
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Image(systemName: "sparkles")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.purple)
+                                                Text(turn.feedback)
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.primary)
+                                            }
+                                            .padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.purple.opacity(0.08))
+                                            .cornerRadius(6)
+
+                                            // Counter-Question Callout
+                                            if let cq = turn.counterQuestion, !turn.isSpotOn {
+                                                HStack(alignment: .top, spacing: 6) {
+                                                    Image(systemName: "brain.head.profile")
+                                                        .font(.system(size: 13))
+                                                        .foregroundColor(.orange)
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text("SOCRATIC COUNTER-QUESTION")
+                                                            .font(.system(size: 9, weight: .bold))
+                                                            .foregroundColor(.orange)
+                                                        Text(cq)
+                                                            .font(.system(size: 12, weight: .semibold))
+                                                            .foregroundColor(.primary)
+                                                    }
+                                                }
+                                                .padding(10)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .background(Color.orange.opacity(0.12))
+                                                .cornerRadius(8)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Socratic Written Input (before answer is revealed)
+                            if isSocraticActiveForCurrentCard && !isAnswerRevealed {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text(dialogueHistory.isEmpty ? "Type your explanation from memory:" : "Refine your answer addressing the counter-question:")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Text("⌘ + Enter to submit")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    TextEditor(text: $writtenAnswer)
+                                        .font(.system(size: 13))
+                                        .frame(minHeight: 65, maxHeight: 95)
+                                        .padding(4)
+                                        .background(Color(NSColor.textBackgroundColor))
+                                        .cornerRadius(6)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                                        )
+
+                                    if let errorMsg = evaluationError {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(.red)
+                                            Text(errorMsg)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.red)
+                                        }
+                                    }
+
+                                    HStack(spacing: 12) {
+                                        Button(action: submitWrittenAnswer) {
+                                            HStack(spacing: 6) {
+                                                if isAIEvaluating {
+                                                    ProgressView().controlSize(.small)
+                                                    Text("Evaluating with AI...")
+                                                } else {
+                                                    Image(systemName: "sparkles")
+                                                    Text(dialogueHistory.isEmpty ? "Evaluate with AI (⌘↵)" : "Reply to AI (⌘↵)")
+                                                }
+                                            }
+                                            .font(.system(size: 12, weight: .semibold))
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .keyboardShortcut(.return, modifiers: [.command])
+                                        .disabled(writtenAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAIEvaluating)
+
+                                        Spacer()
+
+                                        Button("Skip AI / Reveal Answer") {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                isAnswerRevealed = true
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    }
+                                }
+                                .padding(.top, 4)
+                            }
+
+                            // Target Answer Section
+                            if isAnswerRevealed {
+                                Divider().padding(.vertical, 4)
+
+                                if let eval = latestEvaluation, eval.isSpotOn {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "checkmark.seal.fill")
+                                            .foregroundColor(.green)
+                                            .font(.system(size: 16))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Spot-On Understanding Verified!")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(.green)
+                                            Text(eval.feedback)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        if let suggested = eval.suggestedRating,
+                                           let rEnum = FSRSRating(rawValue: suggested) {
+                                            Text("AI Suggestion: \(rEnum.displayName)")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 3)
+                                                .background(Color.green.opacity(0.15))
+                                                .foregroundColor(.green)
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                    .padding(10)
+                                    .background(Color.green.opacity(0.08))
+                                    .cornerRadius(8)
+                                }
+
+                                // Answer / Back
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("TARGET ANSWER")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.secondary)
+
+                                    Text(card.back)
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.primary)
+                                }
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
                         }
+                        .padding(26)
                     }
-                    .padding(28)
-                    .frame(maxWidth: 580)
+                    .frame(maxWidth: 620, maxHeight: 520)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(14)
                     .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 6)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                            .stroke(latestEvaluation?.isSpotOn == true ? Color.green.opacity(0.5) : Color(NSColor.separatorColor), lineWidth: latestEvaluation?.isSpotOn == true ? 2 : 1)
                     )
 
                     Spacer()
 
                     // Rating Controls
                     if !isAnswerRevealed {
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isAnswerRevealed = true
+                        if !isSocraticActiveForCurrentCard {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isAnswerRevealed = true
+                                }
+                            }) {
+                                Text("Show Answer (Space)")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .frame(width: 240, height: 38)
                             }
-                        }) {
-                            Text("Show Answer (Space)")
-                                .font(.system(size: 14, weight: .semibold))
-                                .frame(width: 240, height: 38)
+                            .buttonStyle(.borderedProminent)
+                            .keyboardShortcut(.space, modifiers: [])
                         }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.space, modifiers: [])
                     } else {
                         // 4 FSRS Rating Buttons
                         let intervals = FSRSScheduler.shared.previewIntervals(card: card)
@@ -1152,8 +1403,15 @@ public struct FlashcardStudySessionView: View {
                                     handleRating(rating)
                                 }) {
                                     VStack(spacing: 2) {
-                                        Text(rating.displayName)
-                                            .font(.system(size: 12, weight: .bold))
+                                        HStack(spacing: 4) {
+                                            Text(rating.displayName)
+                                                .font(.system(size: 12, weight: .bold))
+                                            if latestEvaluation?.suggestedRating == rating.rawValue {
+                                                Image(systemName: "sparkles")
+                                                    .font(.system(size: 9))
+                                                    .foregroundColor(.green)
+                                            }
+                                        }
                                         if let days = intervals[rating] {
                                             Text(days == 1 ? "1 day" : "\(days) days")
                                                 .font(.system(size: 10))
@@ -1164,6 +1422,10 @@ public struct FlashcardStudySessionView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .tint(buttonColor(for: rating))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(latestEvaluation?.suggestedRating == rating.rawValue ? Color.green : Color.clear, lineWidth: 2)
+                                )
                                 .keyboardShortcut(KeyEquivalent(Character("\(rating.rawValue)")), modifiers: [])
                             }
                         }
@@ -1173,6 +1435,9 @@ public struct FlashcardStudySessionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .sheet(isPresented: $isAISettingsSheetPresented) {
+            AISettingsSheet(onDismiss: { isAISettingsSheetPresented = false })
+        }
         .onAppear {
             let deckId = deck?.id
             let due = store.dueFlashcards(forDeck: deckId)
@@ -1180,6 +1445,59 @@ public struct FlashcardStudySessionView: View {
             sessionCards = due.isEmpty ? all : due
             currentIndex = 0
             isAnswerRevealed = false
+            writtenAnswer = ""
+            dialogueHistory = []
+            isAIEvaluating = false
+            evaluationError = nil
+            latestEvaluation = nil
+            isAISocraticActive = aiSettings.isSocraticEnabled
+        }
+    }
+
+    private func submitWrittenAnswer() {
+        guard let card = currentCard else { return }
+        let trimmed = writtenAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isAIEvaluating = true
+        evaluationError = nil
+
+        Task {
+            do {
+                let eval = try await AISocraticService.shared.evaluateAnswer(
+                    question: card.front,
+                    targetAnswer: card.back,
+                    hint: card.hint,
+                    userAnswer: trimmed,
+                    dialogueHistory: dialogueHistory
+                )
+
+                await MainActor.run {
+                    isAIEvaluating = false
+                    latestEvaluation = eval
+
+                    let turn = AISocraticTurn(
+                        roundNumber: dialogueHistory.count + 1,
+                        userAnswer: trimmed,
+                        feedback: eval.feedback,
+                        counterQuestion: eval.counterQuestion,
+                        isSpotOn: eval.isSpotOn
+                    )
+                    dialogueHistory.append(turn)
+                    writtenAnswer = ""
+
+                    if eval.isSpotOn {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isAnswerRevealed = true
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isAIEvaluating = false
+                    evaluationError = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -1191,6 +1509,11 @@ public struct FlashcardStudySessionView: View {
             withAnimation(.easeInOut(duration: 0.15)) {
                 currentIndex += 1
                 isAnswerRevealed = false
+                writtenAnswer = ""
+                dialogueHistory = []
+                isAIEvaluating = false
+                evaluationError = nil
+                latestEvaluation = nil
             }
         } else {
             onDismiss()
