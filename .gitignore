@@ -1,0 +1,16 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Xcode / User Data
+*.xcuserdatad
+*.xcuserstate
+xcuserdata/
+DerivedData/
