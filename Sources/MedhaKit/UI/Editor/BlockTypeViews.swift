@@ -39,9 +39,13 @@ public struct ParagraphBlockView: View {
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
                 onArrowDown: onArrowDown,
-                onSlashTrigger: onSlashTrigger
+                onSlashTrigger: onSlashTrigger,
+                onAutoConvertToBullet: {
+                    store.convertBlockType(id: block.id, to: .bulletList)
+                }
             )
             .frame(minHeight: 22)
+            .fixedSize(horizontal: false, vertical: true)
 
             if !inlineRefs.isEmpty || !inlineWikiLinks.isEmpty {
                 HStack(spacing: 6) {
@@ -206,6 +210,7 @@ public struct HeadingBlockView: View {
             onArrowDown: onArrowDown
         )
         .frame(minHeight: minHeight)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -225,6 +230,29 @@ public struct TaskBlockView: View {
         block.isCompleted ?? false
     }
 
+    private var cleanBinding: Binding<String> {
+        Binding(
+            get: {
+                var c = block.content
+                if c.hasPrefix("- [ ] ") || c.hasPrefix("- [x] ") || c.hasPrefix("[ ] ") || c.hasPrefix("[x] ") {
+                    if let range = c.range(of: "] ") {
+                        c = String(c[range.upperBound...])
+                    }
+                }
+                return c
+            },
+            set: { newValue in
+                var c = newValue
+                if c.hasPrefix("- [ ] ") || c.hasPrefix("- [x] ") || c.hasPrefix("[ ] ") || c.hasPrefix("[x] ") {
+                    if let range = c.range(of: "] ") {
+                        c = String(c[range.upperBound...])
+                    }
+                }
+                store.updateBlockContent(id: block.id, content: c)
+            }
+        )
+    }
+
     public var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Button(action: {
@@ -238,10 +266,7 @@ public struct TaskBlockView: View {
             .padding(.top, 2)
 
             BlockTextViewRepresentable(
-                text: Binding(
-                    get: { block.content },
-                    set: { store.updateBlockContent(id: block.id, content: $0) }
-                ),
+                text: cleanBinding,
                 isFocused: isFocused,
                 font: .systemFont(ofSize: 14),
                 textColor: isCompleted ? .secondaryLabelColor : .labelColor,
@@ -254,6 +279,7 @@ public struct TaskBlockView: View {
                 onArrowDown: onArrowDown
             )
             .frame(minHeight: 22)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -270,19 +296,35 @@ public struct BulletBlockView: View {
     public let onArrowUp: () -> Void
     public let onArrowDown: () -> Void
 
+    private var cleanBinding: Binding<String> {
+        Binding(
+            get: {
+                var c = block.content
+                if c.hasPrefix("* ") || c.hasPrefix("- ") || c.hasPrefix("• ") {
+                    c = String(c.dropFirst(2))
+                }
+                return c
+            },
+            set: { newValue in
+                var c = newValue
+                if c.hasPrefix("* ") || c.hasPrefix("- ") || c.hasPrefix("• ") {
+                    c = String(c.dropFirst(2))
+                }
+                store.updateBlockContent(id: block.id, content: c)
+            }
+        )
+    }
+
     public var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text("•")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.secondary)
-                .frame(width: 14)
-                .padding(.top, -1)
+            Circle()
+                .fill(Color.secondary.opacity(0.85))
+                .frame(width: 5, height: 5)
+                .padding(.top, 8)
+                .frame(width: 14, alignment: .center)
 
             BlockTextViewRepresentable(
-                text: Binding(
-                    get: { block.content },
-                    set: { store.updateBlockContent(id: block.id, content: $0) }
-                ),
+                text: cleanBinding,
                 isFocused: isFocused,
                 font: .systemFont(ofSize: 14),
                 textColor: .labelColor,
@@ -295,6 +337,7 @@ public struct BulletBlockView: View {
                 onArrowDown: onArrowDown
             )
             .frame(minHeight: 22)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -393,6 +436,7 @@ public struct QuoteBlockView: View {
                 onArrowDown: onArrowDown
             )
             .frame(minHeight: 22)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 2)
     }
@@ -441,6 +485,7 @@ public struct CalloutBlockView: View {
                 onDeleteEmpty: onDeleteEmpty
             )
             .frame(minHeight: 22)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)

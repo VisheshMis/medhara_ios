@@ -14,6 +14,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
     public var onArrowUp: () -> Void
     public var onArrowDown: () -> Void
     public var onSlashTrigger: () -> Void
+    public var onAutoConvertToBullet: () -> Void
 
     public init(
         text: Binding<String>,
@@ -27,7 +28,8 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         onShiftTab: @escaping () -> Void = {},
         onArrowUp: @escaping () -> Void = {},
         onArrowDown: @escaping () -> Void = {},
-        onSlashTrigger: @escaping () -> Void = {}
+        onSlashTrigger: @escaping () -> Void = {},
+        onAutoConvertToBullet: @escaping () -> Void = {}
     ) {
         self._text = text
         self.isFocused = isFocused
@@ -41,6 +43,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         self.onArrowUp = onArrowUp
         self.onArrowDown = onArrowDown
         self.onSlashTrigger = onSlashTrigger
+        self.onAutoConvertToBullet = onAutoConvertToBullet
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -64,10 +67,22 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.textContainer?.lineFragmentPadding = 0
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        if let container = textView.textContainer {
+            container.widthTracksTextView = true
+            container.lineFragmentPadding = 0
+            container.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        }
         textView.textContainerInset = NSSize(width: 0, height: 2)
         textView.placeholderString = placeholder
         textView.coordinator = context.coordinator
+
+        textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textView.setContentHuggingPriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let style = customParagraphStyle
         textView.defaultParagraphStyle = style
@@ -84,9 +99,26 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         return textView
     }
 
+    public func sizeThatFits(_ proposal: ProposedViewSize, nsView: CustomNSTextView, context: Context) -> CGSize? {
+        let targetWidth = proposal.width ?? (nsView.bounds.width > 0 ? nsView.bounds.width : 500)
+        guard targetWidth > 0 else {
+            return CGSize(width: targetWidth, height: 24)
+        }
+
+        if let container = nsView.textContainer, let layoutManager = nsView.layoutManager {
+            container.containerSize = CGSize(width: targetWidth, height: .greatestFiniteMagnitude)
+            layoutManager.ensureLayout(for: container)
+            let usedRect = layoutManager.usedRect(for: container)
+            let totalHeight = max(24, ceil(usedRect.height) + nsView.textContainerInset.height * 2)
+            return CGSize(width: targetWidth, height: totalHeight)
+        }
+        return CGSize(width: targetWidth, height: 24)
+    }
+
     public func updateNSView(_ nsView: CustomNSTextView, context: Context) {
         if nsView.string != text {
             nsView.string = text
+            nsView.invalidateIntrinsicContentSize()
         }
         nsView.font = font
         nsView.textColor = textColor
@@ -120,9 +152,22 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         }
 
         public func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            parent.text = textView.string
-            if textView.string.hasSuffix("/") {
+            guard let textView = notification.object as? CustomNSTextView else { return }
+            let string = textView.string
+
+            // Auto-convert "- " or "* " at start of paragraph into a bullet list
+            if string.hasPrefix("- ") || string.hasPrefix("* ") {
+                let trimmed = String(string.dropFirst(2))
+                parent.text = trimmed
+                textView.string = trimmed
+                textView.invalidateIntrinsicContentSize()
+                parent.onAutoConvertToBullet()
+                return
+            }
+
+            parent.text = string
+            textView.invalidateIntrinsicContentSize()
+            if string.hasSuffix("/") {
                 parent.onSlashTrigger()
             }
         }
@@ -132,6 +177,26 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
 public final class CustomNSTextView: NSTextView {
     weak var coordinator: BlockTextViewRepresentable.Coordinator?
     public var placeholderString: String = ""
+
+    public override var intrinsicContentSize: NSSize {
+        guard let container = textContainer, let layoutManager = layoutManager else {
+            return super.intrinsicContentSize
+        }
+        let w = bounds.width > 0 ? bounds.width : 500
+        container.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
+        layoutManager.ensureLayout(for: container)
+        let used = layoutManager.usedRect(for: container)
+        let h = max(22, ceil(used.height) + textContainerInset.height * 2)
+        return NSSize(width: NSView.noIntrinsicMetric, height: h)
+    }
+
+    public override func setFrameSize(_ newSize: NSSize) {
+        let oldWidth = bounds.width
+        super.setFrameSize(newSize)
+        if abs(oldWidth - newSize.width) > 1 {
+            invalidateIntrinsicContentSize()
+        }
+    }
 
     public override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)

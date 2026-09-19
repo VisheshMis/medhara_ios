@@ -236,21 +236,27 @@ public struct BlockRowView: View {
     }
 
     private func handleCommitReturn() {
-        let nextType: BlockType
         if block.type == .bulletList || block.type == .taskList {
-            nextType = block.type
-        } else {
-            nextType = .paragraph
+            if block.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                store.convertBlockType(id: block.id, to: .paragraph)
+                return
+            }
+            store.createBlock(after: block, type: block.type, content: "")
+            return
         }
-        store.createBlock(after: block, type: nextType, content: "")
+        store.createBlock(after: block, type: .paragraph, content: "")
     }
 
     private func handleDeleteEmpty() {
         if indentLevel > 0 {
             store.outdentBlock(id: block.id)
-        } else {
-            store.deleteBlock(id: block.id)
+            return
         }
+        if block.type == .bulletList || block.type == .taskList {
+            store.convertBlockType(id: block.id, to: .paragraph)
+            return
+        }
+        store.deleteBlock(id: block.id)
     }
 
     private func handleArrowUp() {

@@ -1208,6 +1208,49 @@ struct TestRunner {
 
         print("✅ testLocalAIAndWikipediaGrounding passed")
 
-        print("\n🎉 ALL 24 TEST SUITES PASSED SUCCESSFULLY!")
+        // --- Running Suite 25: Bullet List Formatting & Multi-line Text Collision Prevention ---
+        print("\n--- Running Suite 25: Bullet List Formatting & Multi-line Text Collision Prevention ---")
+
+        // 25.1: Verify HierarchicalBlockItem auto-sanitizes raw bullet and task symbols
+        let rawBullet1 = HierarchicalBlockItem(typeString: "bulletList", content: "* Inner Membrane: Selective barrier")
+        assert(rawBullet1.content == "Inner Membrane: Selective barrier", "Failed: HierarchicalBlockItem should strip '* ' prefix from bulletList")
+
+        let rawBullet2 = HierarchicalBlockItem(typeString: "bulletList", content: "- Outer Membrane: Porin channels")
+        assert(rawBullet2.content == "Outer Membrane: Porin channels", "Failed: HierarchicalBlockItem should strip '- ' prefix from bulletList")
+
+        let rawBullet3 = HierarchicalBlockItem(typeString: "bullet", content: "• Cristae: Electron transport chain")
+        assert(rawBullet3.content == "Cristae: Electron transport chain", "Failed: HierarchicalBlockItem should strip '• ' prefix from bulletList")
+
+        let rawTask = HierarchicalBlockItem(typeString: "taskList", content: "- [ ] Review mitochondria structure")
+        assert(rawTask.content == "Review mitochondria structure", "Failed: HierarchicalBlockItem should strip '- [ ] ' prefix from taskList")
+
+        // 25.2: Test BlockStore convertBlockType and empty bullet handling
+        let db25 = DatabaseManager(inMemory: true)
+        let store25 = BlockStore(dbManager: db25)
+        let testDoc = store25.createDocument(title: "Mitochondria Study Guide")
+        store25.selectDocument(id: testDoc.id)
+
+        let b1 = store25.createBlock(type: BlockType.paragraph, content: "Mitochondria structure:")
+        assert(b1.type == BlockType.paragraph, "Block 1 should be paragraph")
+
+        // Convert b1 to bullet list
+        store25.convertBlockType(id: b1.id, to: BlockType.bulletList)
+        assert(store25.getBlock(id: b1.id)?.type == BlockType.bulletList, "b1 should now be .bulletList")
+
+        // Create a non-empty bullet block
+        let b2 = store25.createBlock(after: b1, type: BlockType.bulletList, content: "Inner membrane houses ATP synthase")
+        assert(b2.type == BlockType.bulletList, "b2 should be bulletList")
+
+        // Create an empty bullet block (simulating pressing Enter on b2)
+        let b3 = store25.createBlock(after: b2, type: BlockType.bulletList, content: "")
+        assert(b3.type == BlockType.bulletList, "b3 should be empty bulletList")
+
+        // Simulate Return or Backspace on empty bullet: converts to paragraph
+        store25.convertBlockType(id: b3.id, to: BlockType.paragraph)
+        assert(store25.getBlock(id: b3.id)?.type == BlockType.paragraph, "Empty bullet should convert to paragraph")
+
+        print("✅ testBulletListFormattingAndMultilineCollision passed")
+
+        print("\n🎉 ALL 25 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

@@ -36,7 +36,7 @@ public struct BlockEditorView: View {
                             Divider()
 
                             // Continuous Block Stream
-                            LazyVStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 0) {
                                 ForEach(Array(store.blocks.enumerated()), id: \.element.id) { index, block in
                                     BlockRowView(
                                         store: store,

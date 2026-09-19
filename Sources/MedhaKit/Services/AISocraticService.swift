@@ -1138,7 +1138,19 @@ public struct HierarchicalBlockItem: Codable, Sendable, Equatable, Identifiable 
     public init(id: UUID = UUID(), typeString: String, content: String) {
         self.id = id
         self.typeString = typeString
-        self.content = content
+        var c = content
+        if typeString == "bulletList" || typeString == "bullet" {
+            if c.hasPrefix("* ") || c.hasPrefix("- ") || c.hasPrefix("• ") {
+                c = String(c.dropFirst(2))
+            }
+        } else if typeString == "taskList" || typeString == "task" {
+            if c.hasPrefix("- [ ] ") || c.hasPrefix("[ ] ") {
+                if let range = c.range(of: "] ") {
+                    c = String(c[range.upperBound...])
+                }
+            }
+        }
+        self.content = c
     }
 
     public var blockType: BlockType {
