@@ -711,6 +711,21 @@ public final class AISocraticService: Sendable {
         return try parseEvaluationJSON(rawText: rawText)
     }
 
+    // MARK: - Error Message Helpers
+    private func extractCleanErrorMessage(from data: Data, fallback: String) -> String {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let errorObj = json["error"] as? [String: Any],
+               let msg = errorObj["message"] as? String {
+                return msg
+            } else if let errorStr = json["error"] as? String {
+                return errorStr
+            } else if let msg = json["message"] as? String {
+                return msg
+            }
+        }
+        return fallback
+    }
+
     // MARK: - Private API Implementation (OpenAI & Local)
     private func evaluateWithOpenAI(
         apiKey: String,
@@ -722,12 +737,13 @@ public final class AISocraticService: Sendable {
         dialogueHistory: [AISocraticTurn],
         customEndpoint: String? = nil
     ) async throws -> AISocraticEvaluation {
-        let endpointUrlString = customEndpoint != nil
+        let isLocal = (customEndpoint != nil)
+        let endpointUrlString = isLocal
             ? "\(customEndpoint!.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/chat/completions"
             : "https://api.openai.com/v1/chat/completions"
 
         guard let url = URL(string: endpointUrlString) else {
-            throw ServiceError.invalidResponse("Invalid OpenAI or Local API URL")
+            throw ServiceError.invalidResponse("Invalid \(isLocal ? "Local AI" : "OpenAI") URL")
         }
 
         var messages: [[String: String]] = [
@@ -759,12 +775,17 @@ public final class AISocraticService: Sendable {
 
         messages.append(["role": "user", "content": promptBuilder])
 
-        let requestBody: [String: Any] = [
+        var requestBody: [String: Any] = [
             "model": model,
             "messages": messages,
-            "response_format": ["type": "json_object"],
             "temperature": 0.3
         ]
+
+        // Local servers (LM Studio, Ollama, etc.) often reject `json_object` or require `json_schema`/`text`.
+        // Only pass json_object if talking to official OpenAI API.
+        if !isLocal {
+            requestBody["response_format"] = ["type": "json_object"]
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -775,14 +796,30 @@ public final class AISocraticService: Sendable {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        var (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ServiceError.invalidResponse("No HTTP response")
         }
 
-        guard httpResponse.statusCode == 200 else {
+        if httpResponse.statusCode != 200 {
             let errText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
-            throw ServiceError.invalidResponse("OpenAI API Error: \(errText)")
+            let providerName = isLocal ? "Local AI Error" : "OpenAI API Error"
+
+            // If the server rejected response_format, auto-retry once without it
+            if errText.contains("response_format") && requestBody["response_format"] != nil {
+                requestBody.removeValue(forKey: "response_format")
+                request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+                if let (fallbackData, fallbackResponse) = try? await URLSession.shared.data(for: request),
+                   let fbHttp = fallbackResponse as? HTTPURLResponse, fbHttp.statusCode == 200 {
+                    data = fallbackData
+                } else {
+                    let cleanMsg = extractCleanErrorMessage(from: data, fallback: errText)
+                    throw ServiceError.invalidResponse("\(providerName): \(cleanMsg)")
+                }
+            } else {
+                let cleanMsg = extractCleanErrorMessage(from: data, fallback: errText)
+                throw ServiceError.invalidResponse("\(providerName): \(cleanMsg)")
+            }
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -790,7 +827,7 @@ public final class AISocraticService: Sendable {
               let firstChoice = choices.first,
               let message = firstChoice["message"] as? [String: Any],
               let rawText = message["content"] as? String else {
-            throw ServiceError.parsingError("Malformed OpenAI JSON payload structure.")
+            throw ServiceError.parsingError("Malformed \(isLocal ? "Local AI" : "OpenAI") JSON payload structure.")
         }
 
         return try parseEvaluationJSON(rawText: rawText)
@@ -1043,12 +1080,13 @@ public final class AISocraticService: Sendable {
         fallbackTitle: String,
         customEndpoint: String? = nil
     ) async throws -> HierarchicalGenerationResult {
-        let endpointUrlString = customEndpoint != nil
+        let isLocal = (customEndpoint != nil)
+        let endpointUrlString = isLocal
             ? "\(customEndpoint!.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/chat/completions"
             : "https://api.openai.com/v1/chat/completions"
 
         guard let url = URL(string: endpointUrlString) else {
-            throw ServiceError.invalidResponse("Invalid OpenAI or Local API URL")
+            throw ServiceError.invalidResponse("Invalid \(isLocal ? "Local AI" : "OpenAI") URL")
         }
 
         let messages: [[String: String]] = [
@@ -1056,12 +1094,17 @@ public final class AISocraticService: Sendable {
             ["role": "user", "content": prompt]
         ]
 
-        let requestBody: [String: Any] = [
+        var requestBody: [String: Any] = [
             "model": model,
             "messages": messages,
-            "response_format": ["type": "json_object"],
             "temperature": 0.4
         ]
+
+        // Local servers (LM Studio, Ollama, etc.) often reject `json_object` or require `json_schema`/`text`.
+        // Only pass json_object if talking to official OpenAI API.
+        if !isLocal {
+            requestBody["response_format"] = ["type": "json_object"]
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1072,22 +1115,30 @@ public final class AISocraticService: Sendable {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        var (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ServiceError.invalidResponse("No HTTP response")
         }
 
-        guard httpResponse.statusCode == 200 else {
+        if httpResponse.statusCode != 200 {
             let errText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
-            var cleanMsg = "Status \(httpResponse.statusCode)"
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errorObj = json["error"] as? [String: Any],
-               let msg = errorObj["message"] as? String {
-                cleanMsg = msg
+            let providerName = isLocal ? "Local AI Error" : "OpenAI API Error"
+
+            // If the server rejected response_format, auto-retry once without it
+            if errText.contains("response_format") && requestBody["response_format"] != nil {
+                requestBody.removeValue(forKey: "response_format")
+                request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+                if let (fallbackData, fallbackResponse) = try? await URLSession.shared.data(for: request),
+                   let fbHttp = fallbackResponse as? HTTPURLResponse, fbHttp.statusCode == 200 {
+                    data = fallbackData
+                } else {
+                    let cleanMsg = extractCleanErrorMessage(from: data, fallback: errText)
+                    throw ServiceError.invalidResponse("\(providerName): \(cleanMsg)")
+                }
             } else {
-                cleanMsg = errText
+                let cleanMsg = extractCleanErrorMessage(from: data, fallback: errText)
+                throw ServiceError.invalidResponse("\(providerName): \(cleanMsg)")
             }
-            throw ServiceError.invalidResponse("OpenAI API Error: \(cleanMsg)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1095,7 +1146,7 @@ public final class AISocraticService: Sendable {
               let firstChoice = choices.first,
               let message = firstChoice["message"] as? [String: Any],
               let rawText = message["content"] as? String else {
-            throw ServiceError.parsingError("Malformed OpenAI JSON payload structure.")
+            throw ServiceError.parsingError("Malformed \(isLocal ? "Local AI" : "OpenAI") JSON payload structure.")
         }
 
         return try parseHierarchicalJSON(rawText: rawText, fallbackTitle: fallbackTitle)
