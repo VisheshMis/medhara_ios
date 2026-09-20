@@ -22,8 +22,9 @@ public struct MemoryPalaceView: View {
     @State private var isWalkCompleted: Bool = false
     @State private var canvasViewportSize: CGSize = .zero
 
-    // Sheets
+    // Sheets & Selection
     @State private var selectedLocus: PalaceLocus? = nil
+    @State private var editingLocus: PalaceLocus? = nil
     @State private var isAddPalaceSheetPresented: Bool = false
     @State private var isAddPhotoSheetPresented: Bool = false
 
@@ -360,7 +361,14 @@ public struct MemoryPalaceView: View {
                                         walkStepIndex: walkStepIndex,
                                         selectedLocusId: selectedLocus?.id,
                                         onSelectLocus: { locus in
-                                            selectedLocus = locus
+                                            if isWalkModeActive {
+                                                if let targetIdx = sortedLoci.firstIndex(where: { $0.id == locus.id }) {
+                                                    jumpToWalkStep(targetIdx, viewportSize: canvasViewportSize)
+                                                }
+                                            } else {
+                                                selectedLocus = locus
+                                                editingLocus = locus
+                                            }
                                         },
                                         onAddLocusAt: { normX, normY in
                                             handlePhotoCanvasClick(photo: photo, normX: normX, normY: normY)
@@ -440,8 +448,8 @@ public struct MemoryPalaceView: View {
                 }
             }
         }
-        .sheet(item: $selectedLocus) { locus in
-            LocusDetailSheet(store: store, locus: locus, onDismiss: { selectedLocus = nil })
+        .sheet(item: $editingLocus) { locus in
+            LocusDetailSheet(store: store, locus: locus, onDismiss: { editingLocus = nil })
         }
         .sheet(isPresented: $isAddPalaceSheetPresented) {
             AddPalaceSheet(store: store, isPresented: $isAddPalaceSheetPresented)
@@ -486,13 +494,15 @@ public struct MemoryPalaceView: View {
     private func handlePhotoCanvasClick(photo: PalacePhoto, normX: Double, normY: Double) {
         guard let palace = currentPalace else { return }
         let count = store.loci.count
-        _ = store.addLocus(
+        let newLocus = store.addLocus(
             palaceId: palace.id,
             photoId: photo.id,
             title: "Locus \(count + 1)",
             x: normX,
             y: normY
         )
+        selectedLocus = newLocus
+        editingLocus = newLocus
     }
 
     private func movePhotoInSequence(photo: PalacePhoto, direction: Int) {
@@ -544,9 +554,14 @@ public struct MemoryPalaceView: View {
         let photoName = store.palacePhotos.first(where: { $0.id == locus.photoId })?.name
 
         return Button(action: {
-            selectedLocus = locus
-            if let pid = locus.photoId {
-                store.selectPhoto(id: pid)
+            if isWalkModeActive {
+                jumpToWalkStep(index, viewportSize: canvasViewportSize)
+            } else {
+                selectedLocus = locus
+                if let pid = locus.photoId {
+                    store.selectPhoto(id: pid)
+                }
+                centerCameraOnLocus(locus, viewportSize: canvasViewportSize)
             }
         }) {
             HStack(spacing: 8) {
@@ -610,6 +625,16 @@ public struct MemoryPalaceView: View {
                 Spacer()
 
                 Button(action: {
+                    editingLocus = locus
+                }) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Edit Locus Stop Details")
+
+                Button(action: {
                     store.deleteLocus(id: locus.id)
                 }) {
                     Image(systemName: "trash")
@@ -641,17 +666,22 @@ public struct MemoryPalaceView: View {
         centerCameraOnLocus(sortedLoci[0], viewportSize: canvasViewportSize)
     }
 
+    private func jumpToWalkStep(_ index: Int, viewportSize: CGSize) {
+        guard index >= 0 && index < sortedLoci.count else { return }
+        withAnimation(.easeInOut(duration: 0.5)) {
+            walkStepIndex = index
+            walkCardIndex = 0
+            isWalkAnswerRevealed = false
+            isAnchorRevealed = false
+            let targetLocus = sortedLoci[index]
+            selectedLocus = targetLocus
+            centerCameraOnLocus(targetLocus, viewportSize: viewportSize)
+        }
+    }
+
     private func advanceWalk(viewportSize: CGSize) {
         if walkStepIndex + 1 < sortedLoci.count {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                walkStepIndex += 1
-                walkCardIndex = 0
-                isWalkAnswerRevealed = false
-                isAnchorRevealed = false
-                let nextLocus = sortedLoci[walkStepIndex]
-                selectedLocus = nextLocus
-                centerCameraOnLocus(nextLocus, viewportSize: viewportSize)
-            }
+            jumpToWalkStep(walkStepIndex + 1, viewportSize: viewportSize)
         } else {
             withAnimation(.easeInOut(duration: 0.3)) {
                 isWalkCompleted = true
@@ -661,15 +691,7 @@ public struct MemoryPalaceView: View {
 
     private func previousWalk(viewportSize: CGSize) {
         if walkStepIndex > 0 {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                walkStepIndex -= 1
-                walkCardIndex = 0
-                isWalkAnswerRevealed = false
-                isAnchorRevealed = false
-                let prevLocus = sortedLoci[walkStepIndex]
-                selectedLocus = prevLocus
-                centerCameraOnLocus(prevLocus, viewportSize: viewportSize)
-            }
+            jumpToWalkStep(walkStepIndex - 1, viewportSize: viewportSize)
         }
     }
 
@@ -741,6 +763,16 @@ public struct MemoryPalaceView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Re-center camera on this locus pin")
+
+                Button(action: {
+                    editingLocus = locus
+                }) {
+                    Label("Edit Stop", systemImage: "pencil")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Edit this stop's details, mnemonic, or flashcards")
 
                 Button(action: {
                     withAnimation {
@@ -981,7 +1013,7 @@ public struct MemoryPalaceView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Button("+ Add Card / Info") {
-                            selectedLocus = locus
+                            editingLocus = locus
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
