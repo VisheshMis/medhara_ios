@@ -6,6 +6,18 @@ import MedhaKit
 struct MedhaApp: App {
     @StateObject private var store = BlockStore()
 
+    init() {
+        // Set application icon for macOS Dock
+        if let bundleIcon = Bundle.main.image(forResource: "AppIcon") {
+            NSApplication.shared.applicationIconImage = bundleIcon
+        } else if let resourcePath = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
+                  let icon = NSImage(contentsOfFile: resourcePath) {
+            NSApplication.shared.applicationIconImage = icon
+        } else if let fallback = NSImage(contentsOfFile: "Assets/AppIcon.icns") {
+            NSApplication.shared.applicationIconImage = fallback
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             MainSplitView(store: store)

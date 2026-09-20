@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#0e1726"/>
+      <stop offset="60%" stop-color="#070a12"/>
+      <stop offset="100%" stop-color="#030508"/>
+    </radialGradient>
+
+    <!-- Hextech Energy Gradients -->
+    <linearGradient id="cyanGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="50%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <linearGradient id="pillarCore" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="30%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#e0f2fe"/>
+      <stop offset="70%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+
+    <linearGradient id="stoneMetal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="50%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="goldAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="50%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#a16207"/>
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur1"/>
+      <feGaussianBlur stdDeviation="18" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="ambientHalo" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="24" result="blur"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Canvas (macOS App Icon Shape) -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGrad)"/>
+  <rect width="506" height="506" x="3" y="3" rx="112" fill="none" stroke="#1e293b" stroke-width="2" opacity="0.6"/>
+
+  <!-- Ambient Sapphire Core Light -->
+  <circle cx="256" cy="220" r="130" fill="#0284c7" opacity="0.22" filter="url(#ambientHalo)"/>
+
+  <!-- ================= CELESTIAL CONSTELLATION ORBITS ================= -->
+  <g id="constellations" opacity="0.85">
+    <!-- Orbit Ring 1 (Rotated) -->
+    <ellipse cx="256" cy="220" rx="165" ry="62" fill="none" stroke="#38bdf8" stroke-width="1.4" opacity="0.55" transform="rotate(-22 256 220)"/>
+    
+    <!-- Orbit Ring 2 (Counter-rotated Golden Starlight) -->
+    <ellipse cx="256" cy="220" rx="150" ry="50" fill="none" stroke="url(#goldAccent)" stroke-width="1.1" stroke-dasharray="6 4 2 4" opacity="0.4" transform="rotate(35 256 220)"/>
+
+    <!-- Outer Constellation Polygon Lines -->
+    <polyline points="130,150 170,110 256,70 342,110 382,150" fill="none" stroke="#06b6d4" stroke-width="0.8" opacity="0.45" stroke-dasharray="3 3"/>
+    <polyline points="110,230 150,290 200,340 312,340 362,290 402,230" fill="none" stroke="#06b6d4" stroke-width="0.8" opacity="0.35" stroke-dasharray="3 3"/>
+    <line x1="170" y1="110" x2="110" y2="230" stroke="#38bdf8" stroke-width="0.7" opacity="0.3"/>
+    <line x1="342" y1="110" x2="402" y2="230" stroke="#38bdf8" stroke-width="0.7" opacity="0.3"/>
+
+    <!-- Constellation Nexus Stars -->
+    <circle cx="170" cy="110" r="3.5" fill="#e0f2fe" filter="url(#glow)"/>
+    <circle cx="342" cy="110" r="3.5" fill="#e0f2fe" filter="url(#glow)"/>
+    <circle cx="130" cy="150" r="2.5" fill="#67e8f9"/>
+    <circle cx="382" cy="150" r="2.5" fill="#67e8f9"/>
+    <circle cx="110" cy="230" r="3" fill="#fde047" filter="url(#glow)"/>
+    <circle cx="402" cy="230" r="3" fill="#fde047" filter="url(#glow)"/>
+    <circle cx="150" cy="290" r="2" fill="#38bdf8"/>
+    <circle cx="362" cy="290" r="2" fill="#38bdf8"/>
+    <circle cx="200" cy="340" r="2.5" fill="#67e8f9"/>
+    <circle cx="312" cy="340" r="2.5" fill="#67e8f9"/>
+  </g>
+
+  <!-- ================= THE CENTRAL MEMORY PILLAR ================= -->
+  <g id="pillar" filter="url(#glow)">
+    
+    <!-- Top Beacon / Polaris Star -->
+    <g transform="translate(256, 75)">
+      <path d="M0,-22 L5,-5 L22,0 L5,5 L0,22 L-5,5 L-22,0 L-5,-5 Z" fill="#ffffff"/>
+      <circle cx="0" cy="0" r="5" fill="#67e8f9"/>
+    </g>
+
+    <!-- Pillar Capital (Classical Ionic & Hextech Fusion) -->
+    <!-- Top Abacus Plate -->
+    <path d="M205,108 L307,108 L299,118 L213,118 Z" fill="url(#stoneMetal)" stroke="#38bdf8" stroke-width="1.2"/>
+    
+    <!-- Ionic Volutes (Dual Scrolls) -->
+    <path d="M200,122 C185,122 180,136 195,142 C206,146 215,138 215,130 C215,124 208,122 202,122 Z" fill="none" stroke="#38bdf8" stroke-width="3.5"/>
+    <circle cx="198" cy="132" r="2" fill="#e0f2fe"/>
+    
+    <path d="M312,122 C327,122 332,136 317,142 C306,146 297,138 297,130 C297,124 304,122 310,122 Z" fill="none" stroke="#38bdf8" stroke-width="3.5"/>
+    <circle cx="314" cy="132" r="2" fill="#e0f2fe"/>
+
+    <!-- Capital Body & Central Core Diamond -->
+    <path d="M212,120 L300,120 L292,142 L220,142 Z" fill="url(#stoneMetal)" stroke="#0ea5e9" stroke-width="1"/>
+    <polygon points="256,122 265,131 256,140 247,131" fill="#67e8f9" stroke="#ffffff" stroke-width="1"/>
+
+    <!-- Pillar Shaft (Vertical Fluted Columns with Glowing Energy) -->
+    <!-- Main Shaft Outer Shell -->
+    <rect x="222" y="144" width="68" height="164" fill="#082f49" stroke="#0284c7" stroke-width="1.5" rx="2"/>
+    
+    <!-- Fluted Energy Channels (Left, Center, Right) -->
+    <rect x="228" y="146" width="12" height="160" rx="3" fill="url(#pillarCore)" opacity="0.85"/>
+    <rect x="245" y="146" width="22" height="160" rx="4" fill="url(#pillarCore)"/>
+    <line x1="256" y1="148" x2="256" y2="304" stroke="#ffffff" stroke-width="1.8" opacity="0.9"/>
+    <rect x="272" y="146" width="12" height="160" rx="3" fill="url(#pillarCore)" opacity="0.85"/>
+
+    <!-- Horizontal Runic Bands across the shaft -->
+    <rect x="220" y="190" width="72" height="6" fill="url(#stoneMetal)" stroke="#38bdf8" stroke-width="0.8" rx="1"/>
+    <polygon points="256,189 260,193 256,197 252,193" fill="#67e8f9"/>
+    
+    <rect x="220" y="250" width="72" height="6" fill="url(#stoneMetal)" stroke="#38bdf8" stroke-width="0.8" rx="1"/>
+    <polygon points="256,249 260,253 256,257 252,253" fill="#67e8f9"/>
+
+    <!-- Pillar Base (Stepped Pedestal) -->
+    <!-- Torus & Scotia Molding -->
+    <path d="M216,310 L296,310 L302,322 L210,322 Z" fill="url(#stoneMetal)" stroke="#38bdf8" stroke-width="1.2"/>
+    
+    <!-- Central Base Gem Plinth -->
+    <path d="M202,324 L310,324 L318,340 L194,340 Z" fill="#0f172a" stroke="#0284c7" stroke-width="1.5"/>
+    <polygon points="256,325 268,332 256,339 244,332" fill="#38bdf8" stroke="#ffffff" stroke-width="1"/>
+
+    <!-- Bottom Monumental Step -->
+    <path d="M178,342 L334,342 L342,352 L170,352 Z" fill="url(#stoneMetal)" stroke="#38bdf8" stroke-width="1.5"/>
+    <line x1="180" y1="344" x2="332" y2="344" stroke="#67e8f9" stroke-width="1" opacity="0.8"/>
+  </g>
+
+  <!-- ================= TYPOGRAPHY ================= -->
+  <g id="brandText">
+    <!-- Glow Layer -->
+    <text x="256" y="412" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cinzel', serif" font-size="34" font-weight="800" letter-spacing="7" fill="#0284c7" opacity="0.6" filter="url(#glow)">MEDHARA</text>
+    
+    <!-- Crisp Foreground Text -->
+    <text x="256" y="412" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cinzel', serif" font-size="34" font-weight="800" letter-spacing="7" fill="#f8fafc">MEDHARA</text>
+
+    <!-- Subtitle: MEMORY OS -->
+    <text x="256" y="438" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" letter-spacing="8" fill="#38bdf8" opacity="0.9">MEMORY OS</text>
+
+    <!-- Subtle baseline accent line -->
+    <line x1="186" y1="452" x2="236" y2="452" stroke="#38bdf8" stroke-width="1" opacity="0.5"/>
+    <circle cx="256" cy="452" r="2.5" fill="#fde047"/>
+    <line x1="276" y1="452" x2="326" y2="452" stroke="#38bdf8" stroke-width="1" opacity="0.5"/>
+  </g>
+</svg>

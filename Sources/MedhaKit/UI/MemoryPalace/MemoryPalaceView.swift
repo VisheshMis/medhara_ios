@@ -123,6 +123,7 @@ public struct MemoryPalaceView: View {
                                 ForEach(Array(sortedPhotos.enumerated()), id: \.element.id) { idx, photo in
                                     Button(action: {
                                         store.selectPhoto(id: photo.id)
+                                        centerCameraOnPhoto(photo, viewportSize: canvasViewportSize)
                                     }) {
                                         HStack(spacing: 4) {
                                             Text("\(idx + 1)")
@@ -436,7 +437,9 @@ public struct MemoryPalaceView: View {
             AddPalaceSheet(store: store, isPresented: $isAddPalaceSheetPresented)
         }
         .sheet(isPresented: $isAddPhotoSheetPresented) {
-            AddPhotoSheet(store: store, isPresented: $isAddPhotoSheetPresented)
+            AddPhotoSheet(store: store, isPresented: $isAddPhotoSheetPresented, onPhotoAdded: { newPhoto in
+                centerCameraOnPhoto(newPhoto, viewportSize: canvasViewportSize)
+            })
         }
     }
 
@@ -488,16 +491,24 @@ public struct MemoryPalaceView: View {
         panel.prompt = "Choose 2D Photo / Room Image"
 
         if panel.runModal() == .OK, let url = panel.url {
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             do {
                 // Safely copy chosen file to project storage folder to prevent accidental deletion
                 let safePath = try PalaceAssetStorage.importPhoto(from: url)
                 var updated = photo
                 updated.imagePath = safePath
                 store.updatePalacePhoto(updated)
+                centerCameraOnPhoto(updated, viewportSize: canvasViewportSize)
             } catch {
                 var updated = photo
                 updated.imagePath = url.path
                 store.updatePalacePhoto(updated)
+                centerCameraOnPhoto(updated, viewportSize: canvasViewportSize)
             }
         }
     }
@@ -595,12 +606,15 @@ public struct MemoryPalaceView: View {
     // MARK: - Walk Mode & Active Recall HUD
     private func startWalk() {
         guard !sortedLoci.isEmpty else { return }
-        walkStepIndex = 0
-        walkCardIndex = 0
-        isWalkAnswerRevealed = false
-        isAnchorRevealed = false
-        isWalkCompleted = false
-        isWalkModeActive = true
+        withAnimation(.easeInOut(duration: 0.4)) {
+            walkStepIndex = 0
+            walkCardIndex = 0
+            isWalkAnswerRevealed = false
+            isAnchorRevealed = false
+            isWalkCompleted = false
+            isWalkModeActive = true
+            selectedLocus = sortedLoci[0]
+        }
         centerCameraOnLocus(sortedLoci[0], viewportSize: canvasViewportSize)
     }
 
@@ -612,6 +626,7 @@ public struct MemoryPalaceView: View {
                 isWalkAnswerRevealed = false
                 isAnchorRevealed = false
                 let nextLocus = sortedLoci[walkStepIndex]
+                selectedLocus = nextLocus
                 centerCameraOnLocus(nextLocus, viewportSize: viewportSize)
             }
         } else {
@@ -629,20 +644,34 @@ public struct MemoryPalaceView: View {
                 isWalkAnswerRevealed = false
                 isAnchorRevealed = false
                 let prevLocus = sortedLoci[walkStepIndex]
+                selectedLocus = prevLocus
                 centerCameraOnLocus(prevLocus, viewportSize: viewportSize)
             }
         }
     }
 
     private func centerCameraOnLocus(_ locus: PalaceLocus, viewportSize: CGSize) {
-        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+        let effectiveViewport = (viewportSize.width > 50 && viewportSize.height > 50) ? viewportSize : CGSize(width: 1200, height: 800)
         let pt = locusCanvasPosition(locus)
-        let targetScale: CGFloat = max(1.1, min(1.3, canvasScale))
+        let targetScale: CGFloat = 1.25
         withAnimation(.easeInOut(duration: 0.6)) {
             canvasScale = targetScale
             canvasOffset = CGSize(
-                width: (viewportSize.width / 2) - (pt.x * targetScale),
-                height: (viewportSize.height * 0.38) - (pt.y * targetScale)
+                width: (effectiveViewport.width / 2.0) - (pt.x * targetScale),
+                height: (effectiveViewport.height * 0.38) - (pt.y * targetScale)
+            )
+        }
+    }
+
+    private func centerCameraOnPhoto(_ photo: PalacePhoto, viewportSize: CGSize) {
+        let effectiveViewport = (viewportSize.width > 50 && viewportSize.height > 50) ? viewportSize : CGSize(width: 1200, height: 800)
+        let centerX = photo.canvasX + photo.canvasWidth / 2.0
+        let centerY = photo.canvasY + (photo.canvasHeight + 36.0) / 2.0
+        withAnimation(.easeInOut(duration: 0.55)) {
+            canvasScale = 1.0
+            canvasOffset = CGSize(
+                width: (effectiveViewport.width / 2.0) - centerX,
+                height: (effectiveViewport.height / 2.0) - centerY
             )
         }
     }
@@ -1133,8 +1162,9 @@ public struct PalacePhotoCardView: View {
 
                 // Internal Photo Loci Pins
                 ForEach(photoLoci) { locus in
-                    let globalIndex = (store.loci.firstIndex(where: { $0.id == locus.id }) ?? 0) + 1
-                    let isCurrentWalk = isWalkModeActive && walkStepIndex < store.loci.count && store.loci[walkStepIndex].id == locus.id
+                    let sortedAll = store.loci.sorted(by: { $0.orderIndex < $1.orderIndex })
+                    let globalIndex = (sortedAll.firstIndex(where: { $0.id == locus.id }) ?? 0) + 1
+                    let isCurrentWalk = isWalkModeActive && walkStepIndex < sortedAll.count && sortedAll[walkStepIndex].id == locus.id
                     let isSelected = selectedLocusId == locus.id
 
                     LocusPinView(
@@ -1177,10 +1207,30 @@ public struct PalacePhotoCardView: View {
     }
 
     private func loadNSImage(from path: String) -> NSImage? {
-        guard let resolved = PalaceAssetStorage.resolvePhotoPath(path) else {
-            return nil
+        if let resolved = PalaceAssetStorage.resolvePhotoPath(path) {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: resolved)),
+               let img = NSImage(data: data) {
+                return img
+            }
+            if let img = NSImage(contentsOfFile: resolved) {
+                return img
+            }
         }
-        return NSImage(contentsOfFile: resolved)
+        if FileManager.default.fileExists(atPath: path) {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+               let img = NSImage(data: data) {
+                return img
+            }
+            if let img = NSImage(contentsOfFile: path) {
+                return img
+            }
+        }
+        if let b64 = photo.imageData,
+           let data = Data(base64Encoded: b64),
+           let img = NSImage(data: data) {
+            return img
+        }
+        return nil
     }
 }
 
@@ -1279,19 +1329,29 @@ public struct LocusPinView: View {
     public let isHighlighted: Bool
     public let isWalkTarget: Bool
 
+    @State private var isPulsing: Bool = false
+
     public var body: some View {
         VStack(spacing: 2) {
             ZStack {
                 if isWalkTarget {
                     Circle()
-                        .stroke(Color.accentColor, lineWidth: 3)
-                        .frame(width: 32, height: 32)
+                        .stroke(Color.accentColor.opacity(0.8), lineWidth: 3)
+                        .frame(width: isPulsing ? 48 : 32, height: isPulsing ? 48 : 32)
+                        .scaleEffect(isPulsing ? 1.15 : 0.95)
+                        .opacity(isPulsing ? 0.3 : 0.9)
+                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isPulsing)
+                        .onAppear { isPulsing = true }
+
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.25))
+                        .frame(width: 36, height: 36)
                 }
 
                 Circle()
                     .fill(isHighlighted ? Color.accentColor : Color(NSColor.windowBackgroundColor))
                     .frame(width: 24, height: 24)
-                    .shadow(color: Color.black.opacity(0.3), radius: 3)
+                    .shadow(color: Color.black.opacity(isHighlighted ? 0.5 : 0.3), radius: isHighlighted ? 5 : 3)
                     .overlay(
                         Circle()
                             .stroke(isHighlighted ? Color.white : Color.accentColor, lineWidth: 2)
@@ -1591,9 +1651,11 @@ public struct LocusDetailSheet: View {
 public struct AddPhotoSheet: View {
     @ObservedObject public var store: BlockStore
     @Binding public var isPresented: Bool
+    public var onPhotoAdded: ((PalacePhoto) -> Void)? = nil
 
     @State private var name: String = ""
     @State private var imagePath: String = "bundled:default"
+    @State private var previewImage: NSImage? = nil
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1627,12 +1689,31 @@ public struct AddPhotoSheet: View {
                         panel.canChooseFiles = true
                         panel.prompt = "Select Photo / Scene"
                         if panel.runModal() == .OK, let url = panel.url {
+                            let hasAccess = url.startAccessingSecurityScopedResource()
+                            defer {
+                                if hasAccess {
+                                    url.stopAccessingSecurityScopedResource()
+                                }
+                            }
                             do {
                                 // Safely copy into project folder so deleting original file doesn't break palace
                                 let safePath = try PalaceAssetStorage.importPhoto(from: url)
                                 imagePath = safePath
+                                if let data = try? Data(contentsOf: URL(fileURLWithPath: safePath)),
+                                   let img = NSImage(data: data) {
+                                    previewImage = img
+                                } else {
+                                    previewImage = NSImage(contentsOfFile: safePath)
+                                }
                             } catch {
                                 imagePath = url.path
+                                previewImage = NSImage(contentsOfFile: url.path)
+                            }
+                            if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                                let raw = url.deletingPathExtension().lastPathComponent
+                                    .replacingOccurrences(of: "_", with: " ")
+                                    .replacingOccurrences(of: "-", with: " ")
+                                name = raw.capitalized
                             }
                         }
                     }
@@ -1641,17 +1722,38 @@ public struct AddPhotoSheet: View {
                 }
             }
 
+            // Real-Time Thumbnail Preview
+            if let img = previewImage {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Selected Image Preview")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.secondary)
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 120)
+                        .clipped()
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+
             HStack {
                 Button("Cancel") { isPresented = false }
                 Spacer()
                 Button("Add to Canvas") {
                     guard let palaceId = store.selectedPalaceId else { return }
-                    store.addPalacePhoto(
+                    let newPhoto = store.addPalacePhoto(
                         palaceId: palaceId,
                         name: name,
                         imagePath: imagePath
                     )
                     isPresented = false
+                    onPhotoAdded?(newPhoto)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -1659,7 +1761,7 @@ public struct AddPhotoSheet: View {
             .padding(.top, 8)
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 440)
     }
 }
 
