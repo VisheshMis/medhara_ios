@@ -30,6 +30,8 @@ public struct AISettingsSheet: View {
     @State private var isTestingKey: Bool = false
     @State private var testResult: (isValid: Bool, message: String)? = nil
     @State private var isKeyVisible: Bool = false
+    @State private var discoveredLocalModels: [String] = []
+    @State private var isDetectingModels: Bool = false
 
     // Notes AI State
     @State private var useFlashcardSettingsForNotes: Bool = true
@@ -40,6 +42,8 @@ public struct AISettingsSheet: View {
     @State private var isTestingNotesKey: Bool = false
     @State private var notesTestResult: (isValid: Bool, message: String)? = nil
     @State private var isNotesKeyVisible: Bool = false
+    @State private var discoveredNotesLocalModels: [String] = []
+    @State private var isDetectingNotesModels: Bool = false
 
     // Global Features
     @State private var isWikipediaGroundingEnabled: Bool = true
@@ -177,6 +181,17 @@ public struct AISettingsSheet: View {
 
             // Global settings
             isWikipediaGroundingEnabled = settings.isWikipediaGroundingEnabled
+
+            if selectedProvider == .local {
+                Task {
+                    await detectLocalModels()
+                }
+            }
+            if notesSelectedProvider == .local {
+                Task {
+                    await detectNotesLocalModels()
+                }
+            }
         }
     }
 
@@ -235,15 +250,49 @@ public struct AISettingsSheet: View {
                 .onChange(of: selectedProvider) { _, newProv in
                     selectedModel = newProv.defaultModel
                     testResult = nil
+                    if newProv == .local {
+                        Task {
+                            await detectLocalModels()
+                        }
+                    }
                 }
             }
 
             // Model Picker
             VStack(alignment: .leading, spacing: 6) {
-                Text(selectedProvider == .local ? "Model (Runs on ~1 GB RAM)" : "Model")
-                    .font(.system(size: 12, weight: .semibold))
+                HStack {
+                    Text(selectedProvider == .local ? "Model (Runs Locally)" : "Model")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    if selectedProvider == .local {
+                        Button(action: {
+                            Task {
+                                await detectLocalModels()
+                            }
+                        }) {
+                            HStack(spacing: 3) {
+                                if isDetectingModels {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                Text(isDetectingModels ? "Detecting..." : "Detect Local Models")
+                            }
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isDetectingModels)
+                    }
+                }
+
+                let allAvailable = (selectedProvider == .local && !discoveredLocalModels.isEmpty)
+                    ? (discoveredLocalModels + selectedProvider.availableModels.filter { !discoveredLocalModels.contains($0) })
+                    : selectedProvider.availableModels
+
                 Picker("Model", selection: $selectedModel) {
-                    ForEach(selectedProvider.availableModels, id: \.self) { mod in
+                    ForEach(allAvailable, id: \.self) { mod in
                         Text(mod).tag(mod)
                     }
                 }
@@ -258,6 +307,12 @@ public struct AISettingsSheet: View {
                     TextField("http://localhost:11434/v1", text: $localEndpoint)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12, design: .monospaced))
+                        .onChange(of: localEndpoint) { _, _ in
+                            testResult = nil
+                            Task {
+                                await detectLocalModels()
+                            }
+                        }
 
                     Text("💡 Compatible with Ollama, LM Studio, or local servers. Run: `ollama run qwen2.5:1.5b`")
                         .font(.system(size: 11))
@@ -328,13 +383,14 @@ public struct AISettingsSheet: View {
                 .disabled((selectedProvider != .local && inputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isTestingKey)
 
                 if let res = testResult {
-                    HStack(spacing: 4) {
+                    HStack(alignment: .top, spacing: 6) {
                         Image(systemName: res.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .foregroundColor(res.isValid ? .green : .red)
+                            .padding(.top, 1)
                         Text(res.message)
                             .font(.system(size: 11))
                             .foregroundColor(res.isValid ? .green : .red)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -465,15 +521,49 @@ public struct AISettingsSheet: View {
                     .onChange(of: notesSelectedProvider) { _, newProv in
                         notesSelectedModel = newProv.defaultModel
                         notesTestResult = nil
+                        if newProv == .local {
+                            Task {
+                                await detectNotesLocalModels()
+                            }
+                        }
                     }
                 }
 
                 // Model Picker
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Model")
-                        .font(.system(size: 12, weight: .semibold))
+                    HStack {
+                        Text(notesSelectedProvider == .local ? "Model (Runs Locally)" : "Model")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        if notesSelectedProvider == .local {
+                            Button(action: {
+                                Task {
+                                    await detectNotesLocalModels()
+                                }
+                            }) {
+                                HStack(spacing: 3) {
+                                    if isDetectingNotesModels {
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                    }
+                                    Text(isDetectingNotesModels ? "Detecting..." : "Detect Local Models")
+                                }
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.accentColor)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(isDetectingNotesModels)
+                        }
+                    }
+
+                    let allNotesAvailable = (notesSelectedProvider == .local && !discoveredNotesLocalModels.isEmpty)
+                        ? (discoveredNotesLocalModels + notesSelectedProvider.availableModels.filter { !discoveredNotesLocalModels.contains($0) })
+                        : notesSelectedProvider.availableModels
+
                     Picker("Model", selection: $notesSelectedModel) {
-                        ForEach(notesSelectedProvider.availableModels, id: \.self) { mod in
+                        ForEach(allNotesAvailable, id: \.self) { mod in
                             Text(mod).tag(mod)
                         }
                     }
@@ -488,6 +578,12 @@ public struct AISettingsSheet: View {
                         TextField("http://localhost:11434/v1", text: $notesLocalEndpoint)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 12, design: .monospaced))
+                            .onChange(of: notesLocalEndpoint) { _, _ in
+                                notesTestResult = nil
+                                Task {
+                                    await detectNotesLocalModels()
+                                }
+                            }
 
                         Text("💡 E.g. Ollama (`localhost:11434`) or LM Studio. Run: `ollama run qwen2.5:1.5b`")
                             .font(.system(size: 11))
@@ -552,13 +648,14 @@ public struct AISettingsSheet: View {
                     .disabled((notesSelectedProvider != .local && notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || isTestingNotesKey)
 
                     if let res = notesTestResult {
-                        HStack(spacing: 4) {
+                        HStack(alignment: .top, spacing: 6) {
                             Image(systemName: res.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                                 .foregroundColor(res.isValid ? .green : .red)
+                                .padding(.top, 1)
                             Text(res.message)
                                 .font(.system(size: 11))
                                 .foregroundColor(res.isValid ? .green : .red)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -588,6 +685,36 @@ public struct AISettingsSheet: View {
         .cornerRadius(8)
     }
 
+    private func detectLocalModels() async {
+        guard selectedProvider == .local else { return }
+        await MainActor.run { isDetectingModels = true }
+        let models = await AISocraticService.shared.fetchLocalModels(endpoint: localEndpoint)
+        await MainActor.run {
+            isDetectingModels = false
+            discoveredLocalModels = models
+            if !models.isEmpty && (!models.contains(selectedModel) || selectedModel == AIProvider.local.defaultModel) {
+                if let first = models.first {
+                    selectedModel = first
+                }
+            }
+        }
+    }
+
+    private func detectNotesLocalModels() async {
+        guard notesSelectedProvider == .local else { return }
+        await MainActor.run { isDetectingNotesModels = true }
+        let models = await AISocraticService.shared.fetchLocalModels(endpoint: notesLocalEndpoint)
+        await MainActor.run {
+            isDetectingNotesModels = false
+            discoveredNotesLocalModels = models
+            if !models.isEmpty && (!models.contains(notesSelectedModel) || notesSelectedModel == AIProvider.local.defaultModel) {
+                if let first = models.first {
+                    notesSelectedModel = first
+                }
+            }
+        }
+    }
+
     private func testConnection() {
         isTestingKey = true
         testResult = nil
@@ -603,6 +730,9 @@ public struct AISettingsSheet: View {
             await MainActor.run {
                 isTestingKey = false
                 testResult = res
+            }
+            if selectedProvider == .local {
+                await detectLocalModels()
             }
         }
     }
@@ -622,6 +752,9 @@ public struct AISettingsSheet: View {
             await MainActor.run {
                 isTestingNotesKey = false
                 notesTestResult = res
+            }
+            if notesSelectedProvider == .local {
+                await detectNotesLocalModels()
             }
         }
     }

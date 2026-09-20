@@ -397,6 +397,30 @@ public final class AISocraticService: Sendable {
         }
     }
 
+    /// Discovers available chat models from an OpenAI-compatible local endpoint (e.g. LM Studio, Ollama, etc.)
+    public func fetchLocalModels(endpoint: String) async -> [String] {
+        let base = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return [] }
+        let normalizedBase = base.hasPrefix("http") ? base : "http://\(base)"
+        let trimmedBase = normalizedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(trimmedBase)/models") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3.0
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataList = json["data"] as? [[String: Any]] else {
+            return []
+        }
+
+        return dataList.compactMap { item -> String? in
+            guard let id = item["id"] as? String, !id.contains("embed") else { return nil }
+            return id
+        }
+    }
+
     /// Validates the given API key or local endpoint with a test ping
     public func validateAPIKey(
         key: String,
@@ -491,6 +515,29 @@ public final class AISocraticService: Sendable {
                 let base = cleanKey.isEmpty ? AISettings.shared.activeLocalEndpoint : cleanKey
                 let normalizedBase = base.hasPrefix("http") ? base : "http://\(base)"
                 let trimmedBase = normalizedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+                // 1. Check if server is reachable and inspect available models
+                var effectiveModel = model
+                var discoveredChatModels: [String] = []
+                if let modelsUrl = URL(string: "\(trimmedBase)/models") {
+                    var mReq = URLRequest(url: modelsUrl)
+                    mReq.timeoutInterval = 3.0
+                    if let (mData, mResp) = try? await URLSession.shared.data(for: mReq),
+                       let mHttp = mResp as? HTTPURLResponse, mHttp.statusCode == 200,
+                       let mJson = try? JSONSerialization.jsonObject(with: mData) as? [String: Any],
+                       let dataList = mJson["data"] as? [[String: Any]] {
+                        discoveredChatModels = dataList.compactMap { item -> String? in
+                            guard let id = item["id"] as? String, !id.contains("embed") else { return nil }
+                            return id
+                        }
+                    }
+                }
+
+                // If user's model isn't in discovered list and discovered models exist, auto-select the first one
+                if !discoveredChatModels.isEmpty && (!discoveredChatModels.contains(model) || model.isEmpty) {
+                    effectiveModel = discoveredChatModels.first ?? model
+                }
+
                 let urlString = "\(trimmedBase)/chat/completions"
                 guard let url = URL(string: urlString) else {
                     return (false, "Invalid Local AI endpoint URL.")
@@ -498,11 +545,11 @@ public final class AISocraticService: Sendable {
 
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
-                request.timeoutInterval = 6.0
+                request.timeoutInterval = 10.0
                 request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
                 let payload: [String: Any] = [
-                    "model": model,
+                    "model": effectiveModel,
                     "messages": [
                         ["role": "user", "content": "Ping. Reply with {\"status\":\"ok\"}"]
                     ],
@@ -517,16 +564,32 @@ public final class AISocraticService: Sendable {
                 }
 
                 if httpResponse.statusCode == 200 {
-                    return (true, "Local AI reached successfully with model \(model)!")
+                    return (true, "Local AI connected successfully! (Model: \(effectiveModel))")
                 } else {
-                    let errBody = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
-                    return (false, "Local AI error (\(httpResponse.statusCode)): \(errBody.prefix(100))")
+                    var cleanMsg = "Status \(httpResponse.statusCode)"
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        if let errorObj = json["error"] as? [String: Any],
+                           let msg = errorObj["message"] as? String {
+                            cleanMsg = msg
+                        } else if let msg = json["message"] as? String {
+                            cleanMsg = msg
+                        }
+                    } else {
+                        let errBody = String(data: data, encoding: .utf8) ?? ""
+                        if !errBody.isEmpty {
+                            cleanMsg = String(errBody.prefix(120))
+                        }
+                    }
+                    if cleanMsg.contains("No models loaded") {
+                        cleanMsg = "LM Studio is running, but no model is loaded. Please select and load a model at the top of LM Studio."
+                    }
+                    return (false, "Local AI error (\(httpResponse.statusCode)): \(cleanMsg)")
                 }
             }
         } catch {
             if provider == .local {
                 let base = cleanKey.isEmpty ? AISettings.shared.activeLocalEndpoint : cleanKey
-                return (false, "Could not reach Local AI at \(base). Ensure Ollama or LM Studio is running (e.g. 'ollama run \(model)').")
+                return (false, "Could not connect to Local AI at \(base). Ensure LM Studio or Ollama server is running.")
             }
             return (false, "Network error: \(error.localizedDescription)")
         }
