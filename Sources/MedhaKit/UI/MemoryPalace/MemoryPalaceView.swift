@@ -294,8 +294,9 @@ public struct MemoryPalaceView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .bottom) {
                         // 1. Interactive 2D Canvas Plane (clipped to viewport)
-                        ZStack {
+                        ZStack(alignment: .topLeading) {
                             VastBlueprintGridBackground()
+                                .frame(width: geo.size.width, height: geo.size.height)
                                 .contentShape(Rectangle())
                                 .gesture(
                                     DragGesture()
@@ -320,7 +321,7 @@ public struct MemoryPalaceView: View {
                                         from: p1,
                                         to: p2,
                                         draggingPhotoId: draggingPhotoId,
-                                        dragOffset: dragOffset,
+                                        dragOffset: CGSize(width: dragOffset.width / canvasScale, height: dragOffset.height / canvasScale),
                                         fromIndex: idx + 1,
                                         toIndex: idx + 2
                                     )
@@ -347,8 +348,8 @@ public struct MemoryPalaceView: View {
                                 // 3. Spatial Photo Nodes
                                 ForEach(Array(sortedPhotos.enumerated()), id: \.element.id) { idx, photo in
                                     let isDragging = draggingPhotoId == photo.id
-                                    let posX = photo.canvasX + (isDragging ? dragOffset.width : 0)
-                                    let posY = photo.canvasY + (isDragging ? dragOffset.height : 0)
+                                    let posX = photo.canvasX + (isDragging ? dragOffset.width / canvasScale : 0)
+                                    let posY = photo.canvasY + (isDragging ? dragOffset.height / canvasScale : 0)
 
                                     PalacePhotoCardView(
                                         photo: photo,
@@ -388,8 +389,8 @@ public struct MemoryPalaceView: View {
                                             }
                                             .onEnded { value in
                                                 if !isWalkModeActive {
-                                                    let finalX = max(20, photo.canvasX + value.translation.width)
-                                                    let finalY = max(20, photo.canvasY + value.translation.height)
+                                                    let finalX = max(20, photo.canvasX + value.translation.width / canvasScale)
+                                                    let finalY = max(20, photo.canvasY + value.translation.height / canvasScale)
                                                     store.updatePhotoPosition(id: photo.id, x: finalX, y: finalY)
                                                     draggingPhotoId = nil
                                                     dragOffset = .zero
@@ -402,7 +403,7 @@ public struct MemoryPalaceView: View {
                             .scaleEffect(canvasScale, anchor: .topLeading)
                             .offset(canvasOffset)
                         }
-                        .frame(width: geo.size.width, height: geo.size.height)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                         .clipped()
 
                         // 2. Fixed Viewport Walk Mode Overlay HUD
@@ -423,9 +424,18 @@ public struct MemoryPalaceView: View {
                     .frame(width: geo.size.width, height: geo.size.height)
                     .onAppear {
                         canvasViewportSize = geo.size
+                        autoCenterCameraIfPossible(viewportSize: geo.size)
                     }
                     .onChange(of: geo.size) { _, newSize in
                         canvasViewportSize = newSize
+                    }
+                    .onChange(of: store.selectedPalaceId) { _, _ in
+                        autoCenterCameraIfPossible(viewportSize: canvasViewportSize)
+                    }
+                    .onChange(of: store.palacePhotos.count) { _, newCount in
+                        if newCount > 0 && canvasOffset == .zero {
+                            autoCenterCameraIfPossible(viewportSize: canvasViewportSize)
+                        }
                     }
                 }
             }
@@ -443,10 +453,23 @@ public struct MemoryPalaceView: View {
         }
     }
 
+    private func autoCenterCameraIfPossible(viewportSize: CGSize) {
+        let target = store.palacePhotos.first(where: { $0.id == store.activePhotoId }) ?? sortedPhotos.first
+        if let target = target {
+            DispatchQueue.main.async {
+                centerCameraOnPhoto(target, viewportSize: viewportSize)
+            }
+        }
+    }
+
     private func resetCanvasView() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            canvasScale = 1.0
-            canvasOffset = .zero
+        if let target = store.palacePhotos.first(where: { $0.id == store.activePhotoId }) ?? sortedPhotos.first {
+            centerCameraOnPhoto(target, viewportSize: canvasViewportSize)
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                canvasScale = 1.0
+                canvasOffset = .zero
+            }
         }
     }
 
@@ -454,7 +477,7 @@ public struct MemoryPalaceView: View {
         guard let photo = store.palacePhotos.first(where: { $0.id == locus.photoId }) ?? store.palacePhotos.first else {
             return .zero
         }
-        let curDrag = (draggingPhotoId == photo.id) ? dragOffset : .zero
+        let curDrag = (draggingPhotoId == photo.id) ? CGSize(width: dragOffset.width / canvasScale, height: dragOffset.height / canvasScale) : .zero
         let posX = photo.canvasX + curDrag.width + (locus.normalizedX * photo.canvasWidth)
         let posY = photo.canvasY + curDrag.height + 36 + (locus.normalizedY * photo.canvasHeight)
         return CGPoint(x: posX, y: posY)
