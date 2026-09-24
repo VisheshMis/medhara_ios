@@ -699,7 +699,7 @@ public struct MemoryPalaceView: View {
         let effectiveViewport = (viewportSize.width > 50 && viewportSize.height > 50) ? viewportSize : CGSize(width: 1200, height: 800)
         let pt = locusCanvasPosition(locus)
         let targetScale: CGFloat = 1.25
-        withAnimation(.easeInOut(duration: 0.6)) {
+        withAnimation(.interactiveSpring(response: 0.55, dampingFraction: 0.85, blendDuration: 0.2)) {
             canvasScale = targetScale
             canvasOffset = CGSize(
                 width: (effectiveViewport.width / 2.0) - (pt.x * targetScale),
@@ -712,7 +712,7 @@ public struct MemoryPalaceView: View {
         let effectiveViewport = (viewportSize.width > 50 && viewportSize.height > 50) ? viewportSize : CGSize(width: 1200, height: 800)
         let centerX = photo.canvasX + photo.canvasWidth / 2.0
         let centerY = photo.canvasY + (photo.canvasHeight + 36.0) / 2.0
-        withAnimation(.easeInOut(duration: 0.55)) {
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
             canvasScale = 1.0
             canvasOffset = CGSize(
                 width: (effectiveViewport.width / 2.0) - centerX,
@@ -786,6 +786,7 @@ public struct MemoryPalaceView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Exit Walk Mode (Esc)")
+                .keyboardShortcut(.escape, modifiers: [])
             }
 
             // Journey Progress Indicator Track
@@ -847,11 +848,12 @@ public struct MemoryPalaceView: View {
                                         isAnchorRevealed = true
                                     }
                                 }) {
-                                    Label("Reveal Knowledge", systemImage: "eye.fill")
+                                    Label("Reveal Knowledge (Space)", systemImage: "eye.fill")
                                         .font(.system(size: 11, weight: .semibold))
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
+                                .keyboardShortcut(.space, modifiers: [])
                             }
                         }
 
@@ -903,6 +905,32 @@ public struct MemoryPalaceView: View {
                                 .foregroundColor(.accentColor)
 
                             Spacer()
+
+                            // Jump to Source Note Button if linked
+                            if !currentCard.docId.isEmpty, let doc = store.documents.first(where: { $0.id == currentCard.docId }) {
+                                Button(action: {
+                                    withAnimation {
+                                        isWalkModeActive = false
+                                        store.activeMainView = .editor
+                                        store.selectDocument(id: currentCard.docId)
+                                    }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 9, weight: .bold))
+                                        Text("Source Note: \(doc.content.isEmpty ? "Untitled" : doc.content)")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundColor(.accentColor)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.12))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Jump to original note in Block Editor")
+                            }
 
                             if attachedCards.count > 1 {
                                 HStack(spacing: 4) {
@@ -991,11 +1019,12 @@ public struct MemoryPalaceView: View {
                                     isWalkAnswerRevealed = true
                                 }
                             }) {
-                                Label("Reveal Flashcard Answer", systemImage: "lightbulb.fill")
+                                Label("Reveal Flashcard Answer (Space)", systemImage: "lightbulb.fill")
                                     .font(.system(size: 11, weight: .semibold))
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .keyboardShortcut(.space, modifiers: [])
                         }
                     }
                     .padding(10)
@@ -1029,12 +1058,13 @@ public struct MemoryPalaceView: View {
                 Button(action: {
                     previousWalk(viewportSize: viewportSize)
                 }) {
-                    Label("Previous Stop", systemImage: "chevron.left")
+                    Label("Previous Stop (←)", systemImage: "chevron.left")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .disabled(walkStepIndex <= 0)
+                .keyboardShortcut(.leftArrow, modifiers: [])
 
                 Spacer()
 
@@ -1042,24 +1072,24 @@ public struct MemoryPalaceView: View {
                     advanceWalk(viewportSize: viewportSize)
                 }) {
                     HStack(spacing: 4) {
-                        Text(isLastStep ? "Finish Walk 🎉" : "Next Stop")
+                        Text(isLastStep ? "Finish Walk 🎉 (→)" : "Next Stop (→)")
                             .font(.system(size: 12, weight: .bold))
                         Image(systemName: isLastStep ? "checkmark" : "chevron.right")
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
+                .keyboardShortcut(.rightArrow, modifiers: [])
             }
         }
         .padding(16)
         .frame(maxWidth: 580)
-        .background(.ultraThickMaterial)
-        .cornerRadius(14)
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.accentColor.opacity(0.3), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.3), radius: 20, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(0.28), radius: 24, x: 0, y: 10)
     }
 
     // MARK: - Walk Completed View
@@ -1387,26 +1417,29 @@ public struct LocusPinView: View {
     @State private var isPulsing: Bool = false
 
     public var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             ZStack {
                 if isWalkTarget {
+                    // Outer Ethereal Pulsing Ring
                     Circle()
-                        .stroke(Color.accentColor.opacity(0.8), lineWidth: 3)
-                        .frame(width: isPulsing ? 48 : 32, height: isPulsing ? 48 : 32)
-                        .scaleEffect(isPulsing ? 1.15 : 0.95)
-                        .opacity(isPulsing ? 0.3 : 0.9)
-                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isPulsing)
+                        .stroke(Color.accentColor.opacity(0.85), lineWidth: 2.5)
+                        .frame(width: isPulsing ? 52 : 36, height: isPulsing ? 52 : 36)
+                        .scaleEffect(isPulsing ? 1.2 : 0.95)
+                        .opacity(isPulsing ? 0.25 : 0.9)
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: isPulsing)
                         .onAppear { isPulsing = true }
 
+                    // Soft Glowing Ambient Scrim
                     Circle()
                         .fill(Color.accentColor.opacity(0.25))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 40, height: 40)
+                        .shadow(color: Color.accentColor.opacity(0.6), radius: 8)
                 }
 
                 Circle()
                     .fill(isHighlighted ? Color.accentColor : Color(NSColor.windowBackgroundColor))
                     .frame(width: 24, height: 24)
-                    .shadow(color: Color.black.opacity(isHighlighted ? 0.5 : 0.3), radius: isHighlighted ? 5 : 3)
+                    .shadow(color: Color.black.opacity(isHighlighted ? 0.5 : 0.35), radius: isHighlighted ? 6 : 3, x: 0, y: 2)
                     .overlay(
                         Circle()
                             .stroke(isHighlighted ? Color.white : Color.accentColor, lineWidth: 2)
@@ -1417,13 +1450,19 @@ public struct LocusPinView: View {
                     .foregroundColor(isHighlighted ? .white : .primary)
             }
 
+            // High-Contrast Frosted Glass Title Scrim
             Text(locus.title)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundColor(.primary)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(.ultraThinMaterial)
-                .cornerRadius(3)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.25), radius: 3, x: 0, y: 1)
         }
     }
 }

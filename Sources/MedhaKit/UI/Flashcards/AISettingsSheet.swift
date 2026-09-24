@@ -47,6 +47,7 @@ public struct AISettingsSheet: View {
 
     // Global Features
     @State private var isWikipediaGroundingEnabled: Bool = true
+    @State private var enabledStudySources: [StudyGroundingSource] = []
 
     public init(onDismiss: @escaping () -> Void) {
         self.onDismiss = onDismiss
@@ -110,18 +111,15 @@ public struct AISettingsSheet: View {
                         notesAISettingsView
                     }
 
-                    // Wikipedia Grounding Section (Shared across both modes)
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("FACTUAL KNOWLEDGE GROUNDING")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary)
-
-                        Toggle(isOn: $isWikipediaGroundingEnabled) {
+                    // Hybrid Free Study Grounding Section (Shared across both modes)
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
-                                    Text("Free Wikipedia Knowledge Grounding")
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text("FREE")
+                                    Text("FREE STUDY KNOWLEDGE GROUNDING")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                    Text("100% FREE • NO KEYS")
                                         .font(.system(size: 9, weight: .bold))
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1)
@@ -129,12 +127,43 @@ public struct AISettingsSheet: View {
                                         .foregroundColor(.green)
                                         .cornerRadius(4)
                                 }
-                                Text("Queries Wikipedia's open REST API for verified factual context without any API key. Drastically boosts 1B–3B Local AI models.")
+                                Text("Grounds Local AI (1B–7B) with verified factual and academic context on the fly without hallucinations.")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             }
+                            Spacer()
                         }
-                        .toggleStyle(.switch)
+
+                        VStack(spacing: 10) {
+                            ForEach(StudyGroundingSource.allCases) { source in
+                                Toggle(isOn: Binding(
+                                    get: { enabledStudySources.contains(source) },
+                                    set: { val in
+                                        if val && !enabledStudySources.contains(source) {
+                                            enabledStudySources.append(source)
+                                        } else if !val {
+                                            enabledStudySources.removeAll { $0 == source }
+                                        }
+                                        isWikipediaGroundingEnabled = enabledStudySources.contains(.wikipedia)
+                                    }
+                                )) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: source.systemIcon)
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.purple)
+                                            .frame(width: 16)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(source.displayName)
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text(source.subtitle)
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .toggleStyle(.switch)
+                            }
+                        }
                     }
                     .padding(16)
                     .background(Color(NSColor.controlBackgroundColor))
@@ -181,6 +210,7 @@ public struct AISettingsSheet: View {
 
             // Global settings
             isWikipediaGroundingEnabled = settings.isWikipediaGroundingEnabled
+            enabledStudySources = settings.enabledStudySources
 
             if selectedProvider == .local {
                 Task {
@@ -773,7 +803,8 @@ public struct AISettingsSheet: View {
         settings.notesProvider = notesSelectedProvider
         settings.notesModel = notesSelectedModel
 
-        settings.isWikipediaGroundingEnabled = isWikipediaGroundingEnabled
+        settings.enabledStudySources = enabledStudySources
+        settings.isWikipediaGroundingEnabled = enabledStudySources.contains(.wikipedia)
     }
 }
 

@@ -8,6 +8,7 @@ public struct NotesAIAssistantView: View {
     @State private var selectedMode: NotesGenerationMode = .expandSubtopics
     @State private var selectedDestination: HierarchyDestination = .both
     @State private var customPrompt: String = ""
+    @State private var activeStudySources: [StudyGroundingSource] = AISettings.shared.enabledStudySources
 
     @State private var isGenerating: Bool = false
     @State private var errorMessage: String? = nil
@@ -124,11 +125,11 @@ public struct NotesAIAssistantView: View {
                             .background((settings.activeNotesProvider == .local ? Color.green : Color.blue).opacity(0.1))
                             .cornerRadius(4)
 
-                            if settings.isWikipediaGroundingEnabled {
+                            if !activeStudySources.isEmpty {
                                 HStack(spacing: 3) {
-                                    Image(systemName: "globe")
+                                    Image(systemName: "books.vertical.fill")
                                         .font(.system(size: 9))
-                                    Text("Wiki Grounded")
+                                    Text("\(activeStudySources.count) Grounded Source\(activeStudySources.count == 1 ? "" : "s")")
                                         .font(.system(size: 9, weight: .medium))
                                 }
                                 .foregroundColor(.teal)
@@ -209,6 +210,115 @@ public struct NotesAIAssistantView: View {
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
+
+                    // Study Grounding Sources Selection
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "books.vertical.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.purple)
+                                Text("STUDY KNOWLEDGE SOURCES")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text("\(activeStudySources.count) active")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+
+                        // Quick Presets Bar
+                        HStack(spacing: 4) {
+                            Button("All") {
+                                activeStudySources = StudyGroundingSource.allCases
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.purple)
+
+                            Text("•").foregroundColor(.secondary).font(.system(size: 9))
+
+                            Button("STEM") {
+                                activeStudySources = [.wikipedia, .openAlex]
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.purple)
+
+                            Text("•").foregroundColor(.secondary).font(.system(size: 9))
+
+                            Button("BioMed") {
+                                activeStudySources = [.wikipedia, .europePMC]
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.purple)
+
+                            Text("•").foregroundColor(.secondary).font(.system(size: 9))
+
+                            Button("None") {
+                                activeStudySources = []
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                        }
+
+                        // Source toggle cards
+                        VStack(spacing: 5) {
+                            ForEach(StudyGroundingSource.allCases) { source in
+                                let isSelected = activeStudySources.contains(source)
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        if let idx = activeStudySources.firstIndex(of: source) {
+                                            activeStudySources.remove(at: idx)
+                                        } else {
+                                            activeStudySources.append(source)
+                                        }
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(isSelected ? .purple : .secondary.opacity(0.6))
+
+                                        Image(systemName: source.systemIcon)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(isSelected ? .primary : .secondary)
+                                            .frame(width: 14)
+
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(source.displayName)
+                                                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                                                .foregroundColor(isSelected ? .primary : .secondary)
+
+                                            Text(source.subtitle)
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(isSelected ? Color.purple.opacity(0.08) : Color(NSColor.textBackgroundColor).opacity(0.4))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(isSelected ? Color.purple.opacity(0.3) : Color.secondary.opacity(0.12), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
 
                     // API Key Status Alert if missing
                     if !settings.hasNotesAPIKey {
@@ -331,7 +441,8 @@ public struct NotesAIAssistantView: View {
                     currentNoteTitle: title,
                     currentNoteContent: content,
                     mode: selectedMode,
-                    customInstruction: customPrompt.isEmpty ? nil : customPrompt
+                    customInstruction: customPrompt.isEmpty ? nil : customPrompt,
+                    selectedSources: activeStudySources
                 )
 
                 await MainActor.run {

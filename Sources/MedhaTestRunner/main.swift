@@ -1396,6 +1396,126 @@ struct TestRunner {
 
         print("✅ testGraphViewAndPhysicsEngine passed")
 
-        print("\n🎉 ALL 27 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 28. Hybrid Free Study Grounding & Reasoning Model Sanitization
+        // ==========================================
+        print("\n--- Running Suite 28: Hybrid Free Study Grounding & Reasoning Model Sanitization ---")
+
+        // 28.1: Inverted Index & HTML Stripping Helpers
+        let mockIndex: [String: [Int]] = [
+            "Quantum": [0],
+            "Computing": [1],
+            "is": [2],
+            "Fast": [3]
+        ]
+        let reconstructed = StudyKnowledgeService.reconstructInvertedIndex(mockIndex)
+        assert(reconstructed == "Quantum Computing is Fast", "Failed: Inverted index reconstruction")
+
+        let rawHtml = "A measure of <a href=\"#\">disorder</a> in a <b>system</b>."
+        let stripped = StudyKnowledgeService.stripHTML(rawHtml)
+        assert(stripped == "A measure of disorder in a system.", "Failed: HTML tag stripping")
+
+        // 28.2: Study Knowledge Service Queries
+        let studyService = StudyKnowledgeService.shared
+        print("Testing OpenAlex Academic Fetcher...")
+        let alexSnippet = await studyService.fetchSnippet(for: "Quantum computing", source: .openAlex, isCompactBudget: true)
+        assert(alexSnippet != nil, "Failed: OpenAlex snippet for Quantum computing")
+        assert(alexSnippet?.source == .openAlex, "Failed: OpenAlex snippet source type")
+        assert(alexSnippet?.summary.isEmpty == false, "Failed: OpenAlex summary should not be empty")
+        assert(alexSnippet!.summary.count <= 500, "Failed: OpenAlex compact budget limit")
+
+        print("Testing Europe PMC Fetcher...")
+        let pmcSnippet = await studyService.fetchSnippet(for: "CRISPR", source: .europePMC, isCompactBudget: true)
+        assert(pmcSnippet != nil, "Failed: Europe PMC snippet for CRISPR")
+        assert(pmcSnippet?.source == .europePMC, "Failed: Europe PMC source type")
+        assert(pmcSnippet?.summary.isEmpty == false, "Failed: Europe PMC summary should not be empty")
+        assert(pmcSnippet!.summary.count <= 500, "Failed: Europe PMC compact budget limit")
+
+        print("Testing Wiktionary Fetcher...")
+        let wikiDef = await studyService.fetchSnippet(for: "entropy", source: .wiktionary, isCompactBudget: true)
+        assert(wikiDef != nil, "Failed: Wiktionary definition for entropy")
+        assert(wikiDef?.source == .wiktionary, "Failed: Wiktionary source type")
+        assert(wikiDef?.summary.contains("•") == true, "Failed: Wiktionary definitions should contain bullets")
+
+        // 28.3: Multi-Source Concurrency & Caching
+        print("Testing Multi-Source Parallel Fetch...")
+        let multiSnippets = await studyService.fetchGroundedKnowledge(
+            for: "Quantum computing",
+            sources: [.wikipedia, .openAlex],
+            isCompactBudget: true
+        )
+        assert(multiSnippets.count >= 1, "Failed: Multi-source parallel fetch should return snippets")
+
+        // 28.4: Reasoning Model (<think>) Sanitization in Socratic & Hierarchy Parsers
+        print("Testing Reasoning Model <think> Tag Sanitization...")
+        let r1SocraticOutput = """
+        <think>
+        The user correctly remembered that Raft uses heartbeats and leader election.
+        However, they omitted the log matching property.
+        Rating should be 3.
+        </think>
+        ```json
+        {
+          "isSpotOn": true,
+          "status": "spot_on",
+          "feedback": "Great understanding of the consensus mechanism!",
+          "suggestedRating": 3
+        }
+        ```
+        """
+        let eval = try AISocraticService.shared.parseEvaluationJSON(rawText: r1SocraticOutput)
+        assert(eval.isSpotOn == true, "Failed: DeepSeek-R1 evaluation isSpotOn")
+        assert(eval.suggestedRating == 3, "Failed: DeepSeek-R1 evaluation rating")
+        assert(eval.feedback.contains("Great understanding"), "Failed: DeepSeek-R1 evaluation feedback")
+
+        let r1HierarchyOutput = """
+        <think>
+        Decomposing Quantum Computing into qubits, entanglement, and algorithms.
+        Outputting JSON tree.
+        </think>
+        {
+          "overview": "Comprehensive foundation of quantum computing principles.",
+          "items": [
+            {
+              "title": "Qubits and Superposition",
+              "blocks": [
+                {
+                  "typeString": "paragraph",
+                  "content": "A qubit can exist in a superposition of states."
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+        """
+        let hierResult = try AISocraticService.shared.parseHierarchicalJSON(rawText: r1HierarchyOutput, fallbackTitle: "Quantum")
+        assert(hierResult.items.count == 1, "Failed: DeepSeek-R1 hierarchy items count")
+        assert(hierResult.items.first?.title == "Qubits and Superposition", "Failed: DeepSeek-R1 node title")
+
+        // 28.5: Parameter-Aware Model Budgeting Check
+        let settings = AISettings.shared
+        assert(settings.isCompactContextModel(model: "qwen2.5:1.5b") == true, "Failed: qwen2.5:1.5b is compact")
+        assert(settings.isCompactContextModel(model: "deepseek-r1:1.5b") == true, "Failed: deepseek-r1:1.5b is compact")
+        assert(settings.isCompactContextModel(model: "llama3.2:1b") == true, "Failed: llama3.2:1b is compact")
+        assert(settings.isCompactContextModel(model: "llama3.2:3b") == true, "Failed: llama3.2:3b is compact")
+        assert(settings.isCompactContextModel(model: "mistral:7b") == false, "Failed: mistral:7b is not compact")
+        assert(settings.isCompactContextModel(model: "gemini-3.6-flash") == false, "Failed: gemini-3.6-flash is not compact")
+
+        // 28.6: Study Grounding Sources Toggle & Sync
+        let initialSources = settings.enabledStudySources
+        settings.enabledStudySources = [.wikipedia, .openAlex]
+        assert(settings.isStudySourceEnabled(.wikipedia) == true, "Failed: Wikipedia should be enabled")
+        assert(settings.isStudySourceEnabled(.openAlex) == true, "Failed: OpenAlex should be enabled")
+        assert(settings.isStudySourceEnabled(.europePMC) == false, "Failed: Europe PMC should be disabled initially")
+
+        settings.toggleStudySource(.europePMC)
+        assert(settings.isStudySourceEnabled(.europePMC) == true, "Failed: Europe PMC should be enabled after toggle")
+
+        settings.enabledStudySources = initialSources
+
+        print("✅ testHybridStudyGroundingAndReasoningSanitization passed")
+
+        print("\n🎉 ALL 28 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }

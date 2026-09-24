@@ -50,6 +50,11 @@ ollama run qwen2.5:1.5b
 *(File size: ~986 MB. Once downloaded, you can type `/bye` to exit the terminal chat; Ollama stays running in the background).*
 
 #### Alternative Models:
+- **DeepSeek-R1 (1.5B)** (Distilled reasoning model with Chain-of-Thought, ~1.1 GB):
+  ```bash
+  ollama run deepseek-r1:1.5b
+  ```
+  *Medha automatically strips `<think>...</think>` internal tokens, delivering deep analytical Socratic feedback.*
 - **Llama 3.2 (1B)** (Meta's ultra-compact model, ~1.3 GB):
   ```bash
   ollama run llama3.2:1b
@@ -57,6 +62,14 @@ ollama run qwen2.5:1.5b
 - **Llama 3.2 (3B)** (Balanced quality and speed, ~2.0 GB):
   ```bash
   ollama run llama3.2:3b
+  ```
+- **DeepSeek-R1 (7B)** (High-powered reasoning for 16 GB Macs, ~4.7 GB):
+  ```bash
+  ollama run deepseek-r1:7b
+  ```
+- **Qwen 2.5 (7B)** (Exceptional multi-source synthesis, ~4.7 GB):
+  ```bash
+  ollama run qwen2.5:7b
   ```
 - **SmolLM2 (1.7B)** (Compact, high efficiency, ~1.0 GB):
   ```bash
@@ -78,18 +91,22 @@ ollama run qwen2.5:1.5b
 3. In the Settings Sheet, configure the provider:
    - **Provider**: Select **`Local AI (Ollama / Self-Hosted)`**.
    - **Endpoint URL**: `http://localhost:11434/v1` *(pre-filled by default)*.
-   - **Model**: Select `qwen2.5:1.5b` (or type the name of the model you pulled in Step 2).
+   - **Model**: Select `qwen2.5:1.5b` or `deepseek-r1:1.5b` (or type any model you pulled in Step 2).
    - **API Key**: Leave blank (no API key needed for local execution).
 
 ---
 
-### Step 4: Enable Free Wikipedia Knowledge Grounding (Optional but Recommended)
+### Step 4: Choose Your Free Study Grounding Sources (Interactive & 100% Free)
 
-Under the **Factual Knowledge Grounding** section in the settings sheet:
-- Toggle **`Free Wikipedia Knowledge Grounding`** to **ON**.
+When generating downward notes in the **Notes AI Assistant** or reviewing flashcards, you can choose which free reference sources ground your AI:
 
-> **Why this matters for small models**:
-> Models that fit into 4 GB of RAM (like 1.5B or 1B parameters) have limited world trivia baked into their neural weights. When this option is enabled, Medha queries Wikipedia's free public API on the fly for keywords in your notes/cards and injects authoritative facts into the model's prompt. You get the privacy and speed of a tiny local model with the factual accuracy of Wikipedia!
+- 🌐 **Wikipedia**: Encyclopedic overview & conceptual foundations
+- 🎓 **OpenAlex / CrossRef Academic**: 250M+ scholarly research papers across STEM, computer science, math, and humanities
+- 🧬 **Europe PMC**: Biomedical, clinical, and life sciences research abstracts
+- 📖 **Wiktionary**: High-precision terminology definitions and etymology
+
+> **Parameter-Aware Budgeting**:
+> Small 1.5B–3B models have limited context attention. Medha automatically budgets extracts to ~400–500 concise characters per source for 1.5B models so they remain razor-focused and adhere strictly to JSON output formatting without hallucinations. On 7B+ models, richer abstracts and citations are injected.
 
 ---
 

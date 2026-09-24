@@ -45,6 +45,9 @@ public struct BlockEditorView: View {
                                     store.focusedBlockId = nil
                                     isTitleFocused = true
                                 }
+
+                                // Living Folder Command Hub Status Badges
+                                livingFolderHubView(doc: doc)
                             }
                             .padding(.bottom, 6)
 
@@ -77,6 +80,8 @@ public struct BlockEditorView: View {
                             // Flashcards Attached to this Folder / Note
                             flashcardsSectionView(doc: doc)
                         }
+                        .frame(maxWidth: 740)
+                        .frame(maxWidth: .infinity, alignment: .top)
                         .padding(.horizontal, 36)
                         .padding(.top, 24)
                         .padding(.bottom, 48)
@@ -217,6 +222,75 @@ public struct BlockEditorView: View {
             .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
             .cornerRadius(4)
         }
+    }
+
+    private func livingFolderHubView(doc: Block) -> some View {
+        let children = store.getChildDocuments(for: doc.id)
+        let cards = store.flashcardsForCurrentDoc
+        let words = docWordCount()
+        let estReadTime = max(1, Int(ceil(Double(words) / 200.0)))
+        let hasPalaceAnchors = store.loci.contains(where: { locus in
+            store.getFlashcards(for: locus.id).contains(where: { $0.docId == doc.id })
+        })
+
+        return HStack(spacing: 8) {
+            // Subfolders count badge
+            HStack(spacing: 4) {
+                Image(systemName: children.isEmpty ? "folder" : "folder.fill")
+                    .font(.system(size: 10))
+                Text("\(children.count) Sub-notes")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .foregroundColor(.secondary)
+            .cornerRadius(6)
+
+            // Flashcards count badge
+            HStack(spacing: 4) {
+                Image(systemName: "rectangle.on.rectangle.angled")
+                    .font(.system(size: 10))
+                Text("\(cards.count) Cards")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(cards.isEmpty ? Color(NSColor.controlBackgroundColor).opacity(0.6) : Color.accentColor.opacity(0.12))
+            .foregroundColor(cards.isEmpty ? .secondary : .accentColor)
+            .cornerRadius(6)
+
+            // Reading estimate badge
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.system(size: 10))
+                Text("~\(estReadTime) min read")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .foregroundColor(.secondary)
+            .cornerRadius(6)
+
+            // Memory Palace link badge if applicable
+            if hasPalaceAnchors {
+                HStack(spacing: 4) {
+                    Image(systemName: "building.columns.fill")
+                        .font(.system(size: 10))
+                    Text("Palace Anchored")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.purple.opacity(0.12))
+                .foregroundColor(.purple)
+                .cornerRadius(6)
+            }
+
+            Spacer()
+        }
+        .padding(.top, 2)
     }
 
     private func subfoldersGalleryView(doc: Block) -> some View {

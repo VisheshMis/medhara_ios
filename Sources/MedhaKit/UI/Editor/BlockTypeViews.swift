@@ -8,6 +8,7 @@ public struct ParagraphBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
     public let onTab: () -> Void
     public let onShiftTab: () -> Void
     public let onArrowUp: () -> Void
@@ -35,6 +36,7 @@ public struct ParagraphBlockView: View {
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
                 onTab: onTab,
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
@@ -181,6 +183,7 @@ public struct HeadingBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
     public let onArrowUp: () -> Void
     public let onArrowDown: () -> Void
 
@@ -209,6 +212,7 @@ public struct HeadingBlockView: View {
             placeholder: block.type.placeholder,
             onCommitReturn: onCommitReturn,
             onDeleteEmpty: onDeleteEmpty,
+            onDeleteAtStart: onDeleteAtStart,
             onArrowUp: onArrowUp,
             onArrowDown: onArrowDown,
             onFocus: {
@@ -227,6 +231,7 @@ public struct TaskBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
     public let onTab: () -> Void
     public let onShiftTab: () -> Void
     public let onArrowUp: () -> Void
@@ -279,6 +284,7 @@ public struct TaskBlockView: View {
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
                 onTab: onTab,
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
@@ -300,6 +306,7 @@ public struct BulletBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
     public let onTab: () -> Void
     public let onShiftTab: () -> Void
     public let onArrowUp: () -> Void
@@ -340,6 +347,7 @@ public struct BulletBlockView: View {
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
                 onTab: onTab,
                 onShiftTab: onShiftTab,
                 onArrowUp: onArrowUp,
@@ -427,6 +435,7 @@ public struct QuoteBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
     public let onArrowUp: () -> Void
     public let onArrowDown: () -> Void
 
@@ -447,6 +456,7 @@ public struct QuoteBlockView: View {
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
                 onArrowUp: onArrowUp,
                 onArrowDown: onArrowDown,
                 onFocus: {
@@ -467,6 +477,7 @@ public struct CalloutBlockView: View {
     public let isFocused: Bool
     public let onCommitReturn: () -> Void
     public let onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void = {}
 
     // Light Neo Green palette
     private let neoGreen = Color(red: 0.16, green: 0.86, blue: 0.53)
@@ -501,6 +512,7 @@ public struct CalloutBlockView: View {
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
                 onFocus: {
                     store.focusedBlockId = block.id
                 }

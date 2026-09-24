@@ -9,6 +9,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
     public var placeholder: String
     public var onCommitReturn: () -> Void
     public var onDeleteEmpty: () -> Void
+    public var onDeleteAtStart: () -> Void
     public var onTab: () -> Void
     public var onShiftTab: () -> Void
     public var onArrowUp: () -> Void
@@ -25,6 +26,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         placeholder: String = "",
         onCommitReturn: @escaping () -> Void = {},
         onDeleteEmpty: @escaping () -> Void = {},
+        onDeleteAtStart: @escaping () -> Void = {},
         onTab: @escaping () -> Void = {},
         onShiftTab: @escaping () -> Void = {},
         onArrowUp: @escaping () -> Void = {},
@@ -40,6 +42,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         self.placeholder = placeholder
         self.onCommitReturn = onCommitReturn
         self.onDeleteEmpty = onDeleteEmpty
+        self.onDeleteAtStart = onDeleteAtStart
         self.onTab = onTab
         self.onShiftTab = onShiftTab
         self.onArrowUp = onArrowUp
@@ -243,9 +246,14 @@ public final class CustomNSTextView: NSTextView {
         }
 
         // Backspace / Delete (Keycode 51)
-        if event.keyCode == 51 && string.isEmpty {
-            parent.onDeleteEmpty()
-            return
+        if event.keyCode == 51 {
+            if string.isEmpty {
+                parent.onDeleteEmpty()
+                return
+            } else if selectedRange().location == 0 && selectedRange().length == 0 {
+                parent.onDeleteAtStart()
+                return
+            }
         }
 
         // Tab (Keycode 48)

@@ -1001,6 +1001,7 @@ public struct FlashcardStudySessionView: View {
     @State private var isAIEvaluating: Bool = false
     @State private var evaluationError: String? = nil
     @State private var latestEvaluation: AISocraticEvaluation? = nil
+    @FocusState private var isWrittenInputFocused: Bool
 
     public init(store: BlockStore, deck: Deck? = nil, onDismiss: @escaping () -> Void) {
         self.store = store
@@ -1097,6 +1098,26 @@ public struct FlashcardStudySessionView: View {
             }
             .padding(14)
             .background(Color(NSColor.windowBackgroundColor))
+
+            // Top Study Progress Bar
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.12))
+                        .frame(height: 3)
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.accentColor, Color.purple],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: sessionCards.isEmpty ? 0 : g.size.width * CGFloat(currentIndex + 1) / CGFloat(sessionCards.count), height: 3)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentIndex)
+                }
+            }
+            .frame(height: 3)
 
             Divider()
 
@@ -1240,6 +1261,7 @@ public struct FlashcardStudySessionView: View {
                                     }
 
                                     TextEditor(text: $writtenAnswer)
+                                        .focused($isWrittenInputFocused)
                                         .font(.system(size: 13))
                                         .frame(minHeight: 65, maxHeight: 95)
                                         .padding(4)
@@ -1279,14 +1301,15 @@ public struct FlashcardStudySessionView: View {
 
                                         Spacer()
 
-                                        Button("Skip AI / Reveal Answer") {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                        Button("Skip AI / Reveal Answer (Space)") {
+                                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                                                 isAnswerRevealed = true
                                             }
                                         }
                                         .buttonStyle(.plain)
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
+                                        .keyboardShortcut(.space, modifiers: [])
                                     }
                                 }
                                 .padding(.top, 4)
@@ -1340,6 +1363,7 @@ public struct FlashcardStudySessionView: View {
                             }
                         }
                         .padding(26)
+                        .rotation3DEffect(.degrees(isAnswerRevealed ? 180 : 0), axis: (x: 0, y: 1, z: 0))
                     }
                     .frame(maxWidth: 620, maxHeight: 520)
                     .background(Color(NSColor.controlBackgroundColor))
@@ -1349,6 +1373,11 @@ public struct FlashcardStudySessionView: View {
                         RoundedRectangle(cornerRadius: 14)
                             .stroke(latestEvaluation?.isSpotOn == true ? Color.green.opacity(0.5) : Color(NSColor.separatorColor), lineWidth: latestEvaluation?.isSpotOn == true ? 2 : 1)
                     )
+                    .rotation3DEffect(
+                        .degrees(isAnswerRevealed ? 180 : 0),
+                        axis: (x: 0, y: 1, z: 0),
+                        perspective: 0.5
+                    )
 
                     Spacer()
 
@@ -1356,7 +1385,7 @@ public struct FlashcardStudySessionView: View {
                     if !isAnswerRevealed {
                         if !isSocraticActiveForCurrentCard {
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                                     isAnswerRevealed = true
                                 }
                             }) {
@@ -1376,23 +1405,37 @@ public struct FlashcardStudySessionView: View {
                                 Button(action: {
                                     handleRating(rating)
                                 }) {
-                                    VStack(spacing: 2) {
+                                    VStack(spacing: 4) {
                                         HStack(spacing: 4) {
+                                            Text("\(rating.rawValue)")
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(buttonColor(for: rating).opacity(0.18))
+                                                .foregroundColor(buttonColor(for: rating))
+                                                .cornerRadius(3)
+
                                             Text(rating.displayName)
-                                                .font(.system(size: 12, weight: .bold))
+                                                .font(.system(size: 13, weight: .bold))
+
                                             if latestEvaluation?.suggestedRating == rating.rawValue {
                                                 Image(systemName: "sparkles")
                                                     .font(.system(size: 9))
                                                     .foregroundColor(.green)
                                             }
                                         }
+
                                         if let days = intervals[rating] {
                                             Text(days == 1 ? "1 day" : "\(days) days")
-                                                .font(.system(size: 10))
-                                                .opacity(0.8)
+                                                .font(.system(size: 10, weight: .semibold))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(buttonColor(for: rating).opacity(0.12))
+                                                .foregroundColor(buttonColor(for: rating))
+                                                .cornerRadius(4)
                                         }
                                     }
-                                    .frame(minWidth: 80, minHeight: 42)
+                                    .frame(minWidth: 92, minHeight: 46)
                                 }
                                 .buttonStyle(.bordered)
                                 .tint(buttonColor(for: rating))
@@ -1425,6 +1468,11 @@ public struct FlashcardStudySessionView: View {
             evaluationError = nil
             latestEvaluation = nil
             isAISocraticActive = aiSettings.isSocraticEnabled
+            if isSocraticActiveForCurrentCard && !isAnswerRevealed {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    isWrittenInputFocused = true
+                }
+            }
         }
     }
 
@@ -1461,7 +1509,7 @@ public struct FlashcardStudySessionView: View {
                     writtenAnswer = ""
 
                     if eval.isSpotOn {
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                             isAnswerRevealed = true
                         }
                     }
@@ -1480,7 +1528,7 @@ public struct FlashcardStudySessionView: View {
         _ = store.rateFlashcard(id: card.id, rating: rating)
 
         if currentIndex + 1 < sessionCards.count {
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                 currentIndex += 1
                 isAnswerRevealed = false
                 writtenAnswer = ""
@@ -1488,6 +1536,11 @@ public struct FlashcardStudySessionView: View {
                 isAIEvaluating = false
                 evaluationError = nil
                 latestEvaluation = nil
+            }
+            if isSocraticActiveForCurrentCard {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    isWrittenInputFocused = true
+                }
             }
         } else {
             onDismiss()

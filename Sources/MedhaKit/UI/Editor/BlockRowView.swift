@@ -105,6 +105,7 @@ public struct BlockRowView: View {
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
                         onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
                         onArrowUp: handleArrowUp,
                         onArrowDown: handleArrowDown
                     )
@@ -115,6 +116,7 @@ public struct BlockRowView: View {
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
                         onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
                         onTab: { store.indentBlock(id: block.id) },
                         onShiftTab: { store.outdentBlock(id: block.id) },
                         onArrowUp: handleArrowUp,
@@ -133,6 +135,7 @@ public struct BlockRowView: View {
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
                         onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
                         onTab: { store.indentBlock(id: block.id) },
                         onShiftTab: { store.outdentBlock(id: block.id) },
                         onArrowUp: handleArrowUp,
@@ -145,6 +148,7 @@ public struct BlockRowView: View {
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
                         onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
                         onTab: { store.indentBlock(id: block.id) },
                         onShiftTab: { store.outdentBlock(id: block.id) },
                         onArrowUp: handleArrowUp,
@@ -165,6 +169,7 @@ public struct BlockRowView: View {
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
                         onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
                         onArrowUp: handleArrowUp,
                         onArrowDown: handleArrowDown
                     )
@@ -174,7 +179,8 @@ public struct BlockRowView: View {
                         block: block,
                         isFocused: isFocused,
                         onCommitReturn: handleCommitReturn,
-                        onDeleteEmpty: handleDeleteEmpty
+                        onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart
                     )
                 case .blockRef:
                     BlockRefView(store: store, block: block)
@@ -257,6 +263,25 @@ public struct BlockRowView: View {
             return
         }
         store.deleteBlock(id: block.id)
+    }
+
+    private func handleDeleteAtStart() {
+        if indentLevel > 0 {
+            store.outdentBlock(id: block.id)
+            return
+        }
+        if block.type != .paragraph {
+            store.convertBlockType(id: block.id, to: .paragraph)
+            return
+        }
+        // If it's a paragraph and cursor is at index 0, merge with previous block if index > 0
+        if let index = store.blocks.firstIndex(where: { $0.id == block.id }), index > 0 {
+            let prevBlock = store.blocks[index - 1]
+            let mergedContent = prevBlock.content + block.content
+            store.updateBlockContent(id: prevBlock.id, content: mergedContent)
+            store.deleteBlock(id: block.id)
+            store.focusedBlockId = prevBlock.id
+        }
     }
 
     private func handleArrowUp() {

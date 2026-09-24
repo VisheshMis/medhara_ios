@@ -32,7 +32,17 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
         case .openai:
             return ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
         case .local:
-            return ["qwen2.5:1.5b", "llama3.2:1b", "llama3.2:3b", "smollm2:1.7b", "mistral:7b"]
+            return [
+                "qwen2.5:1.5b",
+                "deepseek-r1:1.5b",
+                "llama3.2:1b",
+                "llama3.2:3b",
+                "deepseek-r1:7b",
+                "qwen2.5:7b",
+                "llama3.1:8b",
+                "smollm2:1.7b",
+                "mistral:7b"
+            ]
         }
     }
 
@@ -61,6 +71,7 @@ public final class AISettings: ObservableObject {
     private let keyLocalEndpoint = "medha_ai_local_endpoint"
     private let keyNotesLocalEndpoint = "medha_notes_ai_local_endpoint"
     private let keyWikipediaGrounding = "medha_ai_wikipedia_grounding"
+    private let keyStudySources = "medha_ai_study_sources"
 
     @Published public var apiKey: String {
         didSet { UserDefaults.standard.set(apiKey, forKey: keyApiKey) }
@@ -91,9 +102,28 @@ public final class AISettings: ObservableObject {
         didSet { UserDefaults.standard.set(notesLocalEndpoint, forKey: keyNotesLocalEndpoint) }
     }
 
-    // Free Online Wikipedia Grounding
+    // Free Online Wikipedia Grounding (Legacy toggle)
     @Published public var isWikipediaGroundingEnabled: Bool {
-        didSet { UserDefaults.standard.set(isWikipediaGroundingEnabled, forKey: keyWikipediaGrounding) }
+        didSet {
+            UserDefaults.standard.set(isWikipediaGroundingEnabled, forKey: keyWikipediaGrounding)
+            if isWikipediaGroundingEnabled && !enabledStudySources.contains(.wikipedia) {
+                enabledStudySources.append(.wikipedia)
+            } else if !isWikipediaGroundingEnabled && enabledStudySources.contains(.wikipedia) {
+                enabledStudySources.removeAll { $0 == .wikipedia }
+            }
+        }
+    }
+
+    // Hybrid Free Study Grounding Sources (Wikipedia, OpenAlex, Europe PMC, Wiktionary)
+    @Published public var enabledStudySources: [StudyGroundingSource] {
+        didSet {
+            let rawList = enabledStudySources.map { $0.rawValue }
+            UserDefaults.standard.set(rawList, forKey: keyStudySources)
+            let containsWiki = enabledStudySources.contains(.wikipedia)
+            if isWikipediaGroundingEnabled != containsWiki {
+                UserDefaults.standard.set(containsWiki, forKey: keyWikipediaGrounding)
+            }
+        }
     }
 
     // Notes AI Settings
@@ -135,6 +165,13 @@ public final class AISettings: ObservableObject {
             ? UserDefaults.standard.bool(forKey: keyWikipediaGrounding)
             : true
 
+        let defaultRawSources = [StudyGroundingSource.wikipedia.rawValue, StudyGroundingSource.openAlex.rawValue]
+        let savedSourcesRaw = UserDefaults.standard.stringArray(forKey: keyStudySources) ?? defaultRawSources
+        var loadedSources = savedSourcesRaw.compactMap { StudyGroundingSource(rawValue: $0) }
+        if loadedSources.isEmpty && wikiGrounding {
+            loadedSources = [.wikipedia]
+        }
+
         let useSharedForNotes = UserDefaults.standard.object(forKey: keyUseFlashcardSettingsForNotes) != nil
             ? UserDefaults.standard.bool(forKey: keyUseFlashcardSettingsForNotes)
             : true
@@ -155,11 +192,29 @@ public final class AISettings: ObservableObject {
         self.localEndpoint = savedLocalEp
         self.notesLocalEndpoint = savedNotesLocalEp
         self.isWikipediaGroundingEnabled = wikiGrounding
+        self.enabledStudySources = loadedSources
 
         self.useFlashcardSettingsForNotes = useSharedForNotes
         self.notesApiKey = savedNotesKey
         self.notesProvider = notesProv
         self.notesModel = savedNotesModel
+    }
+
+    public func isStudySourceEnabled(_ source: StudyGroundingSource) -> Bool {
+        enabledStudySources.contains(source)
+    }
+
+    public func toggleStudySource(_ source: StudyGroundingSource) {
+        if let idx = enabledStudySources.firstIndex(of: source) {
+            enabledStudySources.remove(at: idx)
+        } else {
+            enabledStudySources.append(source)
+        }
+    }
+
+    public func isCompactContextModel(model: String) -> Bool {
+        let lower = model.lowercased()
+        return lower.contains("1b") || lower.contains("1.5b") || lower.contains("2b") || lower.contains("3b")
     }
 
     public var hasAPIKey: Bool {
@@ -356,9 +411,19 @@ public final class AISocraticService: Sendable {
         }
 
         var effectiveTargetAnswer = targetAnswer
-        if settings.isWikipediaGroundingEnabled {
-            if let wiki = await WikipediaService.shared.fetchSummary(for: question) {
-                effectiveTargetAnswer += "\n[Wikipedia Verified Knowledge: \(wiki.extract.prefix(800))]"
+        let isCompact = settings.isCompactContextModel(model: settings.model)
+        let activeSources = !settings.enabledStudySources.isEmpty
+            ? settings.enabledStudySources
+            : (settings.isWikipediaGroundingEnabled ? [.wikipedia] : [])
+
+        if !activeSources.isEmpty {
+            let snippets = await StudyKnowledgeService.shared.fetchGroundedKnowledge(
+                for: question,
+                sources: activeSources,
+                isCompactBudget: isCompact
+            )
+            for snippet in snippets {
+                effectiveTargetAnswer += "\n[\(snippet.source.displayName) Verified Knowledge: \(snippet.summary)]"
             }
         }
 
@@ -833,10 +898,24 @@ public final class AISocraticService: Sendable {
         return try parseEvaluationJSON(rawText: rawText)
     }
 
-    /// Parses raw JSON text into an AISocraticEvaluation object
-    public func parseEvaluationJSON(rawText: String) throws -> AISocraticEvaluation {
-        // Strip markdown code fences if LLM wrapped it in ```json ... ```
-        var clean = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Robustly sanitizes raw LLM output by removing reasoning blocks (<think>...</think>),
+    /// stripping markdown code fences, and isolating the innermost JSON payload.
+    public static func sanitizeLLMJSONOutput(_ rawText: String) -> String {
+        var clean = rawText
+        // 1. Strip reasoning blocks from models like DeepSeek-R1, QwQ, etc. (<think> ... </think>)
+        clean = clean.replacingOccurrences(
+            of: "<think>[\\s\\S]*?</think>",
+            with: "",
+            options: .regularExpression
+        )
+        // If unclosed <think> tag at start
+        if let thinkStart = clean.range(of: "<think>") {
+            clean = String(clean[..<thinkStart.lowerBound])
+        }
+
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 2. Strip markdown code fences (```json ... ``` or ``` ... ```)
         if clean.hasPrefix("```json") {
             clean = String(clean.dropFirst(7))
         } else if clean.hasPrefix("```") {
@@ -846,6 +925,20 @@ public final class AISocraticService: Sendable {
             clean = String(clean.dropLast(3))
         }
         clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 3. Fallback: If there is leading/trailing conversational text outside the first { and last }, isolate it
+        if let firstBrace = clean.firstIndex(of: "{"),
+           let lastBrace = clean.lastIndex(of: "}"),
+           firstBrace <= lastBrace {
+            clean = String(clean[firstBrace...lastBrace])
+        }
+
+        return clean.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Parses raw JSON text into an AISocraticEvaluation object
+    public func parseEvaluationJSON(rawText: String) throws -> AISocraticEvaluation {
+        let clean = Self.sanitizeLLMJSONOutput(rawText)
 
         guard let data = clean.data(using: .utf8) else {
             throw ServiceError.parsingError("Could not convert text to data.")
@@ -930,7 +1023,8 @@ public final class AISocraticService: Sendable {
         currentNoteTitle: String,
         currentNoteContent: String,
         mode: NotesGenerationMode,
-        customInstruction: String? = nil
+        customInstruction: String? = nil,
+        selectedSources: [StudyGroundingSource]? = nil
     ) async throws -> HierarchicalGenerationResult {
         let settings = AISettings.shared
         guard settings.hasNotesAPIKey else {
@@ -940,11 +1034,13 @@ public final class AISocraticService: Sendable {
         let apiKey = settings.activeNotesApiKey
         let provider = settings.activeNotesProvider
         let model = settings.activeNotesModel
+        let isCompact = settings.isCompactContextModel(model: model)
 
         var promptBuilder = "### ACTIVE CURRENT NOTE (ROOT OF NEW HIERARCHY)\n"
         promptBuilder += "- Current Title: \(currentNoteTitle)\n"
         if !currentNoteContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            promptBuilder += "- Current Note Body & Blocks:\n\(currentNoteContent.prefix(4000))\n"
+            let maxBody = isCompact ? 1500 : 4000
+            promptBuilder += "- Current Note Body & Blocks:\n\(currentNoteContent.prefix(maxBody))\n"
         } else {
             promptBuilder += "- Current Note Body: (Empty note, please expand from title)\n"
         }
@@ -962,17 +1058,36 @@ public final class AISocraticService: Sendable {
             promptBuilder += "Action: \(customInstruction ?? "Create structured hierarchical sub-notes downwards from this note.")\n"
         }
 
-        // Free Online Wikipedia Grounding
-        if settings.isWikipediaGroundingEnabled {
-            if let wiki = await WikipediaService.shared.fetchSummary(for: currentNoteTitle) {
-                promptBuilder += "\n### FACTUAL WIKIPEDIA GROUNDING (VERIFIED KNOWLEDGE)\n"
-                promptBuilder += "- Topic: \(wiki.title)\n"
-                if let desc = wiki.description {
-                    promptBuilder += "- Brief: \(desc)\n"
-                }
-                promptBuilder += "- Verified Summary: \(wiki.extract.prefix(1500))\n"
-                if let link = wiki.urlString {
-                    promptBuilder += "- Reference Link: \(link)\n"
+        // Hybrid Free Study Grounding
+        let activeSources: [StudyGroundingSource]
+        if let explicit = selectedSources {
+            activeSources = explicit
+        } else if !settings.enabledStudySources.isEmpty {
+            activeSources = settings.enabledStudySources
+        } else if settings.isWikipediaGroundingEnabled {
+            activeSources = [.wikipedia]
+        } else {
+            activeSources = []
+        }
+
+        if !activeSources.isEmpty {
+            let snippets = await StudyKnowledgeService.shared.fetchGroundedKnowledge(
+                for: currentNoteTitle,
+                sources: activeSources,
+                isCompactBudget: isCompact
+            )
+            if !snippets.isEmpty {
+                promptBuilder += "\n### FACTUAL STUDY GROUNDING (VERIFIED KNOWLEDGE)\n"
+                for snippet in snippets {
+                    promptBuilder += "[\(snippet.source.displayName)] \(snippet.title)\n"
+                    promptBuilder += "- Summary: \(snippet.summary)\n"
+                    if let citation = snippet.citation {
+                        promptBuilder += "- Citation: \(citation)\n"
+                    }
+                    if let link = snippet.urlString {
+                        promptBuilder += "- Reference Link: \(link)\n"
+                    }
+                    promptBuilder += "\n"
                 }
             }
         }
@@ -1153,16 +1268,7 @@ public final class AISocraticService: Sendable {
     }
 
     public func parseHierarchicalJSON(rawText: String, fallbackTitle: String = "Current Note") throws -> HierarchicalGenerationResult {
-        var clean = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.hasPrefix("```json") {
-            clean = String(clean.dropFirst(7))
-        } else if clean.hasPrefix("```") {
-            clean = String(clean.dropFirst(3))
-        }
-        if clean.hasSuffix("```") {
-            clean = String(clean.dropLast(3))
-        }
-        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = Self.sanitizeLLMJSONOutput(rawText)
 
         guard let data = clean.data(using: .utf8) else {
             throw ServiceError.parsingError("Could not convert text to data.")
