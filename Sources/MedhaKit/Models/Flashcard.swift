@@ -59,6 +59,7 @@ public struct Deck: Identifiable, Codable, Equatable, Sendable {
     public var colorHex: String
     public var icon: String
     public var isNotesDefault: Bool
+    public var presetId: String?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -69,6 +70,7 @@ public struct Deck: Identifiable, Codable, Equatable, Sendable {
         colorHex: String = "#3B82F6",
         icon: String = "rectangle.stack",
         isNotesDefault: Bool = false,
+        presetId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -78,6 +80,7 @@ public struct Deck: Identifiable, Codable, Equatable, Sendable {
         self.colorHex = colorHex
         self.icon = icon
         self.isNotesDefault = isNotesDefault
+        self.presetId = presetId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -100,6 +103,7 @@ extension Deck: FetchableRecord, PersistableRecord {
         public static let colorHex = Column(CodingKeys.colorHex)
         public static let icon = Column(CodingKeys.icon)
         public static let isNotesDefault = Column(CodingKeys.isNotesDefault)
+        public static let presetId = Column(CodingKeys.presetId)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
     }
@@ -125,8 +129,13 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
     public var lapses: Int
     public var lastReview: Date?
     public var due: Date
+    public var isSuspended: Bool?
     public var createdAt: Date
     public var updatedAt: Date
+
+    public var isEffectivelySuspended: Bool {
+        isSuspended ?? false
+    }
 
     public init(
         id: String = Flashcard.generateId(),
@@ -146,6 +155,7 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
         lapses: Int = 0,
         lastReview: Date? = nil,
         due: Date = Date(),
+        isSuspended: Bool? = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -166,6 +176,7 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
         self.lapses = lapses
         self.lastReview = lastReview
         self.due = due
+        self.isSuspended = isSuspended
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -175,7 +186,7 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
     }
 
     public var isDue: Bool {
-        due <= Date()
+        due <= Date() && !isEffectivelySuspended
     }
 }
 
@@ -201,6 +212,7 @@ extension Flashcard: FetchableRecord, PersistableRecord {
         public static let lapses = Column(CodingKeys.lapses)
         public static let lastReview = Column(CodingKeys.lastReview)
         public static let due = Column(CodingKeys.due)
+        public static let isSuspended = Column(CodingKeys.isSuspended)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
     }

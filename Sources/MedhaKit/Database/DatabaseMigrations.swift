@@ -250,5 +250,10 @@ public enum DatabaseMigrations {
             WHERE deckId IS NULL;
             """)
         }
+
+        migrator.registerMigration("v7_deck_options_and_card_flags") { db in
+            try db.execute(sql: "ALTER TABLE deck ADD COLUMN presetId TEXT;")
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN isSuspended BOOLEAN DEFAULT 0;")
+        }
     }
 }

@@ -1,78 +1,117 @@
 import SwiftUI
 import AppKit
-
+import UniformTypeIdentifiers
 
 public struct FlashcardManagerView: View {
     @ObservedObject public var store: BlockStore
+    @ObservedObject private var dailyTracker: DailyStudyTracker = DailyStudyTracker.shared
+    @ObservedObject private var optionsManager: DeckOptionsManager = DeckOptionsManager.shared
+
+    // Navigation View Mode (Decks vs Browse)
+    @State private var viewMode: FlashcardsViewMode = .decks
+    @State private var browseInitialDeckId: String? = nil
+
+    // Study Session State
     @State private var isStudyModeActive: Bool = false
+    @State private var studyTargetDeck: Deck? = nil
+
+    // Sheets & Modals
     @State private var isAddCardSheetPresented: Bool = false
     @State private var isCreateDeckSheetPresented: Bool = false
+    @State private var isEditDeckSheetPresented: Bool = false
+    @State private var editingDeck: Deck? = nil
+    @State private var isDeckOptionsSheetPresented: Bool = false
+    @State private var deckOptionsTarget: Deck? = nil
     @State private var isAISettingsSheetPresented: Bool = false
-    @State private var filterSelection: FlashcardFilter = .all
-    @State private var searchQuery: String = ""
-    @State private var notesViewMode: NotesDeckViewMode = .folders
 
-    public enum FlashcardFilter: String, CaseIterable, Identifiable {
-        case all = "All Cards"
-        case due = "Due for Review"
-        case newCards = "New"
-        case learning = "Learning"
-        case review = "Mastered"
+    // Anki Import State
+    @State private var isImportingAnki: Bool = false
+    @State private var importAlertTitle: String = ""
+    @State private var importAlertMessage: String = ""
+    @State private var isImportAlertPresented: Bool = false
 
-        public var id: String { rawValue }
-    }
+    // Decks View State
+    @State private var isNotesDeckExpanded: Bool = true
+    @State private var deckToDelete: Deck? = nil
+    @State private var isDeleteDeckAlertPresented: Bool = false
 
-    public enum NotesDeckViewMode: String, CaseIterable, Identifiable {
-        case folders = "Grouped by Note Folder"
-        case flat = "Flat Card List"
+    public enum FlashcardsViewMode: String, CaseIterable, Identifiable {
+        case decks = "Decks"
+        case browse = "Browse"
 
         public var id: String { rawValue }
+
+        public var icon: String {
+            switch self {
+            case .decks: return "rectangle.stack.fill"
+            case .browse: return "tablecells"
+            }
+        }
     }
 
     public init(store: BlockStore) {
         self.store = store
     }
 
-    private var currentDeck: Deck? {
-        store.selectedDeck
+    // MARK: - Computed Counts for Overview (respecting daily limits)
+    private var totalCardsCount: Int {
+        store.flashcards.count
     }
 
-    private var isNotesDeckSelected: Bool {
-        store.selectedDeckId == (store.defaultNotesDeck?.id ?? Deck.notesDefaultId)
-    }
-
-    private var isAllCardsSelected: Bool {
-        store.selectedDeckId == nil || store.selectedDeckId == "all"
-    }
-
-    private var deckCards: [Flashcard] {
-        store.flashcards(forDeck: store.selectedDeckId)
-    }
-
-    private var filteredCards: [Flashcard] {
-        var list = deckCards
-        switch filterSelection {
-        case .all:
-            break
-        case .due:
-            list = list.filter { $0.isDue }
-        case .newCards:
-            list = list.filter { $0.fsrsState == .newCard }
-        case .learning:
-            list = list.filter { $0.fsrsState == .learning || $0.fsrsState == .relearning }
-        case .review:
-            list = list.filter { $0.fsrsState == .review }
-        }
-
-        if !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            let q = searchQuery.lowercased()
-            list = list.filter {
-                $0.front.lowercased().contains(q) ||
-                $0.back.lowercased().contains(q) ||
-                ($0.hint?.lowercased().contains(q) ?? false)
+    private var cardsGroupedByDeck: [String: [Flashcard]] {
+        var dict: [String: [Flashcard]] = [:]
+        let notesDeckId = store.defaultNotesDeck?.id ?? Deck.notesDefaultId
+        for card in store.flashcards {
+            if let deckId = card.deckId {
+                dict[deckId, default: []].append(card)
+            } else if !card.docId.isEmpty {
+                dict[notesDeckId, default: []].append(card)
             }
         }
-        return list
+        return dict
+    }
+
+    private var deckStatistics: (newTotal: Int, learnTotal: Int, dueTotal: Int) {
+        let grouped = cardsGroupedByDeck
+        let notesDeck = store.defaultNotesDeck
+        let notesDeckId = notesDeck?.id ?? Deck.notesDefaultId
+        let notesCards = grouped[notesDeckId] ?? []
+        let notesOpts = optionsManager.options(forDeck: notesDeck)
+
+        var totalNew = dailyTracker.effectiveNewCards(from: notesCards, deckId: notesDeckId, options: notesOpts).count
+        var totalDue = dailyTracker.effectiveReviewCards(from: notesCards, deckId: notesDeckId, options: notesOpts).count
+        var totalLearn = 0
+
+        for card in store.flashcards where !card.isEffectivelySuspended {
+            if card.fsrsState == .learning || card.fsrsState == .relearning {
+                totalLearn += 1
+            }
+        }
+
+        for deck in store.decks {
+            let cards = grouped[deck.id] ?? []
+            let opts = optionsManager.options(forDeck: deck)
+            totalNew += dailyTracker.effectiveNewCards(from: cards, deckId: deck.id, options: opts).count
+            totalDue += dailyTracker.effectiveReviewCards(from: cards, deckId: deck.id, options: opts).count
+        }
+
+        return (totalNew, totalLearn, totalDue)
+    }
+
+    private var totalDueCount: Int {
+        deckStatistics.dueTotal
+    }
+
+    private var totalNewCount: Int {
+        deckStatistics.newTotal
+    }
+
+    private var totalLearningCount: Int {
+        deckStatistics.learnTotal
+    }
+
+    private var totalSessionCardsCount: Int {
+        totalNewCount + totalLearningCount + totalDueCount
     }
 
     public var body: some View {
@@ -80,16 +119,27 @@ public struct FlashcardManagerView: View {
             if isStudyModeActive {
                 FlashcardStudySessionView(
                     store: store,
-                    deck: isAllCardsSelected ? nil : currentDeck,
+                    deck: studyTargetDeck,
                     onDismiss: { isStudyModeActive = false }
                 )
             } else {
-                HSplitView {
-                    deckSidebarView
-                        .frame(minWidth: 230, idealWidth: 260, maxWidth: 320)
+                VStack(spacing: 0) {
+                    // Top Hub Header
+                    topHubNavigationBar
 
-                    deckDetailContentView
-                        .frame(minWidth: 500, maxWidth: .infinity, maxHeight: .infinity)
+                    Divider()
+
+                    // Main View Content
+                    switch viewMode {
+                    case .decks:
+                        centeredDecksHomeView
+                    case .browse:
+                        CardBrowserView(
+                            store: store,
+                            initialDeckId: browseInitialDeckId,
+                            onReturnToDecks: { viewMode = .decks }
+                        )
+                    }
                 }
             }
         }
@@ -106,637 +156,844 @@ public struct FlashcardManagerView: View {
                 isPresented: $isCreateDeckSheetPresented
             )
         }
+        .sheet(isPresented: $isEditDeckSheetPresented) {
+            if let deck = editingDeck {
+                EditDeckSheet(
+                    store: store,
+                    deck: deck,
+                    isPresented: $isEditDeckSheetPresented
+                )
+            }
+        }
+        .sheet(isPresented: $isDeckOptionsSheetPresented) {
+            DeckOptionsSheet(
+                store: store,
+                deck: deckOptionsTarget,
+                onDismiss: { isDeckOptionsSheetPresented = false }
+            )
+        }
         .sheet(isPresented: $isAISettingsSheetPresented) {
             AISettingsSheet(onDismiss: { isAISettingsSheetPresented = false })
         }
-    }
-
-    // MARK: - Deck Navigation Sidebar
-    private var deckSidebarView: some View {
-        VStack(spacing: 0) {
-            // Sidebar Header
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .foregroundColor(.accentColor)
-                        .font(.system(size: 13))
-                    Text("DECKS")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                Button(action: {
-                    isCreateDeckSheetPresented = true
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                        Text("New Deck")
-                    }
-                    .font(.system(size: 11, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+        .alert("Delete Deck", isPresented: $isDeleteDeckAlertPresented, presenting: deckToDelete) { deck in
+            Button("Delete Deck", role: .destructive) {
+                store.deleteDeck(id: deck.id)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(NSColor.windowBackgroundColor))
-
-            Divider()
-
-            ScrollView {
-                VStack(spacing: 14) {
-                    // System Smart Decks
-                    VStack(spacing: 4) {
-                        // All Cards
-                        deckRow(
-                            id: "all",
-                            title: "All Flashcards",
-                            subtitle: "Global library collection",
-                            icon: "rectangle.stack.fill",
-                            colorHex: "#6B7280",
-                            count: store.flashcards.count,
-                            dueCount: store.dueFlashcards.count,
-                            isSelected: isAllCardsSelected
-                        )
-
-                        // Notes & Documents Deck (Pinned Default)
-                        let notesDeckId = store.defaultNotesDeck?.id ?? Deck.notesDefaultId
-                        let notesCards = store.flashcards(forDeck: notesDeckId)
-                        let notesDue = notesCards.filter { $0.isDue }.count
-                        deckRow(
-                            id: notesDeckId,
-                            title: store.defaultNotesDeck?.name ?? "Notes & Documents",
-                            subtitle: "Auto-grouped from notes & folders",
-                            icon: store.defaultNotesDeck?.icon ?? "note.text",
-                            colorHex: store.defaultNotesDeck?.colorHex ?? "#3B82F6",
-                            count: notesCards.count,
-                            dueCount: notesDue,
-                            isSelected: store.selectedDeckId == notesDeckId
-                        )
+            Button("Cancel", role: .cancel) {}
+        } message: { deck in
+            Text("Are you sure you want to delete '\(deck.name)'? Flashcards will automatically be moved to 'Notes & Documents' so no cards are lost.")
+        }
+        .alert(importAlertTitle, isPresented: $isImportAlertPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importAlertMessage)
+        }
+        .overlay {
+            if isImportingAnki {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .scaleEffect(1.3)
+                        Text("Importing Anki Deck...")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Parsing collection (modern .anki21 / legacy .anki2) & FSRS scheduling...")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                     }
-
-                    // Custom Decks Section
-                    let customDecks = store.decks.filter { !$0.isNotesDefault }
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("CUSTOM DECKS (\(customDecks.count))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 8)
-
-                        if customDecks.isEmpty {
-                            VStack(spacing: 8) {
-                                Image(systemName: "plus.rectangle.on.rectangle")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.secondary.opacity(0.4))
-                                Text("No Custom Decks")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                Text("Click '+ New Deck' above to organize your topics.")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .padding(.horizontal, 12)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
-                            .cornerRadius(8)
-                        } else {
-                            VStack(spacing: 4) {
-                                ForEach(customDecks) { deck in
-                                    let cCards = store.flashcards(forDeck: deck.id)
-                                    let cDue = cCards.filter { $0.isDue }.count
-                                    deckRow(
-                                        id: deck.id,
-                                        title: deck.name,
-                                        subtitle: deck.description,
-                                        icon: deck.icon,
-                                        colorHex: deck.colorHex,
-                                        count: cCards.count,
-                                        dueCount: cDue,
-                                        isSelected: store.selectedDeckId == deck.id
-                                    )
-                                    .contextMenu {
-                                        Button("Delete Deck", role: .destructive) {
-                                            store.deleteDeck(id: deck.id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    .padding(26)
+                    .background(Color(NSColor.windowBackgroundColor))
+                    .cornerRadius(12)
+                    .shadow(radius: 14)
                 }
-                .padding(12)
             }
         }
-        .background(Color(NSColor.windowBackgroundColor).opacity(0.6))
     }
 
-    private func deckRow(
-        id: String,
-        title: String,
-        subtitle: String?,
-        icon: String,
-        colorHex: String,
-        count: Int,
-        dueCount: Int,
-        isSelected: Bool
-    ) -> some View {
-        Button(action: {
-            store.selectedDeckId = id
-        }) {
-            HStack(spacing: 10) {
-                // Deck Color Avatar & Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hexString: colorHex).opacity(0.18))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(hexString: colorHex))
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    if let sub = subtitle, !sub.isEmpty {
-                        Text(sub)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                // Count Pill
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(6)
-
-                // Due Badge (if any)
-                if dueCount > 0 {
-                    Text("\(dueCount)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.red)
-                        .cornerRadius(6)
+    // MARK: - Top Hub Navigation Bar
+    private var topHubNavigationBar: some View {
+        HStack(spacing: 12) {
+            // Mode Switcher: Decks vs Browse
+            Picker("", selection: $viewMode) {
+                ForEach(FlashcardsViewMode.allCases) { mode in
+                    Label(mode.rawValue, systemImage: mode.icon).tag(mode)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-            .cornerRadius(8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
+            .pickerStyle(.segmented)
+            .frame(width: 210)
 
-    // MARK: - Deck Detail Main Panel
-    private var deckDetailContentView: some View {
-        VStack(spacing: 0) {
-            // Deck Banner & Actions
-            HStack(spacing: 14) {
-                // Deck Icon Avatar
-                let activeColor = Color(hexString: currentDeck?.colorHex ?? (isNotesDeckSelected ? "#3B82F6" : "#6B7280"))
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(activeColor.opacity(0.18))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: isAllCardsSelected ? "rectangle.stack.fill" : (currentDeck?.icon ?? (isNotesDeckSelected ? "note.text" : "rectangle.stack")))
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(activeColor)
-                }
+            Spacer()
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(isAllCardsSelected ? "All Flashcards" : (currentDeck?.name ?? "Notes & Documents"))
-                            .font(.system(size: 18, weight: .bold))
-
-                        if isNotesDeckSelected {
-                            Text("AUTO-GROUPED NOTES")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.12))
-                                .cornerRadius(4)
-                        }
-                    }
-
-                    Text(isAllCardsSelected ? "Complete flashcard collection across all folders and custom decks." : (currentDeck?.description ?? "Auto-grouped collection of flashcards generated from the notes and folder hierarchy."))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                // Stat metrics
-                let dCards = deckCards
-                let dDue = dCards.filter { $0.isDue }.count
-                HStack(spacing: 12) {
-                    VStack(alignment: .center, spacing: 2) {
-                        Text("\(dCards.count)")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("Total")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Divider().frame(height: 24)
-
-                    VStack(alignment: .center, spacing: 2) {
-                        Text("\(dDue)")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(dDue > 0 ? .red : .green)
-                        Text("Due")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
-
-                // Study Deck Button
+            // Study All Due Button (Hero Action)
+            if totalSessionCardsCount > 0 {
                 Button(action: {
+                    studyTargetDeck = nil
                     isStudyModeActive = true
                 }) {
-                    Label(
-                        isAllCardsSelected ? "Study All Cards" : "Study Deck",
-                        systemImage: "play.circle.fill"
-                    )
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Study All Due (\(totalSessionCardsCount))")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.green)
+                    .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Add Card
+            Button(action: { isAddCardSheetPresented = true }) {
+                Label("Add Card", systemImage: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(dCards.isEmpty)
-
-                // Add Card to Deck Button
-                Button(action: {
-                    isAddCardSheetPresented = true
-                }) {
-                    Label("Add Card", systemImage: "plus")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.bordered)
-
-                // AI Socratic Settings Button
-                Button(action: {
-                    isAISettingsSheetPresented = true
-                }) {
-                    Label("AI Socratic", systemImage: "sparkles")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.bordered)
-                .help("Configure Socratic AI written recall & API key")
             }
-            .padding(16)
-            .background(Color(NSColor.windowBackgroundColor))
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
 
-            Divider()
-
-            // Filters & Controls Toolbar
-            HStack(spacing: 12) {
-                // For Notes Deck: Option to toggle Folders view vs Flat view
-                if isNotesDeckSelected {
-                    Picker("View Mode", selection: $notesViewMode) {
-                        ForEach(NotesDeckViewMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 290)
+            // Unified New Deck Menu (Create New Deck or Import Anki .apkg)
+            Menu {
+                Button(action: { isCreateDeckSheetPresented = true }) {
+                    Label("Create New Deck...", systemImage: "folder.badge.plus")
                 }
 
-                // Filter
-                Picker("Filter", selection: $filterSelection) {
-                    ForEach(FlashcardFilter.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
+                Divider()
 
+                Button(action: { openAnkiFilePicker() }) {
+                    Label("Import Anki Deck (.apkg)...", systemImage: "square.and.arrow.down")
+                }
+            } label: {
+                Label("New Deck", systemImage: "folder.badge.plus")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .menuStyle(.borderedButton)
+            .controlSize(.regular)
+            .help("Create a new custom deck or import an Anki collection (.apkg)")
+
+            // Socratic AI Settings
+            Button(action: { isAISettingsSheetPresented = true }) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .help("Configure Socratic AI Recall Assistant & API key")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    // MARK: - Centered Decks Home View
+    private var centeredDecksHomeView: some View {
+        ScrollView {
+            HStack {
                 Spacer()
+                VStack(spacing: 24) {
+                    // Header / Stats Banner
+                    heroStatsBanner
 
-                // Search box
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 11))
-                    TextField("Search deck cards...", text: $searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                    if !searchQuery.isEmpty {
-                        Button(action: { searchQuery = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    // Main Deck Table Card
+                    decksTableCard
+
+                    // Bottom Quick Tip / Socratic notice
+                    bottomInfoBar
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(6)
-                .frame(width: 200)
+                .frame(maxWidth: 820)
+                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 28)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    // MARK: - Hero Stats Banner
+    private var heroStatsBanner: some View {
+        HStack(alignment: .center, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "brain.head.profile")
+                        .foregroundColor(.accentColor)
+                        .font(.system(size: 20, weight: .bold))
+                    Text("Spaced Repetition Hub")
+                        .font(.system(size: 22, weight: .bold))
+                }
+
+                Text(totalDueCount > 0 ? "You have \(totalDueCount) flashcard\(totalDueCount == 1 ? "" : "s") ready for optimal FSRS memory consolidation today." : "All caught up! No flashcards currently due for spaced review.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            // 3 Stat Pills (Anki-style: New, Learn, Due)
+            HStack(spacing: 12) {
+                statPill(label: "New", count: totalNewCount, color: .blue)
+                statPill(label: "Learn", count: totalLearningCount, color: .orange)
+                statPill(label: "Due", count: totalDueCount, color: .green)
+            }
+        }
+        .padding(18)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
+        )
+    }
+
+    private func statPill(label: String, count: Int, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(count)")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+        }
+        .frame(minWidth: 54)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.12))
+        .cornerRadius(8)
+    }
+
+    // MARK: - Main Decks Table Card
+    private var decksTableCard: some View {
+        let grouped = cardsGroupedByDeck
+        let notesDeck = store.defaultNotesDeck
+        let notesDeckId = notesDeck?.id ?? Deck.notesDefaultId
+
+        return VStack(spacing: 0) {
+            // Table Column Headers
+            HStack(spacing: 12) {
+                Text("DECK")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("NEW")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.blue)
+                    .frame(width: 55, alignment: .trailing)
+
+                Text("LEARN")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.orange)
+                    .frame(width: 55, alignment: .trailing)
+
+                Text("DUE")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.green)
+                    .frame(width: 55, alignment: .trailing)
+
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 36, alignment: .center)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
 
             Divider()
 
-            // Content Area
-            if isNotesDeckSelected && notesViewMode == .folders && searchQuery.isEmpty && filterSelection == .all {
-                notesGroupedFolderView
-            } else {
-                flatCardListView
+            // 1. Notes & Documents Auto-Grouped Deck Row
+            notesDeckRow(notesCards: grouped[notesDeckId] ?? [])
+
+            // 2. Custom Decks
+            let customDecks = store.decks.filter { !$0.isNotesDefault }
+            ForEach(customDecks) { deck in
+                Divider().padding(.horizontal, 14)
+                customDeckRow(deck, cards: grouped[deck.id] ?? [])
+            }
+
+            if customDecks.isEmpty {
+                Divider().padding(.horizontal, 14)
+                emptyCustomDecksBanner
             }
         }
         .background(Color(NSColor.textBackgroundColor))
-    }
-
-    // MARK: - Notes Grouped by Folder View
-    private var notesGroupedFolderView: some View {
-        let groups = store.noteGroupedFlashcards()
-        return ScrollView {
-            if groups.isEmpty {
-                emptyDeckPlaceholder
-            } else {
-                LazyVStack(spacing: 14) {
-                    ForEach(groups) { group in
-                        VStack(alignment: .leading, spacing: 8) {
-                            // Folder Group Header
-                            HStack(spacing: 8) {
-                                Image(systemName: "folder.fill")
-                                    .foregroundColor(.accentColor)
-                                    .font(.system(size: 13))
-
-                                Text(group.doc.content.isEmpty ? "Untitled Note" : group.doc.content)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(.primary)
-
-                                Spacer()
-
-                                Text("\(group.cards.count) cards")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color(NSColor.controlBackgroundColor))
-                                    .cornerRadius(6)
-
-                                // Quick navigate to note in editor
-                                Button(action: {
-                                    store.activeMainView = .editor
-                                    store.selectDocument(id: group.doc.id)
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Text("Open Note")
-                                        Image(systemName: "arrow.up.right.square")
-                                    }
-                                    .font(.system(size: 10, weight: .semibold))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.7))
-                            .cornerRadius(8)
-
-                            // Cards under this note folder
-                            VStack(spacing: 6) {
-                                ForEach(group.cards) { card in
-                                    FlashcardRowView(store: store, card: card, showFolderBadge: false)
-                                }
-                            }
-                            .padding(.leading, 12)
-                        }
-                    }
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    // MARK: - Flat Card List View
-    private var flatCardListView: some View {
-        ScrollView {
-            if filteredCards.isEmpty {
-                emptyDeckPlaceholder
-            } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(filteredCards) { card in
-                        FlashcardRowView(store: store, card: card, showFolderBadge: true)
-                    }
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    private var emptyDeckPlaceholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "rectangle.portrait.on.rectangle.portrait.slash")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary.opacity(0.5))
-            Text(searchQuery.isEmpty ? "No Flashcards in this Deck" : "No Matches for '\(searchQuery)'")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.secondary)
-            Text(isNotesDeckSelected ? "Extract flashcards from any note or click 'Add Card' to add a card to this note collection." : "Click '+ Add Card' to create cards stored directly inside this deck.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary.opacity(0.8))
-                .multilineTextAlignment(.center)
-            Button("Add First Card to Deck") {
-                isAddCardSheetPresented = true
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-    }
-}
-
-// MARK: - Flashcard Row View
-public struct FlashcardRowView: View {
-    @ObservedObject public var store: BlockStore
-    public let card: Flashcard
-    public var showFolderBadge: Bool = true
-
-    private var docTitle: String {
-        store.documents.first(where: { $0.id == card.docId })?.content ?? "Root Document"
-    }
-
-    private var deckName: String {
-        if let dId = card.deckId, let deck = store.decks.first(where: { $0.id == dId }) {
-            return deck.name
-        }
-        return "Notes & Documents"
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                // Folder badge
-                if showFolderBadge {
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 10))
-                        Text(docTitle)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(4)
-                }
-
-                // Deck badge
-                HStack(spacing: 4) {
-                    Image(systemName: "rectangle.stack")
-                        .font(.system(size: 10))
-                    Text(deckName)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-                }
-                .foregroundColor(.accentColor)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.accentColor.opacity(0.08))
-                .cornerRadius(4)
-
-                Spacer()
-
-                // FSRS State Badge
-                HStack(spacing: 4) {
-                    Image(systemName: card.fsrsState.systemIcon)
-                        .font(.system(size: 9))
-                    Text(card.fsrsState.displayName)
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .foregroundColor(stateColor)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(stateColor.opacity(0.12))
-                .cornerRadius(4)
-
-                // Due Date Badge
-                Text(card.isDue ? "Due Now" : "Due in \(daysUntilDue)d")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(card.isDue ? .red : .secondary)
-
-                // Delete Menu
-                Menu {
-                    Button("Delete Card", role: .destructive) {
-                        store.deleteFlashcard(id: card.id)
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .frame(width: 20, height: 20)
-                }
-                .menuStyle(.borderlessButton)
-            }
-
-            // Card Front (Question)
-            Text(card.front)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
-
-            // Card Back (Answer)
-            Text(card.back)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .lineLimit(3)
-
-            // FSRS Metrics Footer
-            HStack(spacing: 12) {
-                Text("Stability: \(String(format: "%.1f", card.stability))d")
-                Text("Difficulty: \(String(format: "%.1f", card.difficulty))/10")
-                Text("Reviews: \(card.reps)")
-                if card.lapses > 0 {
-                    Text("Lapses: \(card.lapses)")
-                        .foregroundColor(.red.opacity(0.8))
-                }
-            }
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundColor(.secondary.opacity(0.7))
-        }
-        .padding(12)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .cornerRadius(8)
+        .cornerRadius(12)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
         )
     }
 
-    private var stateColor: Color {
-        switch card.fsrsState {
-        case .newCard: return .purple
-        case .learning: return .orange
-        case .review: return .green
-        case .relearning: return .red
+    // MARK: - Notes & Documents Deck Row
+    private func notesDeckRow(notesCards: [Flashcard]) -> some View {
+        let notesDeck = store.defaultNotesDeck
+        let notesDeckId = notesDeck?.id ?? Deck.notesDefaultId
+        let options = optionsManager.options(forDeck: notesDeck)
+        let effectiveNew = dailyTracker.effectiveNewCards(from: notesCards, deckId: notesDeckId, options: options)
+        let newCount = effectiveNew.count
+        let learnCount = notesCards.filter { ($0.fsrsState == .learning || $0.fsrsState == .relearning) && !$0.isEffectivelySuspended }.count
+        let dueCount = dailyTracker.effectiveReviewCards(from: notesCards, deckId: notesDeckId, options: options).count
+        let noteGroups = store.noteGroupedFlashcards()
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Expand / Collapse Chevron Button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isNotesDeckExpanded.toggle()
+                    }
+                }) {
+                    Image(systemName: isNotesDeckExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+
+                // Clickable Deck Header to Study
+                Button(action: {
+                    if !notesCards.isEmpty {
+                        studyTargetDeck = store.defaultNotesDeck
+                        isStudyModeActive = true
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        // Deck Icon Avatar
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.blue.opacity(0.16))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "note.text")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.blue)
+                        }
+
+                        // Deck Title & Subtitle
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Notes & Documents")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.primary)
+                                Text("AUTO-GROUPED")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.blue)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.blue.opacity(0.12))
+                                    .cornerRadius(4)
+                            }
+
+                            Text("Auto-generated from notes hierarchy (\(notesCards.count) cards)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                // New Count
+                Text("\(newCount)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(newCount > 0 ? .blue : .secondary.opacity(0.5))
+                    .frame(width: 55, alignment: .trailing)
+
+                // Learn Count
+                Text("\(learnCount)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(learnCount > 0 ? .orange : .secondary.opacity(0.5))
+                    .frame(width: 55, alignment: .trailing)
+
+                // Due Count
+                Text("\(dueCount)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(dueCount > 0 ? .green : .secondary.opacity(0.5))
+                    .frame(width: 55, alignment: .trailing)
+
+                // Options Gear Menu (Only Setting Logo, no caret)
+                Menu {
+                    Button(action: {
+                        studyTargetDeck = store.defaultNotesDeck
+                        isStudyModeActive = true
+                    }) {
+                        Label("Study Notes Deck", systemImage: "play.circle")
+                    }
+                    .disabled(notesCards.isEmpty)
+
+                    Button(action: {
+                        browseInitialDeckId = notesDeckId
+                        viewMode = .browse
+                    }) {
+                        Label("Browse Cards in Deck", systemImage: "magnifyingglass")
+                    }
+
+                    Divider()
+
+                    Button(action: {
+                        deckOptionsTarget = store.defaultNotesDeck
+                        isDeckOptionsSheetPresented = true
+                    }) {
+                        Label("Deck Options...", systemImage: "gearshape")
+                    }
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 36, alignment: .center)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(Color.clear)
+
+            // Expandable Nested Note Documents
+            if isNotesDeckExpanded && !noteGroups.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(noteGroups) { group in
+                        let docNew = group.cards.filter { $0.fsrsState == .newCard && !$0.isEffectivelySuspended }.count
+                        let docLearn = group.cards.filter { ($0.fsrsState == .learning || $0.fsrsState == .relearning) && !$0.isEffectivelySuspended }.count
+                        let docDue = group.cards.filter { $0.isDue }.count
+
+                        HStack(spacing: 10) {
+                            // Indent indicator
+                            Image(systemName: "arrow.turn.down.right")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.5))
+                                .padding(.leading, 24)
+
+                            Image(systemName: "doc.text")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            Text(group.doc.content.isEmpty ? "Untitled Note" : group.doc.content)
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Text("\(docNew)")
+                                .font(.system(size: 11))
+                                .foregroundColor(docNew > 0 ? .blue : .secondary.opacity(0.4))
+                                .frame(width: 55, alignment: .trailing)
+
+                            Text("\(docLearn)")
+                                .font(.system(size: 11))
+                                .foregroundColor(docLearn > 0 ? .orange : .secondary.opacity(0.4))
+                                .frame(width: 55, alignment: .trailing)
+
+                            Text("\(docDue)")
+                                .font(.system(size: 11))
+                                .foregroundColor(docDue > 0 ? .green : .secondary.opacity(0.4))
+                                .frame(width: 55, alignment: .trailing)
+
+                            Button(action: {
+                                store.activeMainView = .editor
+                                store.selectDocument(id: group.doc.id)
+                            }) {
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Open note in editor")
+                            .frame(width: 36, alignment: .center)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 7)
+                        .background(Color(NSColor.controlBackgroundColor).opacity(0.35))
+                    }
+                }
+            }
         }
     }
 
-    private var daysUntilDue: Int {
-        max(0, Calendar.current.dateComponents([.day], from: Date(), to: card.due).day ?? 0)
+    // MARK: - Custom Deck Row
+    private func customDeckRow(_ deck: Deck, cards: [Flashcard]) -> some View {
+        let options = optionsManager.options(forDeck: deck)
+        let effectiveNew = dailyTracker.effectiveNewCards(from: cards, deckId: deck.id, options: options)
+        let newCount = effectiveNew.count
+        let learnCount = cards.filter { ($0.fsrsState == .learning || $0.fsrsState == .relearning) && !$0.isEffectivelySuspended }.count
+        let dueCount = dailyTracker.effectiveReviewCards(from: cards, deckId: deck.id, options: options).count
+
+        return HStack(spacing: 12) {
+            // Clickable Deck Header to Study
+            Button(action: {
+                if !cards.isEmpty {
+                    studyTargetDeck = deck
+                    isStudyModeActive = true
+                }
+            }) {
+                HStack(spacing: 10) {
+                    // Deck Color & Icon Avatar
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hexString: deck.colorHex).opacity(0.18))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: deck.icon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color(hexString: deck.colorHex))
+                    }
+                    .padding(.leading, 24)
+
+                    // Deck Name & Description
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(deck.name)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text(deck.description ?? "\(cards.count) flashcards")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // New Count
+            Text("\(newCount)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(newCount > 0 ? .blue : .secondary.opacity(0.5))
+                .frame(width: 55, alignment: .trailing)
+
+            // Learn Count
+            Text("\(learnCount)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(learnCount > 0 ? .orange : .secondary.opacity(0.5))
+                .frame(width: 55, alignment: .trailing)
+
+            // Due Count
+            Text("\(dueCount)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(dueCount > 0 ? .green : .secondary.opacity(0.5))
+                .frame(width: 55, alignment: .trailing)
+
+            // Gear Options Menu (Only Setting Logo, no caret)
+            Menu {
+                Button(action: {
+                    studyTargetDeck = deck
+                    isStudyModeActive = true
+                }) {
+                    Label("Study Deck", systemImage: "play.circle")
+                }
+                .disabled(cards.isEmpty)
+
+                Button(action: {
+                    browseInitialDeckId = deck.id
+                    viewMode = .browse
+                }) {
+                    Label("Browse Cards in Deck", systemImage: "magnifyingglass")
+                }
+
+                Divider()
+
+                Button(action: {
+                    deckOptionsTarget = deck
+                    isDeckOptionsSheetPresented = true
+                }) {
+                    Label("Deck Options...", systemImage: "gearshape")
+                }
+
+                Button(action: {
+                    editingDeck = deck
+                    isEditDeckSheetPresented = true
+                }) {
+                    Label("Edit Deck...", systemImage: "pencil")
+                }
+
+                Divider()
+
+                Button(role: .destructive, action: {
+                    deckToDelete = deck
+                    isDeleteDeckAlertPresented = true
+                }) {
+                    Label("Delete Deck", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 36, alignment: .center)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(Color.clear)
+    }
+
+    private var emptyCustomDecksBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "plus.rectangle.on.rectangle")
+                .foregroundColor(.secondary)
+                .font(.system(size: 16))
+            Text("No custom decks yet. Create targeted decks or import your Anki (.apkg) collections.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+            HStack(spacing: 8) {
+                Button("Import Anki (.apkg)") {
+                    openAnkiFilePicker()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button("+ New Deck") {
+                    isCreateDeckSheetPresented = true
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+    }
+
+    private var bottomInfoBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundColor(.accentColor)
+                .font(.system(size: 13))
+            Text("Tip: Click **Browse** in the top navigation to search, filter, and inspect cards with full FSRS stability parameters.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+            Button("Open Browser") {
+                viewMode = .browse
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.accentColor)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
+        .cornerRadius(8)
+    }
+
+    // MARK: - Anki Import Actions
+    private func openAnkiFilePicker() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canCreateDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "apkg") ?? .data,
+            UTType(filenameExtension: "anki21b") ?? .data,
+            UTType(filenameExtension: "anki21") ?? .data,
+            UTType(filenameExtension: "anki2") ?? .data,
+            UTType(filenameExtension: "zip") ?? .zip
+        ]
+        panel.title = "Import Anki Deck (.apkg)"
+        panel.prompt = "Import Deck"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            performAnkiImport(from: url)
+        }
+    }
+
+    private func performAnkiImport(from url: URL) {
+        isImportingAnki = true
+        Task {
+            do {
+                let result = try await AnkiImporter.shared.importDeck(from: url, into: store)
+                await MainActor.run {
+                    isImportingAnki = false
+                    importAlertTitle = "Import Successful! 🎉"
+                    importAlertMessage = "Imported \(result.importedCardCount) flashcard(s) into: \(result.deckNames.joined(separator: ", "))."
+                    isImportAlertPresented = true
+                }
+            } catch {
+                await MainActor.run {
+                    isImportingAnki = false
+                    importAlertTitle = "Import Failed"
+                    importAlertMessage = error.localizedDescription
+                    isImportAlertPresented = true
+                }
+            }
+        }
     }
 }
 
-// MARK: - Create Custom Deck Sheet
+// MARK: - Edit Deck Sheet
+public struct EditDeckSheet: View {
+    @ObservedObject public var store: BlockStore
+    public var deck: Deck
+    @Binding public var isPresented: Bool
+
+    @State private var name: String = ""
+    @State private var description: String = ""
+    @State private var selectedColorHex: String = "#3B82F6"
+    @State private var selectedIcon: String = "rectangle.stack"
+
+    private let availableColors: [(String, String)] = [
+        ("#3B82F6", "Blue"),
+        ("#10B981", "Emerald"),
+        ("#8B5CF6", "Purple"),
+        ("#F59E0B", "Amber"),
+        ("#EF4444", "Rose"),
+        ("#06B6D4", "Cyan"),
+        ("#EC4899", "Pink"),
+        ("#64748B", "Slate")
+    ]
+
+    private let availableIcons: [String] = [
+        "rectangle.stack",
+        "brain.head.profile",
+        "book.closed",
+        "cross.case",
+        "stethoscope",
+        "atom",
+        "function",
+        "globe",
+        "terminal",
+        "chart.bar"
+    ]
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "pencil")
+                        .foregroundColor(.accentColor)
+                    Text("Edit Deck")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                Spacer()
+                Button(action: { isPresented = false }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Deck Name")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                TextField("Deck Name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Description (Optional)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                TextField("Description", text: $description)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Theme Color")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 8) {
+                    ForEach(availableColors, id: \.0) { hex, _ in
+                        Circle()
+                            .fill(Color(hexString: hex))
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary, lineWidth: selectedColorHex == hex ? 2.5 : 0)
+                            )
+                            .onTapGesture { selectedColorHex = hex }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Deck Icon")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 10) {
+                    ForEach(availableIcons, id: \.self) { icon in
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(selectedIcon == icon ? Color(hexString: selectedColorHex).opacity(0.2) : Color(NSColor.controlBackgroundColor))
+                                .frame(width: 32, height: 32)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(hexString: selectedColorHex), lineWidth: selectedIcon == icon ? 2 : 0.5)
+                                )
+
+                            Image(systemName: icon)
+                                .font(.system(size: 14))
+                                .foregroundColor(selectedIcon == icon ? Color(hexString: selectedColorHex) : .secondary)
+                        }
+                        .onTapGesture { selectedIcon = icon }
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Button("Cancel") { isPresented = false }
+                Spacer()
+                Button("Save Changes") {
+                    var updated = deck
+                    updated.name = name
+                    updated.description = description.isEmpty ? nil : description
+                    updated.colorHex = selectedColorHex
+                    updated.icon = selectedIcon
+                    updated.updatedAt = Date()
+                    store.updateDeck(updated)
+                    isPresented = false
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+        .onAppear {
+            name = deck.name
+            description = deck.description ?? ""
+            selectedColorHex = deck.colorHex
+            selectedIcon = deck.icon
+        }
+    }
+}
+
+// MARK: - Create Deck Modal Sheet
 public struct CreateDeckSheet: View {
     @ObservedObject public var store: BlockStore
     @Binding public var isPresented: Bool
 
     @State private var name: String = ""
     @State private var description: String = ""
-    @State private var selectedColorHex: String = "#6366F1"
+    @State private var selectedColorHex: String = "#3B82F6"
     @State private var selectedIcon: String = "rectangle.stack"
 
-    private let availableColors = [
+    private let availableColors: [(String, String)] = [
         ("#3B82F6", "Blue"),
-        ("#6366F1", "Indigo"),
-        ("#8B5CF6", "Purple"),
-        ("#EC4899", "Rose"),
-        ("#F59E0B", "Amber"),
         ("#10B981", "Emerald"),
-        ("#14B8A6", "Teal"),
-        ("#6B7280", "Slate")
+        ("#8B5CF6", "Purple"),
+        ("#F59E0B", "Amber"),
+        ("#EF4444", "Rose"),
+        ("#06B6D4", "Cyan"),
+        ("#EC4899", "Pink"),
+        ("#64748B", "Slate")
     ]
 
-    private let availableIcons = [
+    private let availableIcons: [String] = [
         "rectangle.stack",
         "brain.head.profile",
-        "sparkles",
         "book.closed",
-        "cpu",
-        "flask",
-        "lightbulb",
-        "globe.americas",
+        "cross.case",
+        "stethoscope",
+        "atom",
+        "function",
+        "globe",
         "terminal",
         "chart.bar"
     ]
@@ -758,7 +1015,6 @@ public struct CreateDeckSheet: View {
                 .buttonStyle(.plain)
             }
 
-            // Deck Name
             VStack(alignment: .leading, spacing: 4) {
                 Text("Deck Name")
                     .font(.system(size: 11, weight: .semibold))
@@ -767,7 +1023,6 @@ public struct CreateDeckSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            // Description
             VStack(alignment: .leading, spacing: 4) {
                 Text("Description (Optional)")
                     .font(.system(size: 11, weight: .semibold))
@@ -776,14 +1031,13 @@ public struct CreateDeckSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            // Color Palette
             VStack(alignment: .leading, spacing: 6) {
                 Text("Theme Color")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
 
                 HStack(spacing: 8) {
-                    ForEach(availableColors, id: \.0) { hex, label in
+                    ForEach(availableColors, id: \.0) { hex, _ in
                         Circle()
                             .fill(Color(hexString: hex))
                             .frame(width: 24, height: 24)
@@ -791,14 +1045,11 @@ public struct CreateDeckSheet: View {
                                 Circle()
                                     .stroke(Color.primary, lineWidth: selectedColorHex == hex ? 2.5 : 0)
                             )
-                            .onTapGesture {
-                                selectedColorHex = hex
-                            }
+                            .onTapGesture { selectedColorHex = hex }
                     }
                 }
             }
 
-            // Icon Picker
             VStack(alignment: .leading, spacing: 6) {
                 Text("Deck Icon")
                     .font(.system(size: 11, weight: .semibold))
@@ -819,9 +1070,7 @@ public struct CreateDeckSheet: View {
                                 .font(.system(size: 14))
                                 .foregroundColor(selectedIcon == icon ? Color(hexString: selectedColorHex) : .secondary)
                         }
-                        .onTapGesture {
-                            selectedIcon = icon
-                        }
+                        .onTapGesture { selectedIcon = icon }
                     }
                 }
             }
@@ -829,9 +1078,7 @@ public struct CreateDeckSheet: View {
             Divider()
 
             HStack {
-                Button("Cancel") {
-                    isPresented = false
-                }
+                Button("Cancel") { isPresented = false }
                 Spacer()
                 Button("Create Deck") {
                     store.createDeck(
@@ -884,11 +1131,9 @@ public struct AddFlashcardSheet: View {
                     .foregroundColor(.secondary)
 
                 Picker("", selection: $targetDeckId) {
-                    // Notes deck
                     let notesId = store.defaultNotesDeck?.id ?? Deck.notesDefaultId
                     Text("📁 Notes & Documents (Auto-grouped)").tag(notesId)
 
-                    // Custom decks
                     ForEach(store.decks.filter { !$0.isNotesDefault }) { deck in
                         Text(deck.name).tag(deck.id)
                     }
@@ -946,9 +1191,7 @@ public struct AddFlashcardSheet: View {
             }
 
             HStack {
-                Button("Cancel") {
-                    isPresented = false
-                }
+                Button("Cancel") { isPresented = false }
                 Spacer()
                 Button("Create Flashcard") {
                     store.createFlashcard(
@@ -982,16 +1225,35 @@ public struct AddFlashcardSheet: View {
     }
 }
 
+// MARK: - Flashcard Row View (Legacy compatibility)
+public struct FlashcardRowView: View {
+    @ObservedObject public var store: BlockStore
+    public let card: Flashcard
+    public var showFolderBadge: Bool = true
+
+    public var body: some View {
+        HStack {
+            Text(card.front)
+                .font(.system(size: 12))
+            Spacer()
+        }
+        .padding(8)
+    }
+}
+
 // MARK: - Study Session View
 public struct FlashcardStudySessionView: View {
     @ObservedObject public var store: BlockStore
     @ObservedObject public var aiSettings: AISettings = AISettings.shared
+    @ObservedObject public var dailyTracker: DailyStudyTracker = DailyStudyTracker.shared
+    @ObservedObject public var optionsManager: DeckOptionsManager = DeckOptionsManager.shared
     public var deck: Deck? = nil
     public let onDismiss: () -> Void
 
     @State private var currentIndex: Int = 0
     @State private var isAnswerRevealed: Bool = false
     @State private var sessionCards: [Flashcard] = []
+    @State private var isDeckOptionsSheetPresented: Bool = false
 
     // AI Socratic State
     @State private var isAISocraticActive: Bool = true
@@ -1002,6 +1264,7 @@ public struct FlashcardStudySessionView: View {
     @State private var evaluationError: String? = nil
     @State private var latestEvaluation: AISocraticEvaluation? = nil
     @FocusState private var isWrittenInputFocused: Bool
+    @State private var keyMonitor: Any? = nil
 
     public init(store: BlockStore, deck: Deck? = nil, onDismiss: @escaping () -> Void) {
         self.store = store
@@ -1038,445 +1301,367 @@ public struct FlashcardStudySessionView: View {
                         Image(systemName: "chevron.left")
                         Text("Exit Session")
                     }
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
                 Spacer()
 
-                VStack(spacing: 2) {
-                    Text(deck != nil ? "Studying: \(deck!.name)" : "Global Review Session")
-                        .font(.system(size: 12, weight: .bold))
-
-                    if !sessionCards.isEmpty {
-                        Text("Card \(currentIndex + 1) of \(sessionCards.count)")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
+                HStack(spacing: 6) {
+                    Image(systemName: deck?.icon ?? "rectangle.stack.fill")
+                        .foregroundColor(Color(hexString: deck?.colorHex ?? "#3B82F6"))
+                    Text(deck?.name ?? "All Due Cards")
+                        .font(.system(size: 13, weight: .bold))
                 }
 
                 Spacer()
 
-                // AI Socratic Quick Toggle & Settings
-                HStack(spacing: 8) {
-                    Button(action: {
-                        if !aiSettings.hasAPIKey {
-                            isAISettingsSheetPresented = true
-                        } else {
-                            isAISocraticActive.toggle()
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .foregroundColor(isAISocraticActive && aiSettings.hasAPIKey ? .purple : .secondary)
-                            Text(isAISocraticActive && aiSettings.hasAPIKey ? "AI Tutor: ON" : "AI Tutor: OFF")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(isAISocraticActive && aiSettings.hasAPIKey ? .purple : .secondary)
-                        }
+                if !sessionCards.isEmpty {
+                    Text("\(currentIndex + 1) of \(sessionCards.count)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(isAISocraticActive && aiSettings.hasAPIKey ? Color.purple.opacity(0.12) : Color.gray.opacity(0.12))
+                        .padding(.vertical, 3)
+                        .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                    .help(aiSettings.hasAPIKey ? "Toggle Socratic AI written recall" : "Configure API key to enable Socratic AI Tutor")
-
-                    Button(action: { isAISettingsSheetPresented = true }) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("AI Socratic Settings & API Key")
-
-                    Button("Finish") {
-                        onDismiss()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
+
+                Button(action: { isAISettingsSheetPresented = true }) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(aiSettings.hasAPIKey ? .accentColor : .secondary)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("AI Socratic Settings")
             }
-            .padding(14)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(Color(NSColor.windowBackgroundColor))
-
-            // Top Study Progress Bar
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.12))
-                        .frame(height: 3)
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.accentColor, Color.purple],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: sessionCards.isEmpty ? 0 : g.size.width * CGFloat(currentIndex + 1) / CGFloat(sessionCards.count), height: 3)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentIndex)
-                }
-            }
-            .frame(height: 3)
 
             Divider()
 
             if sessionCards.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.green)
-                    Text("All Caught Up!")
-                        .font(.system(size: 18, weight: .bold))
-                    Text("No flashcards are currently due in \(deck?.name ?? "this collection").")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                    Button("Back to Decks", action: onDismiss)
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top, 8)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                emptyOrLimitReachedView
             } else if let card = currentCard {
-                // Interactive Card
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            // Card Header: Category + Socratic Tag
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Flashcard Face
+                        VStack(spacing: 16) {
+                            // Card State Header
                             HStack {
-                                if let doc = store.documents.first(where: { $0.id == card.docId }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "folder.fill")
-                                            .font(.system(size: 10))
-                                        Text(doc.content.isEmpty ? "Folder" : doc.content)
-                                            .font(.system(size: 11, weight: .medium))
-                                    }
-                                    .foregroundColor(.accentColor)
-                                }
+                                Text(card.fsrsState.displayName.uppercased())
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(NSColor.controlBackgroundColor))
+                                    .cornerRadius(4)
 
                                 Spacer()
 
-                                if isSocraticActiveForCurrentCard {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "sparkles")
-                                        Text(isCurrentCardFirstTime ? "First-Time Card (Written Recall)" : "Socratic AI Active")
-                                    }
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.purple)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(Color.purple.opacity(0.12))
-                                    .cornerRadius(5)
+                                if let hint = card.hint, !hint.isEmpty {
+                                    Text("Hint: \(hint)")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
                                 }
                             }
 
                             // Question / Front
                             Text(card.front)
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.primary)
+                                .font(.system(size: 18, weight: .semibold))
+                                .multilineTextAlignment(.center)
+                                .padding(.vertical, 24)
+                                .frame(maxWidth: .infinity)
 
-                            if let hint = card.hint, !hint.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "lightbulb")
-                                    Text("Hint: \(hint)")
-                                }
-                                .font(.system(size: 12).italic())
-                                .foregroundColor(.orange)
-                            }
-
-                            // Socratic Dialogue History
-                            if !dialogueHistory.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    ForEach(dialogueHistory) { turn in
-                                        VStack(alignment: .leading, spacing: 5) {
-                                            // User Answer
-                                            HStack(alignment: .top, spacing: 6) {
-                                                Image(systemName: "person.circle.fill")
-                                                    .font(.system(size: 12))
-                                                    .foregroundColor(.secondary)
-                                                Text(turn.userAnswer)
-                                                    .font(.system(size: 12))
-                                                    .foregroundColor(.primary)
-                                            }
-                                            .padding(8)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(Color(NSColor.textBackgroundColor).opacity(0.6))
-                                            .cornerRadius(6)
-
-                                            // AI Feedback
-                                            HStack(alignment: .top, spacing: 6) {
-                                                Image(systemName: "sparkles")
-                                                    .font(.system(size: 12))
-                                                    .foregroundColor(.purple)
-                                                Text(turn.feedback)
-                                                    .font(.system(size: 12))
-                                                    .foregroundColor(.primary)
-                                            }
-                                            .padding(8)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(Color.purple.opacity(0.08))
-                                            .cornerRadius(6)
-
-                                            // Counter-Question Callout
-                                            if let cq = turn.counterQuestion, !turn.isSpotOn {
-                                                HStack(alignment: .top, spacing: 6) {
-                                                    Image(systemName: "brain.head.profile")
-                                                        .font(.system(size: 13))
-                                                        .foregroundColor(.orange)
-                                                    VStack(alignment: .leading, spacing: 2) {
-                                                        Text("SOCRATIC COUNTER-QUESTION")
-                                                            .font(.system(size: 9, weight: .bold))
-                                                            .foregroundColor(.orange)
-                                                        Text(cq)
-                                                            .font(.system(size: 12, weight: .semibold))
-                                                            .foregroundColor(.primary)
-                                                    }
-                                                }
-                                                .padding(10)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .background(Color.orange.opacity(0.12))
-                                                .cornerRadius(8)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Socratic Written Input (before answer is revealed)
-                            if isSocraticActiveForCurrentCard && !isAnswerRevealed {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text(dialogueHistory.isEmpty ? "Type your explanation from memory:" : "Refine your answer addressing the counter-question:")
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                        Text("⌘ + Enter to submit")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-
-                                    TextEditor(text: $writtenAnswer)
-                                        .focused($isWrittenInputFocused)
-                                        .font(.system(size: 13))
-                                        .frame(minHeight: 65, maxHeight: 95)
-                                        .padding(4)
-                                        .background(Color(NSColor.textBackgroundColor))
-                                        .cornerRadius(6)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-                                        )
-
-                                    if let errorMsg = evaluationError {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .foregroundColor(.red)
-                                            Text(errorMsg)
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-
-                                    HStack(spacing: 12) {
-                                        Button(action: submitWrittenAnswer) {
-                                            HStack(spacing: 6) {
-                                                if isAIEvaluating {
-                                                    ProgressView().controlSize(.small)
-                                                    Text("Evaluating with AI...")
-                                                } else {
-                                                    Image(systemName: "sparkles")
-                                                    Text(dialogueHistory.isEmpty ? "Evaluate with AI (⌘↵)" : "Reply to AI (⌘↵)")
-                                                }
-                                            }
-                                            .font(.system(size: 12, weight: .semibold))
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .keyboardShortcut(.return, modifiers: [.command])
-                                        .disabled(writtenAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAIEvaluating)
-
-                                        Spacer()
-
-                                        Button("Skip AI / Reveal Answer (Space)") {
-                                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                                isAnswerRevealed = true
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                        .keyboardShortcut(.space, modifiers: [])
-                                    }
-                                }
-                                .padding(.top, 4)
-                            }
-
-                            // Target Answer Section
+                            // Revealed Answer or Socratic Area
                             if isAnswerRevealed {
-                                Divider().padding(.vertical, 4)
+                                Divider()
 
-                                if let eval = latestEvaluation, eval.isSpotOn {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "checkmark.seal.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 16))
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Spot-On Understanding Verified!")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(.green)
-                                            Text(eval.feedback)
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        if let suggested = eval.suggestedRating,
-                                           let rEnum = FSRSRating(rawValue: suggested) {
-                                            Text("AI Suggestion: \(rEnum.displayName)")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 3)
-                                                .background(Color.green.opacity(0.15))
-                                                .foregroundColor(.green)
-                                                .cornerRadius(4)
-                                        }
-                                    }
-                                    .padding(10)
-                                    .background(Color.green.opacity(0.08))
-                                    .cornerRadius(8)
-                                }
-
-                                // Answer / Back
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("TARGET ANSWER")
+                                VStack(spacing: 8) {
+                                    Text("ANSWER")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundColor(.secondary)
 
                                     Text(card.back)
                                         .font(.system(size: 15))
-                                        .foregroundColor(.primary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.vertical, 12)
                                 }
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
-                        .padding(26)
-                        .rotation3DEffect(.degrees(isAnswerRevealed ? 180 : 0), axis: (x: 0, y: 1, z: 0))
-                    }
-                    .frame(maxWidth: 620, maxHeight: 520)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(latestEvaluation?.isSpotOn == true ? Color.green.opacity(0.5) : Color(NSColor.separatorColor), lineWidth: latestEvaluation?.isSpotOn == true ? 2 : 1)
-                    )
-                    .rotation3DEffect(
-                        .degrees(isAnswerRevealed ? 180 : 0),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: 0.5
-                    )
+                        .padding(24)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                        )
+                        .frame(maxWidth: 620)
 
-                    Spacer()
-
-                    // Rating Controls
-                    if !isAnswerRevealed {
-                        if !isSocraticActiveForCurrentCard {
-                            Button(action: {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    isAnswerRevealed = true
-                                }
-                            }) {
-                                Text("Show Answer (Space)")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .frame(width: 240, height: 38)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .keyboardShortcut(.space, modifiers: [])
-                        }
-                    } else {
-                        // 4 FSRS Rating Buttons
-                        let intervals = FSRSScheduler.shared.previewIntervals(card: card)
-
-                        HStack(spacing: 12) {
-                            ForEach(FSRSRating.allCases, id: \.self) { rating in
-                                Button(action: {
-                                    handleRating(rating)
-                                }) {
-                                    VStack(spacing: 4) {
-                                        HStack(spacing: 4) {
-                                            Text("\(rating.rawValue)")
-                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 1)
-                                                .background(buttonColor(for: rating).opacity(0.18))
-                                                .foregroundColor(buttonColor(for: rating))
-                                                .cornerRadius(3)
-
-                                            Text(rating.displayName)
-                                                .font(.system(size: 13, weight: .bold))
-
-                                            if latestEvaluation?.suggestedRating == rating.rawValue {
-                                                Image(systemName: "sparkles")
-                                                    .font(.system(size: 9))
+                        // Socratic Dialogue History (if active)
+                        if isSocraticActiveForCurrentCard && !dialogueHistory.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(dialogueHistory) { turn in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text("Your Response (Round \(turn.roundNumber)):")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.secondary)
+                                            Spacer()
+                                            if turn.isSpotOn {
+                                                Label("Mastered!", systemImage: "checkmark.seal.fill")
+                                                    .font(.system(size: 10, weight: .bold))
                                                     .foregroundColor(.green)
                                             }
                                         }
 
-                                        if let days = intervals[rating] {
-                                            Text(days == 1 ? "1 day" : "\(days) days")
-                                                .font(.system(size: 10, weight: .semibold))
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(buttonColor(for: rating).opacity(0.12))
-                                                .foregroundColor(buttonColor(for: rating))
-                                                .cornerRadius(4)
+                                        Text(turn.userAnswer)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.primary)
+
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "sparkles")
+                                                .foregroundColor(.accentColor)
+                                                .font(.system(size: 11))
+                                            Text(turn.feedback)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                        }
+
+                                        if let cq = turn.counterQuestion, !cq.isEmpty {
+                                            Text("💡 Probing Question: \(cq)")
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(.accentColor)
                                         }
                                     }
-                                    .frame(minWidth: 92, minHeight: 46)
+                                    .padding(10)
+                                    .background(Color(NSColor.controlBackgroundColor).opacity(0.7))
+                                    .cornerRadius(8)
                                 }
-                                .buttonStyle(.bordered)
-                                .tint(buttonColor(for: rating))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(latestEvaluation?.suggestedRating == rating.rawValue ? Color.green : Color.clear, lineWidth: 2)
-                                )
-                                .keyboardShortcut(KeyEquivalent(Character("\(rating.rawValue)")), modifiers: [])
                             }
+                            .frame(maxWidth: 620)
+                        }
+
+                        // Written Recall Input (Socratic Mode)
+                        if isSocraticActiveForCurrentCard && !isAnswerRevealed {
+                            VStack(spacing: 8) {
+                                HStack {
+                                    Text("Type your written recall:")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                }
+
+                                TextEditor(text: $writtenAnswer)
+                                    .focused($isWrittenInputFocused)
+                                    .font(.system(size: 13))
+                                    .frame(height: 70)
+                                    .padding(4)
+                                    .background(Color(NSColor.textBackgroundColor))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                                    )
+
+                                HStack {
+                                    Button("I don't know / Show Answer") {
+                                        withAnimation { isAnswerRevealed = true }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+
+                                    Spacer()
+
+                                    Button(action: evaluateWrittenRecall) {
+                                        if isAIEvaluating {
+                                            ProgressView().scaleEffect(0.6)
+                                        } else {
+                                            Label("Submit Recall", systemImage: "arrow.up.circle.fill")
+                                                .font(.system(size: 11, weight: .semibold))
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(writtenAnswer.trimmingCharacters(in: .whitespaces).isEmpty || isAIEvaluating)
+                                }
+                            }
+                            .frame(maxWidth: 620)
                         }
                     }
+                    .padding(24)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                // Action Bar (Reveal Answer vs Rate FSRS)
+                HStack(spacing: 12) {
+                    if !isAnswerRevealed {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                                isAnswerRevealed = true
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Text("Show Answer")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Space")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.white.opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                            .frame(maxWidth: 280)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.space, modifiers: [])
+                    } else {
+                        // 4 FSRS Rating Buttons (Again: 1, Hard: 2, Good: 3 / Space, Easy: 4)
+                        ForEach(FSRSRating.allCases, id: \.self) { rating in
+                            Button(action: {
+                                handleRating(rating)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Text(rating.displayName)
+                                        .font(.system(size: 13, weight: .bold))
+                                    Text(shortcutBadge(for: rating))
+                                        .font(.system(size: 10, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1.5)
+                                        .background(Color.black.opacity(0.2))
+                                        .cornerRadius(4)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .foregroundColor(.white)
+                                .background(buttonColor(for: rating))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .keyboardShortcut(keyboardShortcut(for: rating), modifiers: [])
+                        }
+
+                        // Hidden helper button to ensure Space also triggers Good
+                        Button(action: { handleRating(.good) }) {
+                            EmptyView()
+                        }
+                        .keyboardShortcut(.space, modifiers: [])
+                        .frame(width: 0, height: 0)
+                        .opacity(0)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(Color(NSColor.windowBackgroundColor))
             }
         }
         .sheet(isPresented: $isAISettingsSheetPresented) {
             AISettingsSheet(onDismiss: { isAISettingsSheetPresented = false })
         }
-        .onAppear {
-            let deckId = deck?.id
-            let due = store.dueFlashcards(forDeck: deckId)
-            let all = store.flashcards(forDeck: deckId)
-            sessionCards = due.isEmpty ? all : due
-            currentIndex = 0
-            isAnswerRevealed = false
-            writtenAnswer = ""
-            dialogueHistory = []
-            isAIEvaluating = false
-            evaluationError = nil
-            latestEvaluation = nil
-            isAISocraticActive = aiSettings.isSocraticEnabled
-            if isSocraticActiveForCurrentCard && !isAnswerRevealed {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    isWrittenInputFocused = true
+        .sheet(isPresented: $isDeckOptionsSheetPresented) {
+            DeckOptionsSheet(
+                store: store,
+                deck: deck,
+                onDismiss: {
+                    isDeckOptionsSheetPresented = false
+                    loadCards()
                 }
-            }
+            )
+        }
+        .onAppear {
+            loadCards()
+            setupKeyMonitor()
+        }
+        .onDisappear {
+            removeKeyMonitor()
         }
     }
 
-    private func submitWrittenAnswer() {
+    private var emptyOrLimitReachedView: some View {
+        let options = optionsManager.options(forDeck: deck)
+        let deckId = deck?.id ?? Deck.notesDefaultId
+        let allDeckCards = deck != nil ? store.flashcards(forDeck: deckId) : store.flashcards
+        let totalNewCardsInDeck = allDeckCards.filter { $0.fsrsState == .newCard && !$0.isEffectivelySuspended }.count
+        let studiedToday = dailyTracker.newCardsStudiedCount(forDeckId: deckId)
+        let limitReached = (totalNewCardsInDeck > 0 && studiedToday >= options.maxNewCardsPerDay)
+
+        return VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: limitReached ? "checkmark.seal.fill" : "checkmark.circle.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.green)
+            Text(limitReached ? "Daily Limit Reached! 🎉" : "No Cards Due for Study!")
+                .font(.system(size: 18, weight: .bold))
+            Text(limitReached
+                 ? "You've studied all \(studiedToday) new cards scheduled for today based on your deck limit of \(options.maxNewCardsPerDay) new cards/day. More cards will unlock tomorrow."
+                 : "You've mastered all current review cards in this deck according to your spaced repetition schedule.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+
+            if limitReached {
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        Button("Study +10 More New Cards") {
+                            dailyTracker.increaseTodayNewLimit(forDeckId: deckId, by: 10)
+                            loadCards()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+
+                        Button("Study +20 More") {
+                            dailyTracker.increaseTodayNewLimit(forDeckId: deckId, by: 20)
+                            loadCards()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                    }
+
+                    HStack(spacing: 14) {
+                        Button(action: { isDeckOptionsSheetPresented = true }) {
+                            Label("Edit Deck Options...", systemImage: "gearshape")
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.accentColor)
+
+                        Button("Return to Decks") {
+                            onDismiss()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            } else {
+                Button("Return to Decks") {
+                    onDismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            Spacer()
+        }
+    }
+
+    private func loadCards() {
+        let options = optionsManager.options(forDeck: deck)
+        if let targetDeck = deck {
+            let cards = store.flashcards(forDeck: targetDeck.id)
+            sessionCards = dailyTracker.queueForStudy(allCards: cards, deck: targetDeck, options: options)
+        } else {
+            sessionCards = dailyTracker.queueForStudy(allCards: store.flashcards, deck: nil, options: options)
+        }
+        currentIndex = 0
+        isAnswerRevealed = false
+    }
+
+    private func evaluateWrittenRecall() {
         guard let card = currentCard else { return }
         let trimmed = writtenAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1525,7 +1710,11 @@ public struct FlashcardStudySessionView: View {
 
     private func handleRating(_ rating: FSRSRating) {
         guard let card = currentCard else { return }
+        let targetDeckId = card.deckId ?? deck?.id ?? Deck.notesDefaultId
+        let wasNew = (card.fsrsState == .newCard || card.reps == 0)
+
         _ = store.rateFlashcard(id: card.id, rating: rating)
+        dailyTracker.recordCardReviewed(card: card, deckId: targetDeckId, wasNew: wasNew)
 
         if currentIndex + 1 < sessionCards.count {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
@@ -1537,13 +1726,11 @@ public struct FlashcardStudySessionView: View {
                 evaluationError = nil
                 latestEvaluation = nil
             }
-            if isSocraticActiveForCurrentCard {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    isWrittenInputFocused = true
-                }
-            }
         } else {
-            onDismiss()
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                sessionCards = []
+                currentIndex = 0
+            }
         }
     }
 
@@ -1553,6 +1740,73 @@ public struct FlashcardStudySessionView: View {
         case .hard: return .orange
         case .good: return .blue
         case .easy: return .green
+        }
+    }
+
+    private func shortcutBadge(for rating: FSRSRating) -> String {
+        switch rating {
+        case .again: return "1"
+        case .hard: return "2"
+        case .good: return "3 · Space"
+        case .easy: return "4"
+        }
+    }
+
+    private func keyboardShortcut(for rating: FSRSRating) -> KeyEquivalent {
+        switch rating {
+        case .again: return "1"
+        case .hard: return "2"
+        case .good: return "3"
+        case .easy: return "4"
+        }
+    }
+
+    private func setupKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Don't intercept when Command or Control shortcuts are pressed
+            if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
+                return event
+            }
+
+            // If user is currently typing in the written answer box, let normal typing pass through
+            if isWrittenInputFocused {
+                return event
+            }
+
+            if isAnswerRevealed {
+                if let chars = event.charactersIgnoringModifiers {
+                    if chars == "1" {
+                        handleRating(.again)
+                        return nil
+                    } else if chars == "2" {
+                        handleRating(.hard)
+                        return nil
+                    } else if chars == "3" || event.keyCode == 49 || chars == " " {
+                        handleRating(.good)
+                        return nil
+                    } else if chars == "4" {
+                        handleRating(.easy)
+                        return nil
+                    }
+                }
+            } else {
+                // Spacebar reveals the answer
+                if event.keyCode == 49 || event.characters == " " {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                        isAnswerRevealed = true
+                    }
+                    return nil
+                }
+            }
+            return event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 }
