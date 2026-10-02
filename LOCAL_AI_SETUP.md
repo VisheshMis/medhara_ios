@@ -98,12 +98,16 @@ ollama run qwen2.5:1.5b
 
 ### Step 4: Choose Your Free Study Grounding Sources (Interactive & 100% Free)
 
-When generating downward notes in the **Notes AI Assistant** or reviewing flashcards, you can choose which free reference sources ground your AI:
+When generating notes in the **Notes AI Assistant** or reviewing flashcards, you can choose which free reference sources ground your AI across specialized academic domains:
 
-- 🌐 **Wikipedia**: Encyclopedic overview & conceptual foundations
+- 🌐 **Wikipedia**: Encyclopedic overview, section outlines & conceptual foundations
 - 🎓 **OpenAlex / CrossRef Academic**: 250M+ scholarly research papers across STEM, computer science, math, and humanities
-- 🧬 **Europe PMC**: Biomedical, clinical, and life sciences research abstracts
+- 🧬 **PubMed (NCBI)**: Peer-reviewed biomedical literature, clinical trials, and life sciences
+- 🔬 **Europe PMC**: Biomedical articles, pharmacology, and open access PMC full-text
+- 📐 **arXiv**: Physics, computer science, mathematics, and quantitative biology preprints
+- 📜 **Open Library**: Historical archives, classic monographs, and library book records
 - 📖 **Wiktionary**: High-precision terminology definitions and etymology
+- 🗣️ **Free Dictionary**: Standard definitions, grammatical parts of speech, and phonetics
 
 > **Parameter-Aware Budgeting**:
 > Small 1.5B–3B models have limited context attention. Medha automatically budgets extracts to ~400–500 concise characters per source for 1.5B models so they remain razor-focused and adhere strictly to JSON output formatting without hallucinations. On 7B+ models, richer abstracts and citations are injected.

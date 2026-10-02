@@ -1,35 +1,43 @@
-# Medha (मेधा) — Spatial PKM & Cognitive Retention Engine
+<div align="center">
+  <img src="Assets/medhara_oval_logo.png" alt="Medha Logo" width="240" />
+  <br /><br />
 
-[![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue?logo=apple)](https://www.apple.com/macos/)
-[![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift)](https://swift.org)
-[![Spaced Repetition: FSRS-4.5](https://img.shields.io/badge/Spaced%20Repetition-FSRS--4.5-green)](https://github.com/open-spaced-repetition/fsrs4anki)
-[![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple)](#5--dual-mode-ai-cloud--100-offline-local-ai)
-[![Free Study Grounding](https://img.shields.io/badge/Grounding-Wikipedia%20%7C%20OpenAlex%20%7C%20Europe%20PMC%20%7C%20Wiktionary-teal)](#6--multi-source-free-academic-grounding-0-api-keys)
-[![Test Suite: 28 Passed](https://img.shields.io/badge/tests-28%20passed-brightgreen)](#-automated-testing--verification-28-suites)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+  [![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue?logo=apple&style=for-the-badge)](https://www.apple.com/macos/)
+  [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift&style=for-the-badge)](https://swift.org)
+  [![Spaced Repetition: FSRS-4.5](https://img.shields.io/badge/Spaced%20Repetition-FSRS--4.5-green?style=for-the-badge)](https://github.com/open-spaced-repetition/fsrs4anki)
+  [![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple?style=for-the-badge)](#6--dual-mode-ai-with-per-provider-key-isolation)
+  [![Anki Ecosystem Compatible](https://img.shields.io/badge/Anki-Importer%20.anki2%20%26%20.anki21-blue?logo=anki&style=for-the-badge)](#3--anki-ecosystem--deck-customization)
+  [![Test Suite: 34 Passed](https://img.shields.io/badge/tests-34%20suites%20passed-brightgreen?style=for-the-badge)](#-automated-testing--verification-34-suites)
+  [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
+
+  <p align="center">
+    <strong>An offline-first, native macOS Cognitive Retention Engine & Spatial PKM.</strong><br />
+    Unifying 2-step hierarchical auto-notes, GPU knowledge graphs, the ancient Method of Loci, and modern FSRS-4.5 spaced repetition with multi-source academic grounding.
+  </p>
+</div>
 
 > **मेधा (Medha)** — *Sanskrit for intellect, capacity for profound comprehension, and the power of indelible memory.*
-
-**Medha** is an offline-first, native macOS Personal Knowledge Management (PKM) and cognitive retention platform. Crafted in Swift, SwiftUI, and AppKit with Metal-accelerated graphics, Medha closes the loop between **knowledge acquisition**, **associative comprehension**, and **lifelong memory consolidation**.
-
-It seamlessly unifies **hierarchical block notes**, **GPU-accelerated knowledge graphs**, the ancient **2D spatial Method of Loci (Memory Palace)**, and **state-of-the-art FSRS-4.5 spaced repetition**, supercharged by **dual-mode AI** (Cloud & 100% Offline Local AI with multi-source academic grounding across Wikipedia, OpenAlex, Europe PMC, and Wiktionary).
 
 ---
 
 ## 📑 Table of Contents
 - [🌟 The Cognitive Memory Architecture](#-the-cognitive-memory-architecture)
 - [✨ Core Feature Suite](#-core-feature-suite)
-  - [1. 🗂️ Refined Hierarchical Block Notes & PKM](#1-️-refined-hierarchical-block-notes--pkm)
-  - [2. 🧠 3D Spaced Repetition (FSRS-4.5)](#2--3d-spaced-repetition-fsrs-45)
-  - [3. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)](#3-️-2d-spatial-memory-palace--walk-mode-method-of-loci)
-  - [4. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)](#4-️-gpu-accelerated-knowledge-graph-global--local)
-  - [5. 🤖 Dual-Mode AI (Cloud & 100% Offline Local AI)](#5--dual-mode-ai-cloud--100-offline-local-ai)
-  - [6. 🌐 Multi-Source Free Academic Grounding (0 API Keys)](#6--multi-source-free-academic-grounding-0-api-keys)
-  - [7. ⏱️ Integrated Pomodoro Focus Engine](#7-️-integrated-pomodoro-focus-engine)
+  - [1. 🪄 2-Step Auto-Note Formation Pipeline (P1–P11)](#1--2-step-auto-note-formation-pipeline-p1p11)
+  - [2. 📚 Deep Master Plan Curriculum Generator](#2--deep-master-plan-curriculum-generator)
+  - [3. 📦 Anki Ecosystem & Deck Customization](#3--anki-ecosystem--deck-customization)
+  - [4. 🗂️ Refined Hierarchical Block Notes & PKM](#4-️-refined-hierarchical-block-notes--pkm)
+  - [5. 🧠 3D Spaced Repetition (FSRS-4.5)](#5--3d-spaced-repetition-fsrs-45)
+  - [6. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)](#6-️-2d-spatial-memory-palace--walk-mode-method-of-loci)
+  - [7. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)](#7-️-gpu-accelerated-knowledge-graph-global--local)
+  - [8. 🤖 Dual-Mode AI with Per-Provider Key Isolation](#8--dual-mode-ai-with-per-provider-key-isolation)
+  - [9. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)](#9--8-multi-subject-academic-open-apis-0-api-keys)
+  - [10. ⏱️ Focus Engine & Native macOS Lifecycle](#10-️-focus-engine--native-macos-lifecycle)
+  - [11. 🌐 Standalone Web Companion Client](#11--standalone-web-companion-client)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
 - [🏗️ Technical Architecture & Stack](#️-technical-architecture--stack)
 - [📂 Project Structure](#-project-structure)
-- [🧪 Automated Testing & Verification (28 Suites)](#-automated-testing--verification-28-suites)
+- [🧪 Automated Testing & Verification (34 Suites)](#-automated-testing--verification-34-suites)
 - [🚀 Building & Running](#-building--running)
 - [📖 Documentation Links](#-documentation-links)
 - [📄 License](#-license)
@@ -38,60 +46,128 @@ It seamlessly unifies **hierarchical block notes**, **GPU-accelerated knowledge 
 
 ## 🌟 The Cognitive Memory Architecture
 
-Most PKM applications function as passive digital filing cabinets—notes are written once and forgotten. Medha is engineered around active cognitive pipelines:
+Traditional knowledge tools act as passive digital filing cabinets—notes are written, filed, and forgotten. Medha closes the cognitive loop through an active, bidirectional pipeline:
 
 ```
-[ Active Intake ]          [ Knowledge Synthesis ]         [ Long-Term Consolidation ]
-+-------------------+      +-----------------------+       +-------------------------+
-| Hierarchical      | ---> | GPU Knowledge Graph   | ----> | 2D Spatial Memory Palace|
-| Block Notes       | <--- | (Bi-directional links)| <---  | (Method of Loci Walk)   |
-+-------------------+      +-----------------------+       +-------------------------+
-          |                                                             |
-          +---------------------> [ FSRS-4.5 ] <------------------------+
-                                  [ Flashcards ]
-                                (3D Flip & Spaced Repetition)
+[ Active Intake & Auto-Notes ]     [ Associative Synthesis ]          [ Long-Term Consolidation ]
++----------------------------+     +-----------------------+          +-------------------------+
+| 2-Step Hierarchical Notes  | --> | GPU Knowledge Graph   | -------> | 2D Spatial Memory Palace|
+| (Skeleton -> On-Demand Fill) | <-- | (Bi-directional links)| <------- | (Method of Loci Walk)   |
++----------------------------+     +-----------------------+          +-------------------------+
+              |                                                                    |
+              +-------------------------> [ FSRS-4.5 ] <---------------------------+
+                                          [ Flashcards ]
+                                        (3D Flip & Recall)
 ```
 
-1. **Intake & Capture**: Draft in an ergonomic, distraction-free block editor with living folder headers and instant full-text search.
-2. **Associative Synthesis**: Traverse dense concepts in a 60–120 FPS force-directed knowledge graph with blended tree and wiki-link views.
-3. **Spatial Encoding**: Anchor complex knowledge nodes and flashcards to physical loci across multi-photo spatial canvases using the ancient Method of Loci.
-4. **Active Recall**: Review with FSRS-4.5 spaced repetition featuring 3D perspective flip cards, live interval previews, and offline AI Socratic questioning.
+1. **Intake & Structured Capture**: Rapidly plan hierarchical knowledge skeletons with content-representative headings and immediately commit them to disk.
+2. **On-Demand Deep Synthesis**: Synthesize dense, evidence-backed notes block-by-block with live API routing, conflict resolution, and automated QA gates.
+3. **Associative Comprehension**: Traverse concepts visually in a 60–120 FPS force-directed knowledge graph with blended hierarchy and wiki-links.
+4. **Spatial Encoding**: Anchor knowledge nodes and flashcards to architectural landmarks across multi-photo spatial canvases using the ancient Method of Loci.
+5. **Indelible Active Recall**: Review using the state-of-the-art FSRS-4.5 scheduler featuring 3D perspective flip cards, live interval previews, and Anki collection compatibility.
 
 ---
 
 ## ✨ Core Feature Suite
 
-### 1. 🗂️ Refined Hierarchical Block Notes & PKM
+### 1. 🪄 2-Step Auto-Note Formation Pipeline (P1–P11)
 
-- **Living Folder Command-Hub Header**: Every document opens with an informative metadata scrim showing its parent notebook path, child sub-page count, word count, estimated reading time, and attached active flashcards.
-- **Centered 740pt Typographic Measure**: Notes are rendered within an optimal reading column (`maxWidth: 740pt`) with breathing room, eliminating horizontal eye strain on large macOS displays while keeping inspector tools docked.
-- **Granular Block-Based Engine**: Complete block system supporting Document Title, Heading 1 (`#`), Heading 2 (`##`), Heading 3 (`###`), Paragraphs, Bullet Lists, Interactive To-Dos, Code Blocks, Quotes, Callouts, and Transclusion Embeds.
+Medha features an autonomous 11-phase note formation pipeline designed to prevent model output limits and avoid batch failure:
+
+```
+Step 1: Rapid Skeleton Planning & Instant Persistence
+[ P1 Grounding ] -> [ P2 Skeleton Planner ] -> [ P3 Structural Reviewer ]
+        |
+        v
+  [ Immediate SQLite Disk Commit: All Skeletal Documents Saved ]
+
+Step 2: In-Node On-Demand Verified Content Fill
+[ Skeletal Note Opened ] -> [ Click "Generate Full Content & Citations" ]
+        |
+        v
+[ P4 Router ] -> [ P5 Query Builder ] -> [ P6 Evidence Validator ] -> [ P7 Note Writer ] -> [ P9 QA Gate ]
+        |
+        v
+  [ Replaces Skeletal Placeholder with Rich Formatted Sections & Citations ]
+```
+
+- **Step 1: Rapid Skeleton Planning & Instant Persistence**:
+  - **P1 Grounding**: Queries encyclopedic sources to resolve conceptual ambiguity and choose the exact root sense.
+  - **P2 Skeleton Planner**: Proposes a balanced, multi-tier downward hierarchy with **content-representative headings** (enforcing strict negative constraints against generic placeholders like "Overview", "Mechanics", or "Applications").
+  - **P3 Structural Reviewer**: Scans the proposed tree for leaf-word imbalance, semantic overlap, and missing prerequisite links.
+  - **Immediate Disk Commitment**: The entire skeletal tree is instantly committed to SQLite disk with downward parent-child relationships and skeletal scope markers (`🪄 Skeletal Note • Scope: ...`). Notes are never lost or wiped out.
+- **Step 2: In-Node On-Demand Verified Content Fill**:
+  - When opening any skeletal note in `BlockEditorView`, an interactive banner card appears: **"Skeletal Note • Ready to Fill Content"** with depth selection (`Overview`, `Working`, `Expert`).
+  - Clicking **"Generate Full Content & Citations (AI)"** executes the isolated single-document synthesis pipeline:
+    - **P4 Router**: Allocates API budgets across academic databases.
+    - **P5 Query Builder**: Constructs precise endpoint queries.
+    - **P6 Evidence Validator**: Cross-checks facts, scores relevance, and flags conflicting claims.
+    - **P7 Note Writer**: Synthesizes verified sections with citations (`## Executive Summary`, `## Core explanation: Detailed Mechanisms`, `## Comparative Dimensions`, `## Direct Evidence & Citations`, `## Verification & Critical Limits`).
+    - **P9 QA Gate**: Automated reviewer auditing hallucination, section completeness, and evidence density.
+  - Replaces the skeletal placeholder with rich, formatted blocks in real time while preserving all existing child sub-notes.
+
+---
+
+### 2. 📚 Deep Master Plan Curriculum Generator
+
+For broad disciplines requiring expansive, structured mastery:
+- **Encyclopedic Syllabus Synthesis**: Fetches authentic Wikipedia section outlines to propose a comprehensive curriculum index.
+- **Interactive Chapter Review**: Reorder, rename, delete, or add custom chapters before synthesis begins.
+- **Incremental Background Generation**: Synthesizes chapters sequentially with live progress indicators and automatic stop-and-keep persistence.
+- **Master Syllabus Index**: Injects an executive syllabus callout and chapter table-of-contents with bi-directional wiki-links.
+
+---
+
+### 3. 📦 Anki Ecosystem & Deck Customization
+
+Full interoperability with the broader spaced repetition ecosystem:
+- **Native Anki Importer**:
+  - Supports both legacy SQLite (`.anki2`) and modern zstd-compressed (`.anki21`) decks.
+  - Bundled with a native C-based decompression utility (`unzstd`) for zero-dependency deck extraction.
+  - Imports cards, notes, decks, tags, and cloze deletions seamlessly into Medha's database.
+- **Anki-Style Deck Options Presets**:
+  - Configurable daily limits: **New Cards / Day** and **Maximum Reviews / Day**.
+  - Custom learning steps, lapse steps, minimum intervals, and leech thresholds.
+  - Audio autoplay toggles and preset assignment per notebook or subject deck.
+- **Comprehensive Card Browser**:
+  - Multi-column table inspection: Front, Back, Deck, State, Due Date, Stability ($S$), and Difficulty ($D$).
+  - Search and filter by deck, tag, or card state (`New`, `Learning`, `Review`, `Relearn`).
+  - Inline editing sheet allowing immediate card adjustments.
+- **Daily Retention & Streak Analytics**:
+  - Tracks review count, retention rates, and study streaks over time.
+
+---
+
+### 4. 🗂️ Refined Hierarchical Block Notes & PKM
+
+- **Living Folder Command-Hub Header**: Every document opens with an informative metadata scrim showing parent notebook path, child sub-page count, word count, estimated reading time, and attached active flashcards.
+- **Centered 740pt Typographic Measure**: Notes are rendered within an optimal reading column (`maxWidth: 740pt`) with generous whitespace, eliminating horizontal eye strain on ultra-wide macOS displays.
+- **Granular Block Engine**: Full block hierarchy supporting Headings 1–3, Paragraphs, Bullet Lists, Interactive To-Dos, Code Blocks, Quotes, Callouts, and Transclusions.
 - **Caret & Keystroke Continuity**:
-  - Seamless boundary traversal: Pressing `↑` at the top of a block jumps the cursor to the previous block; pressing `↓` at the end jumps forward.
+  - Boundary traversal: Pressing `↑` at the top of a block transitions the cursor smoothly to the previous block; pressing `↓` at the end jumps forward.
   - Smart backspace handling: Pressing backspace at column 0 in a list downgrades the bullet to a regular paragraph before merging with the preceding block.
-- **Zero-Lag Typing Isolation**: Keystrokes update in-memory published properties instantly without triggering round-trip database reloads or cursor jumps.
-- **Bi-Directional Linking (`[[WikiLink]]`)**: Create spontaneous conceptual webs. The underlying SQLite `doc_link` index maintains inbound and outbound relationships without disrupting notebook trees.
-- **Block Transclusion (`((b-uuid))`):** Embed any block from any document into your notes. Editing the source updates all transcluded views in real time.
-- **Fast Full-Text Search (FTS5)**: Millisecond queries across tens of thousands of notes and blocks using SQLite FTS5 with BM25 relevance ranking.
+- **Zero-Lag Typing Isolation**: Keystroke edits update in-memory published properties instantly without triggering round-trip database reloads or cursor jumps.
+- **Bi-Directional Linking (`[[WikiLink]]`)**: Spontaneous conceptual webs. SQLite `doc_link` index maintains relationships without disrupting notebook trees.
+- **Block Transclusion (`((b-uuid))`):** Embed any block from any document into your notes with real-time bidirectional synchronization.
+- **Full-Text Search (FTS5)**: Millisecond queries across thousands of notes and blocks using SQLite FTS5 with BM25 relevance ranking.
 - **One-Click Export**: Export notes to clean GitHub-Flavored Markdown or structured JSON (`⌘E`).
 
 ---
 
-### 2. 🧠 3D Spaced Repetition (FSRS-4.5)
+### 5. 🧠 3D Spaced Repetition (FSRS-4.5)
 
-- **Modern FSRS-4.5 Scheduler**: Implements the Free Spaced Repetition Scheduler modeling memory Stability ($S$), Difficulty ($D$), and Retrievability ($R$), vastly reducing review fatigue compared to legacy SM-2.
-- **True 3D Perspective Card Flip**: Beautiful spring-animated 3D flip card (`rotation3DEffect`, perspective 0.6) for tactile, enjoyable review sessions.
-- **Real-Time Interval Preview Chips**: The 4 review buttons (`Again`, `Hard`, `Good`, `Easy`) display their dynamic next scheduled dates (e.g. `10m`, `1.2d`, `4.8d`, `12.5d`) calculated by FSRS in real time.
+- **FSRS-4.5 Scheduler**: Implements the Free Spaced Repetition Scheduler modeling memory Stability ($S$), Difficulty ($D$), and Retrievability ($R$), vastly outperforming legacy SM-2 algorithms.
+- **3D Perspective Card Flip**: Spring-animated 3D flip card (`rotation3DEffect`, perspective 0.6) for tactile review sessions.
+- **Real-Time Interval Preview Chips**: Review buttons (`Again`, `Hard`, `Good`, `Easy`) display their dynamic next scheduled dates (e.g. `10m`, `1.2d`, `4.8d`, `12.5d`) calculated by FSRS in real time.
 - **Single-Key Review Ergonomics**:
   - `Space`: Flip card to reveal answer or advance.
   - `1`, `2`, `3`, `4`: Instantly select review ratings.
-- **Gradient Progress HUD**: Subtle, colorful progress bar across the top of the deck tracking completed cards vs. remaining due cards.
+- **Gradient Progress HUD**: Colorful top progress bar tracking completed cards vs. remaining due cards.
 - **AI Socratic Tutor with Auto-Focus**: In Socratic mode, Medha automatically focuses the student's answer textfield (`@FocusState`), evaluates answers against card context, and suggests rating grades.
-- **Deck & Note Grouping**: Study dedicated subject decks or automatically review cards grouped by parent document notebooks.
 
 ---
 
-### 3. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)
+### 6. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)
 
 - **Multi-Photo Infinite 2D Canvas**: Import multiple high-resolution photos of real-world spaces (homes, campuses, art galleries, architecture) into a vast, zoomable, pannable 2D canvas.
 - **Sequential Loci Pathways**: Place numbered locus pins onto architectural landmarks and link them into sequential memory journeys with visual pathway lines.
@@ -99,11 +175,10 @@ Most PKM applications function as passive digital filing cabinets—notes are wr
 - **Frosted Glass Pin Callouts**: Loci pins feature `.ultraThinMaterial` frosted glass scrims with pulsing radar beacons indicating the active step in your journey.
 - **Floating Walk HUD Pill**: Sleek bottom control pill with arrow navigation shortcuts (`←`, `→`, `Space`, `Esc`) and a direct **"Jump to Source Note"** button.
 - **Integrated Active Recall & Flashcard Testing**: Practice retrieving anchored concepts directly at each locus, rate your recall (`Remembered`, `Needed Clue`, `Forgot`), and complete review sessions with celebratory confetti.
-- **Safe Local Asset Storage**: All palace photos are safely managed inside the app's local support directory to prevent broken paths.
 
 ---
 
-### 4. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)
+### 7. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)
 
 - **Metal / SwiftUI Immediate-Mode Canvas**: Renders 1,000+ nodes and edges at **60–120 FPS** with zero DOM overhead.
 - **1-Click Layer Presets**:
@@ -111,50 +186,65 @@ Most PKM applications function as passive digital filing cabinets—notes are wr
   - `[Tree Only]`: Visualizes folder and notebook parent-child hierarchy (`CONTAINS`).
   - `[Blended]`: Renders both layers simultaneously. `CONTAINS` edges display as dashed, dimmer purple lines (`[4, 4]`), while `LINKS_TO` edges display as solid green lines.
 - **Cooling Alpha Physics (0% CPU at Rest)**: 2D force simulation with Coulomb repulsion, Hooke spring attraction, and velocity damping. Alpha automatically decays to rest (`alpha < 0.002`), consuming **0% CPU and 0% battery** when idle.
-- **Dynamic Level of Detail (LOD)**: Text labels smoothly hide below `0.65x` zoom for panoramic graph views and appear when zooming or hovering.
-- **Degree-Scaled Vertex Sizing**: Node radius scales gracefully with degree (`inDegree + outDegree`), clamped between `6pt` and `26pt`.
+- **Visual Clustering & Controls**:
+  - Tag-based and folder-based color clustering.
+  - Interactive controls sheet for link length, charge repulsion, center force, label display modes, and search filtering.
+- **Dynamic Level of Detail (LOD)**: Text labels smoothly hide below `0.65x` zoom for panoramic views and reappear when zooming or hovering.
+- **Degree-Scaled Vertex Sizing**: Node radius scales gracefully with degree (`inDegree + outDegree`).
 - **Ghost Links for Future Notes**: Unwritten `[[Future Notes]]` appear as dashed outline nodes. Clicking them creates the note immediately.
 - **Inspector Local Graph Panel**: Scoped to the currently open note with **1-Hop**, **2-Hop**, and **3-Hop** BFS depth control and directional arrowheads (`→` Outbound green, `←` Inbound cyan).
 
 ---
 
-### 5. 🤖 Dual-Mode AI (Cloud & 100% Offline Local AI)
+### 8. 🤖 Dual-Mode AI with Per-Provider Key Isolation
 
+- **Per-Provider Key Isolation**: Independent API key storage and state management for Groq, Google Gemini, and OpenAI, preventing cross-model key overwriting.
 - **100% Offline Local AI (<4 GB RAM)**:
   - Run compact open-weight models locally on macOS via [Ollama](https://ollama.com), LM Studio, or llama.cpp.
   - **Recommended Default**: **`qwen2.5:1.5b`** (~980 MB, runs in <2 GB RAM with Metal GPU acceleration).
   - Also supports `deepseek-r1:1.5b`, `llama3.2:1b`, `llama3.2:3b`, `smollm2:1.7b`, and `mistral:7b`.
-  - Zero cloud API keys required, zero subscription fees, and complete offline data privacy.
+  - Zero cloud API keys required, zero subscription fees, and complete offline privacy.
 - **Reasoning Model Support (DeepSeek-R1 / QwQ)**:
   - Distilled reasoning models output chain-of-thought `<think>...</think>` tokens.
   - Medha features automatic regex sanitization that parses reasoning thoughts away, extracting pristine structured JSON outlines and Socratic dialogues.
-- **Cloud Providers**: Native support for Google Gemini (`gemini-2.5-flash`, `gemini-1.5-flash`) and OpenAI (`gpt-4o-mini`, `gpt-4o`).
-- **Independent Dual Configuration**: Run Local AI for flashcard Socratic tutoring while using Cloud AI for notes synthesis, or run 100% local across both.
+- **Independent Dual Configuration**: Run Local AI for flashcard Socratic tutoring while using Groq or Gemini for deep note synthesis.
 
 ---
 
-### 6. 🌐 Multi-Source Free Academic Grounding (0 API Keys)
+### 9. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)
 
-Small local language models (1B–3B parameters) can occasionally hallucinate specific facts. Medha solves this by pairing local inference with **Free Online Academic Grounding**, querying public research APIs on the fly without any API keys or subscriptions:
+Medha pairs inference with real-time academic evidence retrieval across 8+ public repositories with zero subscriptions or API keys:
 
-| Source | Coverage | Content Grounded |
+| Domain | Source | Coverage & Data Retrieved |
 | :--- | :--- | :--- |
-| 🌐 **Wikipedia** | Global Encyclopedia | Broad conceptual foundations and historical context |
-| 🎓 **OpenAlex & CrossRef** | 250M+ Academic Papers | STEM, CS, Mathematics, and Humanities research with inverted-index abstract reconstruction |
-| 🧬 **Europe PMC** | PubMed & Life Sciences | Biomedical, clinical, neuroscience, and pharmacology abstracts |
-| 📖 **Wiktionary** | Academic Lexicon | Precise terminology definitions, grammatical parts of speech, and etymology |
+| 🌐 **General & Encyclopedic** | **Wikipedia** | Encyclopedic summaries, section outlines, and foundational definitions |
+| 🎓 **STEM, CS & Humanities** | **OpenAlex & CrossRef** | 250M+ academic papers with inverted-index abstract reconstruction |
+| 🧬 **Biomedical & Clinical** | **PubMed (NCBI)** | Peer-reviewed medical literature, clinical trials, and life science research |
+| 🔬 **Life Sciences & Genetics** | **Europe PMC** | Open biomedical articles, pharmacology papers, and PMC full-text excerpts |
+| 📐 **Physics, Math & Computing**| **arXiv** | High-energy physics, computational linguistics, AI preprints, and mathematics |
+| 📜 **History & Literature** | **Open Library** | Historical texts, classic literature, and archive book summaries |
+| 📖 **Lexicon & Etymology** | **Wiktionary** | Terminology definitions, grammatical parts of speech, and linguistic origin |
+| 🗣️ **Phonetics & Pronunciation** | **Free Dictionary** | Standardized definitions, phonetics, and grammatical audio hints |
 
-- **Parameter-Aware Context Budgeting**: For 1.5B–3B models, Medha automatically budgets extracts to ~400–500 concise characters per source, keeping prompts dense and preventing small models from losing attention. For 7B+ models, richer abstracts and citations are injected.
+- **Automatic Subject Domain Detection**: Analyzes note context to detect subject domains (`Biomedical`, `STEM`, `Literature`, `History`, `Lexicon`) and routes queries to relevant repositories.
 - **Parallel Query Execution**: All enabled sources are fetched concurrently via Swift `withTaskGroup`.
-- **Graceful Offline Fallback**: If internet is disconnected, Medha automatically falls back to offline model inference without interruptions.
+- **Parameter-Aware Budgeting**: For 1.5B–3B models, Medha automatically budgets extracts to ~400–500 concise characters per source, keeping prompts dense and preventing small models from losing attention.
 
 ---
 
-### 7. ⏱️ Integrated Pomodoro Focus Engine
+### 10. ⏱️ Focus Engine & Native macOS Lifecycle
 
-- **Always-Accessible Header Widget**: Persistent timer ring at the top of the sidebar.
-- **Preset Cycles**: Focus (25m), Short Break (5m), and Long Break (15m).
-- **Distraction-Free**: Visual countdown animations that keep you in flow without leaving your workspace.
+- **Pomodoro Focus Timer**: Persistent timer ring at the top of the sidebar supporting Focus (25m), Short Break (5m), and Long Break (15m).
+- **Active Screen Window Positioning**: Intelligently positions and centers windows on the display where the user's cursor is active.
+- **Multi-Window Support (`⌘⌥N`)**: Open secondary note windows without split-view collisions or restoration corruption.
+
+---
+
+### 11. 🌐 Standalone Web Companion Client
+
+Located in [`/web`](web/):
+- Full-featured browser-based PKM implementation with matched styling and behavior.
+- Local browser persistence (IndexedDB / LocalStorage), visual knowledge graph canvas, FSRS-4.5 review state machine, and multi-source study grounding.
 
 ---
 
@@ -164,6 +254,7 @@ Small local language models (1B–3B parameters) can occasionally hallucinate sp
 | :--- | :--- | :--- |
 | `⌘ N` | Create New Note | Global |
 | `⇧ ⌘ N` | Create New Notebook | Global |
+| `⌘ ⌥ N` | Open New Window | Global |
 | `⌘ K` | Open Command Palette / Global Search | Global |
 | `⌘ I` | Toggle Right Inspector Panel | Global |
 | `⌘ G` | Open Knowledge Graph Canvas | Global |
@@ -193,8 +284,9 @@ Small local language models (1B–3B parameters) can occasionally hallucinate sp
 |  |                       MedhaKit Domain Services & Protocols                        |  |
 |  |  - BlockStore (State & Queries)          - ForceSimulation (Cooling Alpha 0% CPU) |  |
 |  |  - FSRSScheduler (v4.5 Memory Model)     - AISocraticService (Dual Engine Router) |  |
-|  |  - StudyKnowledgeService (Multi-Source)  - PalaceAssetStorage (Local Image Repo)  |  |
-|  |    * Wikipedia, OpenAlex, Europe PMC, Wiktionary Grounding Fetchers               |  |
+|  |  - AutoNotePipelineService (P1-P11)      - MasterPlanService (Curriculum Engine)  |  |
+|  |  - AnkiImporter (unzstd native parser)   - DailyStudyTracker (Retention Metrics)  |  |
+|  |  - StudyKnowledgeService (8+ Academic Open APIs: PubMed, arXiv, OpenAlex, etc.)   |  |
 |  +-----------------------------------------------------------------------------------+  |
 |  +-----------------------------------------------------------------------------------+  |
 |  |                             Persistence & Storage Layer                           |  |
@@ -208,7 +300,7 @@ Small local language models (1B–3B parameters) can occasionally hallucinate sp
 - **Database**: SQLite 3.45+ via [GRDB.swift](https://github.com/groue/GRDB.swift) (WAL mode, foreign key cascade integrity, automatic migrations)
 - **Search Engine**: SQLite FTS5 virtual tables with Porter stemming and BM25 ranking
 - **Rendering**: GPU immediate-mode `Canvas` on Metal backend for graph; vast spatial matrix transforms for 2D Memory Palace
-- **Memory Science**: FSRS-4.5 (Free Spaced Repetition Scheduler) state machine
+- **Decompression**: Bundled native `unzstd` binary for `.anki21` archives
 
 ---
 
@@ -222,28 +314,30 @@ medharara/
 ├── Medhara_Complete_Presentation_Flow.pdf    # Full technical & product presentation deck
 ├── Medha.app/                                # Compiled macOS universal release application
 │   └── Contents/MacOS/Medha                  # Native binary executable
+├── Resources/                                # Helper tools & decompression binaries (unzstd)
+├── web/                                      # Standalone web companion client
 ├── Sources/
 │   ├── MedhaApp/
 │   │   └── MedhaApp.swift                    # Application entrypoint, menu commands, shortcuts
 │   ├── MedhaKit/
 │   │   ├── Database/                         # GRDB DatabaseManager, schema migrations, seeders
-│   │   ├── Models/                           # Block, DocLink, Flashcard, Palace, GraphModels
+│   │   ├── Models/                           # Block, DocLink, Flashcard, DeckOptions, AutoNoteSchemas
 │   │   ├── Services/                         # BlockStore, ForceSimulation, AISocratic, FSRS,
-│   │   │                                     # WikipediaService, StudyKnowledgeService
+│   │   │                                     # AutoNotePipelineService, MasterPlanService, AnkiImporter
 │   │   └── UI/
 │   │       ├── Editor/                       # BlockEditor, BlockRow, SlashMenu, NotesAIAssistant
-│   │       ├── Flashcards/                   # FlashcardManager, 3D flip card, AISettingsSheet
+│   │       ├── Flashcards/                   # FlashcardManager, CardBrowser, DeckOptionsSheet
 │   │       ├── Graph/                        # GlobalGraphView, GraphCanvasView, GraphControlsSheet
 │   │       ├── Inspector/                    # InspectorView, Outline, Backlinks, LocalGraphView
 │   │       ├── MemoryPalace/                 # MemoryPalaceView, Multi-photo 2D canvas, Walk mode
 │   │       └── Navigation/                   # SidebarView, DocumentTreeView, MainSplitView
 │   └── MedhaTestRunner/
-│       └── main.swift                        # 28 automated integration test suites
+│       └── main.swift                        # 34 automated integration test suites
 ```
 
 ---
 
-## 🧪 Automated Testing & Verification (28 Suites)
+## 🧪 Automated Testing & Verification (34 Suites)
 
 Medha is verified by an extensive, non-mocked integration test runner ensuring rock-solid database integrity, rendering performance, and algorithmic accuracy:
 
@@ -280,6 +374,12 @@ swift run MedhaTestRunner < /dev/null
 26. `testCalloutExclusionInAIGeneration`: Clean outline generation without redundant callout boxes.
 27. `testGraphViewAndPhysicsEngine`: Indexed graph reads, layer separation, ghost nodes, orphan filtering, BFS local graph hops, and cooling alpha physics rest.
 28. `testHybridStudyGroundingAndReasoningSanitization`: OpenAlex inverted index abstract decoding, Europe PMC biomedical search, Wiktionary lexical definitions, multi-source parallel fetch, parameter-aware budget limits, and DeepSeek-R1 / QwQ `<think>` tag sanitization.
+29. `testDeckOptionsPresetsAndCardManagement`: Anki-style options presets, daily review limits, and card browser operations.
+30. `testAnkiImporterSuite`: `.anki2` and `.anki21` zstd-decompressed database parsing and card extraction.
+31. `testMultiSubjectDomainsAndOpenAPIs`: PubMed biomedical, arXiv physics/math/CS, Open Library, and Free Dictionary integrations.
+32. `testDeepMasterPlanSynthesis`: Multi-chapter syllabus generation, Wikipedia outline extraction, and quote protection.
+33. `testMalformedJSONRecoveryAndIncrementalPersistence`: Resilience against JSON leaks and partial chapter persistence.
+34. `testAutoNoteFormationPipeline`: P1–P11 prompts, 20 API catalog normalization, tree edit safety handlers, and in-node skeletal markers.
 
 ---
 
