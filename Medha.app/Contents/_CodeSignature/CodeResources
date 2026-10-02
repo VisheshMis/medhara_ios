@@ -28,6 +28,10 @@
 		<data>
 		eaNCyFMyvN+uolgK6cZ1cBD5gTA=
 		</data>
+		<key>Resources/unzstd</key>
+		<data>
+		YSJVXOWnsmSt0qAY1KUlb3qTzOE=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -71,6 +75,13 @@
 			<key>hash2</key>
 			<data>
 			4nxPoTyoh46CgyuGsSs/XmWOtVo+qTuuIh1UzNHW9xQ=
+			</data>
+		</dict>
+		<key>Resources/unzstd</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			fYlOCVBIR6q9q4WzRit4wLfBnX0KxkUsPZZwpVgVSjs=
 			</data>
 		</dict>
 	</dict>

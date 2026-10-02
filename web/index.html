@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medha — Local-First Knowledge & Spaced Repetition</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Top Application Navigation Header (macOS Titlebar Style) -->
+        <header class="app-header">
+            <div class="header-left">
+                <!-- macOS Window Traffic Lights -->
+                <div class="window-controls">
+                    <span class="traffic-light close" title="Close"></span>
+                    <span class="traffic-light minimize" title="Minimize"></span>
+                    <span class="traffic-light zoom" title="Zoom"></span>
+                </div>
+
+                <div class="brand-section">
+                    <div class="brand-logo">M</div>
+                    <span>Medha</span>
+                </div>
+
+                <!-- Recurring Focus Timer Widget -->
+                <div class="timer-pill" id="focus-timer-pill" title="Click to start/pause 25m Focus Timer">
+                    <span class="timer-dot"></span>
+                    <span id="timer-display" class="timer-text">25:00</span>
+                </div>
+            </div>
+
+            <!-- macOS Segmented Control -->
+            <div class="segmented-control">
+                <button id="tab-editor" class="segment-btn active">
+                    <span>📄</span> Notes & Folders
+                </button>
+                <button id="tab-flashcards" class="segment-btn">
+                    <span>🗂️</span> Flashcards (FSRS)
+                    <span id="due-badge" class="nav-badge">0</span>
+                </button>
+                <button id="tab-graph" class="segment-btn">
+                    <span>🕸️</span> Knowledge Graph
+                </button>
+            </div>
+
+            <!-- Header Right Actions -->
+            <div class="header-actions">
+                <div class="search-trigger" id="btn-search-trigger" title="Quick Search (⌘K)">
+                    <span>🔍</span>
+                    <span style="font-size: 11px;">Search...</span>
+                    <kbd class="kbd-badge">⌘K</kbd>
+                </div>
+                <button id="btn-toggle-inspector" class="btn btn-secondary" title="Toggle Document Inspector">
+                    <span>ℹ️</span> Inspector
+                </button>
+                <button id="btn-toggle-ai" class="btn btn-secondary" title="Toggle AI Study Assistant">
+                    <span>✨</span> Assistant
+                </button>
+                <button id="btn-settings" class="btn-icon" title="Preferences">⚙️</button>
+            </div>
+        </header>
+
+        <!-- Main Body: Sidebar + Workspace + AI Panel -->
+        <div class="app-body">
+            <!-- Left Sidebar: Document Tree -->
+            <aside class="sidebar">
+                <div class="sidebar-section-header">Study & Retention</div>
+                <div class="sidebar-nav-item active" id="nav-notes">
+                    <span class="sidebar-nav-icon">📄</span>
+                    <span>Notes & Folders</span>
+                </div>
+                <div class="sidebar-nav-item" id="nav-flashcards">
+                    <span class="sidebar-nav-icon">🗂️</span>
+                    <span>Flashcards (FSRS)</span>
+                    <span id="sidebar-due-badge" class="nav-badge" style="margin-left: auto;">0</span>
+                </div>
+                <div class="sidebar-nav-item" id="nav-graph">
+                    <span class="sidebar-nav-icon">🕸️</span>
+                    <span>Knowledge Graph</span>
+                </div>
+
+                <div class="sidebar-header" style="margin-top: 10px;">
+                    <span class="sidebar-title">Notes Vault</span>
+                    <button id="btn-new-doc" class="btn-icon" title="New Note">+</button>
+                </div>
+                <div class="sidebar-search-box" style="padding: 0 12px 8px 12px;">
+                    <input type="text" id="tree-search-input" placeholder="Filter notes..." style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 11px; color: var(--text-primary); outline: none;" />
+                </div>
+                <div id="doc-tree" class="tree-list"></div>
+            </aside>
+
+            <!-- Center Workspace Area -->
+            <main class="workspace-area">
+                <!-- 1. Note Editor View -->
+                <section id="view-editor" class="editor-container" style="padding-top: 0;">
+                    <!-- macOS Breadcrumbs Bar -->
+                    <div class="editor-breadcrumbs">
+                        <div class="breadcrumb-path" id="breadcrumb-path">
+                            <span class="breadcrumb-item" id="breadcrumb-root" style="cursor: pointer;">📁 Vault</span>
+                            <span class="breadcrumb-sep">›</span>
+                            <span id="breadcrumb-doc-title" class="breadcrumb-active">Active Note</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <button id="btn-add-subnote-header" class="btn btn-secondary" style="font-size:10px; padding:2px 7px;" title="Create a sub-note nested under this document">+ Sub-note</button>
+                            <div class="editor-meta-info" id="editor-meta-info">Autosaved to IndexedDB</div>
+                        </div>
+                    </div>
+
+                    <!-- Living Folder Command Hub -->
+                    <div id="living-folder-hub" class="living-folder-hub" style="display: none;"></div>
+
+                    <!-- Subfolders Gallery Grid -->
+                    <div id="subfolders-gallery" class="subfolders-gallery" style="display: none;"></div>
+
+                    <div class="editor-canvas" style="padding-top: 16px;">
+                        <input type="text" id="doc-title-input" class="doc-title-input" placeholder="Untitled Note" />
+                        <div id="blocks-list"></div>
+                    </div>
+
+                    <!-- Attached Flashcards Section -->
+                    <div id="attached-flashcards-section" class="attached-flashcards-section" style="display: none;"></div>
+                </section>
+
+                <!-- 2. Flashcards & FSRS Review View -->
+                <section id="view-flashcards" class="flashcards-container hidden">
+                    <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 580px;">
+                        <span id="flashcard-deck-info" style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">All Cards Deck</span>
+                        <button id="btn-new-card" class="btn btn-secondary">+ New Card</button>
+                    </div>
+
+                    <!-- 3D Flip Card Stage -->
+                    <div class="card-stage">
+                        <div id="flip-card" class="flip-card">
+                            <div class="card-face card-front">
+                                <div id="card-badge" class="card-badge">Card 1</div>
+                                <div id="card-front" class="card-front-content">Front Question</div>
+                                <div id="card-hint" class="card-hint"></div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="card-badge" style="background:rgba(36,202,133,0.15);color:var(--accent-green);">Answer</div>
+                                <div id="card-back" class="card-back-content">Back Answer</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FSRS Rating Buttons -->
+                    <div id="review-controls" class="review-controls">
+                        <button class="rating-btn btn-again" data-rating="1">
+                            <span>Again (1)</span>
+                            <span id="int-again" class="interval-chip">1m</span>
+                        </button>
+                        <button class="rating-btn btn-hard" data-rating="2">
+                            <span>Hard (2)</span>
+                            <span id="int-hard" class="interval-chip">10m</span>
+                        </button>
+                        <button class="rating-btn btn-good" data-rating="3">
+                            <span>Good (3)</span>
+                            <span id="int-good" class="interval-chip">1d</span>
+                        </button>
+                        <button class="rating-btn btn-easy" data-rating="4">
+                            <span>Easy (4)</span>
+                            <span id="int-easy" class="interval-chip">4d</span>
+                        </button>
+                    </div>
+
+                    <!-- Socratic Active Recall Box -->
+                    <div id="socratic-box" class="socratic-recall-box">
+                        <textarea id="socratic-input" class="socratic-input" rows="2" placeholder="Test your recall before flipping... (Press ⌘+Enter to submit)"></textarea>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                            <button id="btn-socratic-submit" class="btn btn-secondary" style="font-size: 11px;">Evaluate Answer</button>
+                        </div>
+                        <div id="socratic-feedback" style="font-size: 12px; margin-top: 6px; color: var(--text-secondary);"></div>
+                    </div>
+                </section>
+
+                <!-- 3. Knowledge Graph View -->
+                <section id="view-graph" class="graph-container hidden">
+                    <canvas id="graph-canvas" class="graph-canvas"></canvas>
+                    <div class="graph-controls">
+                        <span style="font-size: 11px; color: var(--text-secondary); align-self: center; padding: 0 8px;">Force-Directed Knowledge Graph</span>
+                    </div>
+                </section>
+            </main>
+
+            <!-- Right Sidebar: Document Inspector Panel (Outline, Backlinks, Graph, Doc Info) -->
+            <aside id="inspector-panel" class="ai-panel collapsed">
+                <div class="ai-panel-header">
+                    <div style="display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px;">
+                        <span>ℹ️</span> Document Inspector
+                    </div>
+                    <button id="btn-close-inspector" class="btn-icon">×</button>
+                </div>
+                <div class="inspector-segmented-header">
+                    <button class="inspector-tab-btn active" data-tab="outline">📑 Outline</button>
+                    <button class="inspector-tab-btn" data-tab="backlinks">🔗 Backlinks</button>
+                    <button class="inspector-tab-btn" data-tab="graph">🕸️ Graph</button>
+                    <button class="inspector-tab-btn" data-tab="info">📊 Info</button>
+                </div>
+                <div id="inspector-content" style="flex:1; overflow-y:auto; padding:12px;"></div>
+            </aside>
+
+            <!-- Right Sidebar: AI Socratic & Downward Tree Panel -->
+            <aside id="ai-panel" class="ai-panel collapsed">
+                <div class="ai-panel-header">
+                    <div style="display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px;">
+                        <span>✨</span> Study Grounding & AI
+                    </div>
+                    <button id="btn-close-ai" class="btn-icon">×</button>
+                </div>
+                <div class="ai-panel-content">
+                    <div>
+                        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:8px;">
+                            Grounding Knowledge Sources
+                        </div>
+                        <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+                            <button class="btn btn-secondary btn-preset" data-preset="all" style="padding: 3px 8px; font-size: 10px;">All</button>
+                            <button class="btn btn-secondary btn-preset" data-preset="stem" style="padding: 3px 8px; font-size: 10px;">STEM</button>
+                            <button class="btn btn-secondary btn-preset" data-preset="biomed" style="padding: 3px 8px; font-size: 10px;">BioMed</button>
+                            <button class="btn btn-secondary btn-preset" data-preset="none" style="padding: 3px 8px; font-size: 10px;">None</button>
+                        </div>
+                        <div id="ai-sources-list" class="source-grid"></div>
+                    </div>
+
+                    <div>
+                        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:6px;">
+                            Hierarchy Strategy
+                        </div>
+                        <select id="select-hierarchy-mode" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:#FFF; border-radius:var(--radius-sm); padding:6px 8px; font-size:12px;">
+                            <option value="expandSubtopics">Expand Subtopics (Downward Tree)</option>
+                            <option value="summarizeAndSplit">Summarize & Split into Modular Notes</option>
+                        </select>
+                    </div>
+
+                    <button id="btn-generate-hierarchy" class="btn btn-primary" style="width:100%; justify-content:center;">
+                        🌲 Generate Downward Hierarchy
+                    </button>
+                    <div id="ai-status" style="font-size: 11.5px; color: var(--text-tertiary); line-height: 1.4; padding: 6px 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); min-height: 28px; display: flex; align-items: center;">
+                        Ready to organize downward hierarchy
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Spotlight Command Palette Modal (⌘K) -->
+    <div id="search-modal" class="modal-overlay hidden">
+        <div class="palette-card">
+            <div class="palette-input-box">
+                <span style="font-size: 15px;">🔍</span>
+                <input type="text" id="palette-input" class="palette-input" placeholder="Search notes or jump to note... (ESC to close)" />
+                <kbd class="kbd-badge">ESC</kbd>
+            </div>
+            <div id="palette-results" class="palette-results"></div>
+        </div>
+    </div>
+
+    <!-- Settings Modal (macOS Preferences Sheet) -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div>
+                    <h3 style="font-size: 15px;">Medha AI Configuration</h3>
+                    <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">
+                        Configure Local AI (< 4 GB RAM) or Cloud Keys for Socratic recall & study synthesis
+                    </div>
+                </div>
+                <button id="btn-close-settings" class="btn-icon">×</button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                <!-- Provider Picker -->
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:5px;">AI Provider</label>
+                    <select id="setting-provider" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:#FFF; border-radius:var(--radius-sm); padding:8px 10px; font-size: 13px;">
+                        <option value="groq">Groq (Ultra-Fast Free Cloud — Recommended)</option>
+                        <option value="local">Ollama / LM Studio (Local LLM)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                </div>
+
+                <!-- Local Endpoint + Test Connection -->
+                <div id="group-local-endpoint">
+                    <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:5px;">Local Server Endpoint</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="setting-endpoint" placeholder="http://127.0.0.1:11434" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:#FFF; border-radius:var(--radius-sm); padding:8px 10px; font-size: 13px;" />
+                    </div>
+                </div>
+
+                <!-- Model Name + Quick Presets -->
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:5px;">Model Name</label>
+                    <input type="text" id="setting-model" placeholder="qwen/qwen3.8-27b, openai/gpt-oss-120b, qwen2.5:1.5b" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:#FFF; border-radius:var(--radius-sm); padding:8px 10px; font-size: 13px;" />
+                    <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;">
+                        <span style="font-size:10.5px; color:var(--text-tertiary); font-weight: 500;">Presets:</span>
+                        <button type="button" class="chip-btn preset-model-btn" data-model="qwen/qwen3.8-27b">qwen/qwen3.8-27b</button>
+                        <button type="button" class="chip-btn preset-model-btn" data-model="openai/gpt-oss-120b">openai/gpt-oss-120b</button>
+                        <button type="button" class="chip-btn preset-model-btn" data-model="openai/gpt-oss-20b">openai/gpt-oss-20b</button>
+                        <button type="button" class="chip-btn preset-model-btn" data-model="qwen2.5:1.5b">qwen2.5:1.5b</button>
+                    </div>
+                </div>
+
+                <!-- API Key -->
+                <div id="group-api-key">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <label id="label-api-key" style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-tertiary);">API Key (Cloud Providers)</label>
+                        <a id="link-get-key" href="https://console.groq.com/keys" target="_blank" style="font-size:11px; color:var(--accent); text-decoration:none;">Get Free Key ↗</a>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <input type="password" id="setting-apikey" placeholder="Paste Groq / Gemini / OpenAI Key here..." style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:#FFF; border-radius:var(--radius-sm); padding:8px 10px; font-size: 13px;" />
+                        <button type="button" id="btn-toggle-key" class="btn btn-secondary" title="Show/Hide Key">👁️</button>
+                    </div>
+                </div>
+
+                <!-- Test Connection Button & Result -->
+                <div>
+                    <button type="button" id="btn-test-connection" class="btn btn-secondary" style="width:100%; font-size: 12px; font-weight: 600; padding: 8px 12px;">
+                        ⚡ Test Connection & Verify Key
+                    </button>
+                    <!-- Live Connection Test Result Box -->
+                    <div id="connection-result" class="connection-status hidden" style="margin-top:8px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-cancel-settings" class="btn btn-secondary">Cancel</button>
+                <button id="btn-save-settings" class="btn btn-primary">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Controller -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
