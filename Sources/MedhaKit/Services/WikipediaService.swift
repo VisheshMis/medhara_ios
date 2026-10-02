@@ -127,4 +127,64 @@ public actor WikipediaService {
             return nil
         }
     }
+
+    /// Fetches the authentic, curated Table of Contents / Section Outline from Wikipedia for a topic.
+    public func fetchSectionOutline(for query: String) async -> [String] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let sanitized = trimmed
+            .replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "`", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Resolve canonical title if needed (e.g. "japanese grammer" -> "Japanese grammar")
+        let targetTitle = (await searchCanonicalTitle(term: sanitized)) ?? sanitized
+
+        guard let encoded = targetTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://en.wikipedia.org/w/api.php?action=parse&prop=sections&format=json&page=\(encoded)") else {
+            return []
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6.0
+        request.setValue("Medha-PKM/1.0 (knowledge-assistant)", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return []
+            }
+
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let parse = json["parse"] as? [String: Any],
+                  let sections = parse["sections"] as? [[String: Any]] else {
+                return []
+            }
+
+            let excludedNames: Set<String> = [
+                "see also", "references", "external links", "further reading",
+                "notes", "bibliography", "sources", "citations", "footnotes",
+                "internal links", "navigation menu", "gallery"
+            ]
+
+            var sectionTitles: [String] = []
+            for s in sections {
+                if let line = s["line"] as? String {
+                    let cleanLine = line
+                        .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    if !cleanLine.isEmpty && !excludedNames.contains(cleanLine.lowercased()) {
+                        sectionTitles.append(cleanLine)
+                    }
+                }
+            }
+
+            return sectionTitles
+        } catch {
+            return []
+        }
+    }
 }
