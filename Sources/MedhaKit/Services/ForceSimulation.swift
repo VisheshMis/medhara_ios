@@ -43,7 +43,10 @@ public final class ForceSimulation: ObservableObject {
     @Published public var config: GraphPhysicsConfig {
         didSet {
             config.save()
-            restart(targetAlpha: 0.4)
+            if !config.isFrozen {
+                self.alpha = max(self.alpha, 0.85)
+                self.isAtRest = false
+            }
         }
     }
 
@@ -69,19 +72,18 @@ public final class ForceSimulation: ObservableObject {
         var updatedNodes: [String: ForceSimulationNode] = [:]
 
         let count = Double(max(1, newNodes.count))
-        let initialRadius = min(center.x, center.y) * 0.55
+        let initialRadius = max(180.0, sqrt(count) * 42.0)
+        let goldenAngle = Double.pi * (3.0 - sqrt(5.0))
 
         for (index, gNode) in newNodes.enumerated() {
             if preserveExistingPositions, let existing = self.nodes[gNode.id] {
                 existing.radius = Double(gNode.radius)
                 updatedNodes[gNode.id] = existing
             } else {
-                // Circular layout around center
-                let angle = (Double(index) / count) * 2.0 * Double.pi
-                let jitter = Double.random(in: -15.0...15.0)
-                let r = initialRadius + jitter
-                let px = center.x + r * cos(angle)
-                let py = center.y + r * sin(angle)
+                let theta = Double(index) * goldenAngle
+                let r = sqrt(Double(index + 1) / count) * initialRadius
+                let px = center.x + r * cos(theta)
+                let py = center.y + r * sin(theta)
                 updatedNodes[gNode.id] = ForceSimulationNode(
                     id: gNode.id,
                     x: px,
@@ -96,6 +98,15 @@ public final class ForceSimulation: ObservableObject {
         restart(targetAlpha: preserveExistingPositions ? 0.4 : 1.0)
     }
 
+    public func wakeAndStep(targetAlpha: Double = 0.85) {
+        if config.isFrozen {
+            config.isFrozen = false
+        }
+        self.alpha = max(self.alpha, targetAlpha)
+        self.isAtRest = false
+        step()
+    }
+
     public func restart(targetAlpha: Double = 0.5) {
         guard !config.isFrozen else { return }
         self.alpha = max(self.alpha, targetAlpha)
@@ -105,7 +116,7 @@ public final class ForceSimulation: ObservableObject {
     public func toggleFreeze() {
         config.isFrozen.toggle()
         if !config.isFrozen {
-            restart(targetAlpha: 0.6)
+            restart(targetAlpha: 0.8)
         }
     }
 
@@ -116,13 +127,13 @@ public final class ForceSimulation: ObservableObject {
         node.vx = 0
         node.vy = 0
         node.isPinned = true
-        restart(targetAlpha: 0.3)
+        restart(targetAlpha: 0.4)
     }
 
     public func unpinNode(id: String) {
         guard let node = nodes[id] else { return }
         node.isPinned = false
-        restart(targetAlpha: 0.4)
+        restart(targetAlpha: 0.5)
     }
 
     public func pinNode(id: String, at point: CGPoint? = nil) {
@@ -151,8 +162,9 @@ public final class ForceSimulation: ObservableObject {
         let gravity = config.centerGravity * currentAlpha
         let centerX = Double(center.x)
         let centerY = Double(center.y)
+        let maxRepelDist = 550.0
 
-        // 1. Many-body Repulsion (Coulomb Law with softening)
+        // 1. Many-body Repulsion & Anti-Collision Non-Penetration
         for i in 0..<n {
             let u = nodeList[i]
             for j in (i + 1)..<n {
@@ -166,8 +178,28 @@ public final class ForceSimulation: ObservableObject {
                     distSq = 1.0
                 }
                 let dist = sqrt(distSq)
-                if dist < 850.0 {
-                    let force = repel / (distSq + 25.0)
+
+                // A. Anti-Collision Non-Penetration Spring (stops nodes from ever overlapping)
+                let minPadding = (u.radius + v.radius) + 20.0
+                if dist < minPadding {
+                    let overlap = minPadding - dist
+                    let collisionForce = (overlap / minPadding) * 14.0 * currentAlpha
+                    let cx = (dx / dist) * collisionForce
+                    let cy = (dy / dist) * collisionForce
+                    if !u.isPinned {
+                        u.vx -= cx
+                        u.vy -= cy
+                    }
+                    if !v.isPinned {
+                        v.vx += cx
+                        v.vy += cy
+                    }
+                }
+
+                // B. Coulomb Inverse-Distance Repulsion with smooth distance falloff
+                if dist < maxRepelDist {
+                    let falloff = 1.0 - (dist / maxRepelDist)
+                    let force = (repel / max(dist, 20.0)) * falloff * 0.75
                     let fx = (dx / dist) * force
                     let fy = (dy / dist) * force
                     if !u.isPinned {
@@ -175,14 +207,14 @@ public final class ForceSimulation: ObservableObject {
                         u.vy += fy
                     }
                     if !v.isPinned {
-                        v.vx -= fx
-                        v.vy -= fy
+                        v.vx += fx
+                        v.vy += fy
                     }
                 }
             }
         }
 
-        // 2. Spring Attraction along Edges (Hooke's Law)
+        // 2. Spring Attraction / Repulsion along Edges (Hooke's Law with D3 normalized displacement)
         for edge in edges {
             guard let u = nodes[edge.sourceId], let v = nodes[edge.targetId] else { continue }
             var dx = v.x - u.x
@@ -193,9 +225,9 @@ public final class ForceSimulation: ObservableObject {
                 dy = Double.random(in: -1.0...1.0)
                 dist = 0.1
             }
-            let targetD = edge.type == .contains ? (linkD * 1.15) : linkD
+            let targetD = edge.type == .contains ? (linkD * 1.25) : linkD
             let displacement = dist - targetD
-            let force = displacement * linkF
+            let force = (displacement / max(dist, 1.0)) * linkF * 55.0
             let fx = (dx / dist) * force
             let fy = (dy / dist) * force
 
@@ -210,12 +242,12 @@ public final class ForceSimulation: ObservableObject {
         }
 
         // 3. Center Gravity & Velocity Integration
-        let friction = 0.68
+        let friction = 0.76
         var maxMoved = 0.0
 
         for node in nodeList {
             if !node.isPinned {
-                // Gravity pull towards center
+                // Soft gravity pull towards center (prevents boundless drift)
                 let gx = (centerX - node.x) * gravity
                 let gy = (centerY - node.y) * gravity
                 node.vx += gx
@@ -225,7 +257,7 @@ public final class ForceSimulation: ObservableObject {
                 node.vx *= friction
                 node.vy *= friction
 
-                // Clamp velocity
+                // Clamp velocity to prevent jitter explosions
                 let speed = sqrt(node.vx * node.vx + node.vy * node.vy)
                 if speed > maxVelocity {
                     let ratio = maxVelocity / speed
@@ -241,7 +273,7 @@ public final class ForceSimulation: ObservableObject {
 
         // 4. Alpha Decay
         alpha *= (1.0 - alphaDecay)
-        if alpha < alphaMin || (alpha < 0.05 && maxMoved < 0.04) {
+        if alpha < alphaMin || (alpha < 0.04 && maxMoved < 0.05) {
             alpha = 0.0
             isAtRest = true
         }

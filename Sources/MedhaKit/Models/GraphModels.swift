@@ -152,10 +152,10 @@ public struct GraphPhysicsConfig: Equatable, Sendable {
     public var centerGravity: Double
     public var isFrozen: Bool
 
-    public static let defaultRepelForce: Double = -360.0
-    public static let defaultLinkForce: Double = 0.08
-    public static let defaultLinkDistance: Double = 75.0
-    public static let defaultCenterGravity: Double = 0.04
+    public static let defaultRepelForce: Double = -1400.0
+    public static let defaultLinkForce: Double = 0.06
+    public static let defaultLinkDistance: Double = 130.0
+    public static let defaultCenterGravity: Double = 0.008
 
     public init(
         repelForce: Double = defaultRepelForce,
@@ -173,6 +173,15 @@ public struct GraphPhysicsConfig: Equatable, Sendable {
 
     public static func load() -> GraphPhysicsConfig {
         let defaults = UserDefaults.standard
+        let hasMigrated = defaults.bool(forKey: "medha.graph.v4_tuning")
+        if !hasMigrated {
+            defaults.set(true, forKey: "medha.graph.v4_tuning")
+            defaults.set(defaultRepelForce, forKey: "medha.graph.repelForce")
+            defaults.set(defaultLinkForce, forKey: "medha.graph.linkForce")
+            defaults.set(defaultLinkDistance, forKey: "medha.graph.linkDistance")
+            defaults.set(defaultCenterGravity, forKey: "medha.graph.centerGravity")
+            return GraphPhysicsConfig()
+        }
         let repel = defaults.object(forKey: "medha.graph.repelForce") as? Double ?? defaultRepelForce
         let linkF = defaults.object(forKey: "medha.graph.linkForce") as? Double ?? defaultLinkForce
         let linkD = defaults.object(forKey: "medha.graph.linkDistance") as? Double ?? defaultLinkDistance

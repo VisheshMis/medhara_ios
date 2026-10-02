@@ -160,15 +160,52 @@ public struct GraphCanvasView: View {
                             }
                         }
 
-                        // 3. Draw Labels (LOD threshold or highlighted)
-                        let shouldDrawLabel = (zoomScale >= labelZoomThreshold || isHighlighted) && !isDimmedBySearch
-                        if shouldDrawLabel {
-                            let text = Text(node.title)
-                                .font(.system(size: isHighlighted ? 11 : 9.5, weight: isHighlighted ? .bold : .medium))
-                                .foregroundColor(isHighlighted ? Color.primary : Color.secondary.opacity(effectiveOpacity))
+                        // 3. Draw Labels (Adaptive LOD, Truncation & Sleek Pill Backdrops)
+                        let shouldDrawLabel: Bool
+                        if isHighlighted {
+                            shouldDrawLabel = true
+                        } else if isDimmedBySearch {
+                            shouldDrawLabel = false
+                        } else if zoomScale >= 1.25 {
+                            shouldDrawLabel = true
+                        } else {
+                            // At default/medium zoom, only show labels for significant hubs (degree >= 2 or root notes)
+                            shouldDrawLabel = (node.degree >= 2 || node.blockCount > 8)
+                        }
 
-                            let labelPoint = CGPoint(x: pos.x, y: pos.y + radius + 7)
-                            context.draw(context.resolve(text), at: labelPoint, anchor: .top)
+                        if shouldDrawLabel {
+                            let displayTitle: String
+                            if isHighlighted || zoomScale >= 1.4 {
+                                displayTitle = node.title
+                            } else if node.title.count > 20 {
+                                displayTitle = "\(node.title.prefix(18))…"
+                            } else {
+                                displayTitle = node.title
+                            }
+
+                            let text = Text(displayTitle)
+                                .font(.system(size: isHighlighted ? 11 : 9, weight: isHighlighted ? .bold : .medium))
+                                .foregroundColor(isHighlighted ? Color.white : Color.primary.opacity(effectiveOpacity * 0.9))
+
+                            let resolvedText = context.resolve(text)
+                            let textSize = resolvedText.measure(in: CGSize(width: 300, height: 40))
+                            let labelPoint = CGPoint(x: pos.x, y: pos.y + radius + 5)
+
+                            // Subtle dark pill background to prevent line-cross collisions and make text pop
+                            let pillRect = CGRect(
+                                x: labelPoint.x - (textSize.width / 2) - 4,
+                                y: labelPoint.y - 1,
+                                width: textSize.width + 8,
+                                height: textSize.height + 2
+                            )
+                            var pillPath = Path()
+                            pillPath.addRoundedRect(in: pillRect, cornerSize: CGSize(width: 3.5, height: 3.5))
+                            let pillColor = isHighlighted
+                                ? Color.black.opacity(0.85)
+                                : Color(NSColor.windowBackgroundColor).opacity(0.72 * effectiveOpacity)
+                            context.fill(pillPath, with: .color(pillColor))
+
+                            context.draw(resolvedText, at: labelPoint, anchor: .top)
                         }
                     }
                 }

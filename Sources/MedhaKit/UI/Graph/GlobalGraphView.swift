@@ -122,14 +122,17 @@ public struct GlobalGraphView: View {
                 .help("Re-layout & warm up simulation")
 
                 Button(action: {
-                    isControlsSheetPresented.toggle()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        isControlsSheetPresented.toggle()
+                    }
                 }) {
                     Image(systemName: "slider.horizontal.3")
-                        .foregroundColor(.primary)
+                        .foregroundColor(isControlsSheetPresented ? .accentColor : .primary)
                 }
                 .buttonStyle(.bordered)
+                .tint(isControlsSheetPresented ? .accentColor : nil)
                 .controlSize(.small)
-                .help("Physics & Group Rules Settings")
+                .help("Toggle Graph Physics & Rules Inspector")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -137,54 +140,81 @@ public struct GlobalGraphView: View {
 
             Divider()
 
-            // Main Interactive Graph Canvas
-            ZStack(alignment: .bottomLeading) {
-                GraphCanvasView(
-                    nodes: graphData.nodes,
-                    edges: graphData.edges,
-                    filterConfig: store.graphFilterConfig,
-                    groupRules: store.graphGroupRules,
-                    isLocalGraph: false,
-                    activeDocId: store.selectedDocId,
-                    onNodeSelected: { docId in
-                        store.activeMainView = .editor
-                        store.selectDocument(id: docId)
-                    },
-                    onUnresolvedSelected: { title in
-                        uncreatedTargetTitle = title
-                    },
-                    simulation: simulation
-                )
+            // Main Interactive Graph Canvas & Floating HUD Inspector
+            ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .bottomLeading) {
+                    GraphCanvasView(
+                        nodes: graphData.nodes,
+                        edges: graphData.edges,
+                        filterConfig: store.graphFilterConfig,
+                        groupRules: store.graphGroupRules,
+                        isLocalGraph: false,
+                        activeDocId: store.selectedDocId,
+                        onNodeSelected: { docId in
+                            store.activeMainView = .editor
+                            store.selectDocument(id: docId)
+                        },
+                        onUnresolvedSelected: { title in
+                            uncreatedTargetTitle = title
+                        },
+                        simulation: simulation
+                    )
 
-                // Bottom Status Bar
-                HStack(spacing: 12) {
-                    Text("\(graphData.nodes.count) nodes")
-                        .font(.caption2.bold())
-                    Text("•")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text("\(graphData.edges.count) connections")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-
-                    if simulation.config.isFrozen {
+                    // Bottom Status Bar
+                    HStack(spacing: 12) {
+                        Text("\(graphData.nodes.count) nodes")
+                            .font(.caption2.bold())
                         Text("•")
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                        Text("PAUSED")
-                            .font(.caption2.bold())
-                            .foregroundColor(.orange)
+                        Text("\(graphData.edges.count) connections")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+
+                        if simulation.config.isFrozen {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("PAUSED")
+                                .font(.caption2.bold())
+                                .foregroundColor(.orange)
+                        }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(NSColor.windowBackgroundColor).opacity(0.85))
+                    .cornerRadius(6)
+                    .padding(12)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color(NSColor.windowBackgroundColor).opacity(0.85))
-                .cornerRadius(6)
-                .padding(12)
+
+                // Interactive Non-blocking Floating HUD
+                if isControlsSheetPresented {
+                    GraphControlsSheet(
+                        simulation: simulation,
+                        groupRules: $store.graphGroupRules,
+                        onClose: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                isControlsSheetPresented = false
+                            }
+                        }
+                    )
+                    .frame(width: 320, height: 480)
+                    .padding(14)
+                    .background(Color(NSColor.windowBackgroundColor).opacity(0.92))
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .padding(14)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)),
+                        removal: .opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing))
+                    ))
+                }
             }
-        }
-        .sheet(isPresented: $isControlsSheetPresented) {
-            GraphControlsSheet(simulation: simulation, groupRules: $store.graphGroupRules)
         }
         .alert(
             "Create Note for \"\(uncreatedTargetTitle ?? "")\"?",

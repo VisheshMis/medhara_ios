@@ -3,6 +3,7 @@ import SwiftUI
 public struct GraphControlsSheet: View {
     @ObservedObject public var simulation: ForceSimulation
     @Binding public var groupRules: [GraphGroupRule]
+    public var onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var newRuleName: String = ""
@@ -12,106 +13,215 @@ public struct GraphControlsSheet: View {
 
     private let presetColors = ["#00E676", "#00E5FF", "#7C4DFF", "#FF9100", "#FF4081", "#FFEA00", "#651FFF", "#00B0FF"]
 
-    public init(simulation: ForceSimulation, groupRules: Binding<[GraphGroupRule]>) {
+    public init(
+        simulation: ForceSimulation,
+        groupRules: Binding<[GraphGroupRule]>,
+        onClose: (() -> Void)? = nil
+    ) {
         self.simulation = simulation
         self._groupRules = groupRules
+        self.onClose = onClose
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             // Header
             HStack {
                 Label("Graph Controls & Rules", systemImage: "slider.horizontal.3")
-                    .font(.headline)
+                    .font(.system(size: 13, weight: .bold))
                 Spacer()
-                Button("Done") {
-                    dismiss()
+                Button(action: {
+                    if let onClose = onClose {
+                        onClose()
+                    } else {
+                        dismiss()
+                    }
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
                 }
-                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+                .help("Close Controls")
             }
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     // Physics Section
                     Section {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("PHYSICS SIMULATION")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
+                                    .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                Button(simulation.config.isFrozen ? "Resume Simulation" : "Freeze Simulation") {
+                                Button(action: {
                                     simulation.toggleFreeze()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: simulation.config.isFrozen ? "play.fill" : "pause.fill")
+                                        Text(simulation.config.isFrozen ? "Resume" : "Pause")
+                                    }
                                 }
                                 .buttonStyle(.borderedProminent)
-                                .tint(simulation.config.isFrozen ? .green : .orange)
+                                .tint(simulation.config.isFrozen ? .green : .secondary)
                                 .controlSize(.small)
                             }
 
-                            // Repel Force
+                            // Quick Preset Buttons
                             VStack(alignment: .leading, spacing: 4) {
+                                Text("LAYOUT PRESETS")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 6) {
+                                    Button("Spacious") {
+                                        simulation.config.repelForce = -3000.0
+                                        simulation.config.linkDistance = 190.0
+                                        simulation.config.centerGravity = 0.003
+                                        simulation.config.linkForce = 0.045
+                                        simulation.wakeAndStep(targetAlpha: 0.95)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+
+                                    Button("Balanced") {
+                                        simulation.config.repelForce = -1400.0
+                                        simulation.config.linkDistance = 130.0
+                                        simulation.config.centerGravity = 0.008
+                                        simulation.config.linkForce = 0.060
+                                        simulation.wakeAndStep(targetAlpha: 0.95)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+
+                                    Button("Compact") {
+                                        simulation.config.repelForce = -500.0
+                                        simulation.config.linkDistance = 75.0
+                                        simulation.config.centerGravity = 0.018
+                                        simulation.config.linkForce = 0.090
+                                        simulation.wakeAndStep(targetAlpha: 0.95)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                }
+                            }
+
+                            Divider().padding(.vertical, 2)
+
+                            // Repel Force Slider
+                            VStack(alignment: .leading, spacing: 3) {
                                 HStack {
                                     Text("Repel Force:")
-                                        .font(.subheadline)
+                                        .font(.system(size: 11, weight: .medium))
                                     Spacer()
                                     Text(String(format: "%.0f", simulation.config.repelForce))
-                                        .font(.caption.monospaced())
+                                        .font(.system(size: 10).monospaced())
                                         .foregroundColor(.secondary)
                                 }
-                                Slider(value: $simulation.config.repelForce, in: -800...(-80), step: 10)
+                                Slider(
+                                    value: Binding(
+                                        get: { simulation.config.repelForce },
+                                        set: { newVal in
+                                            simulation.config.repelForce = newVal
+                                            simulation.wakeAndStep(targetAlpha: 0.85)
+                                        }
+                                    ),
+                                    in: -5000...(-200),
+                                    step: 50
+                                )
                             }
 
-                            // Link Force
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Link Attraction Force:")
-                                        .font(.subheadline)
-                                    Spacer()
-                                    Text(String(format: "%.3f", simulation.config.linkForce))
-                                        .font(.caption.monospaced())
-                                        .foregroundColor(.secondary)
-                                }
-                                Slider(value: $simulation.config.linkForce, in: 0.01...0.25, step: 0.005)
-                            }
-
-                            // Link Distance
-                            VStack(alignment: .leading, spacing: 4) {
+                            // Link Rest Distance Slider
+                            VStack(alignment: .leading, spacing: 3) {
                                 HStack {
                                     Text("Link Rest Distance:")
-                                        .font(.subheadline)
+                                        .font(.system(size: 11, weight: .medium))
                                     Spacer()
                                     Text(String(format: "%.0f pt", simulation.config.linkDistance))
-                                        .font(.caption.monospaced())
+                                        .font(.system(size: 10).monospaced())
                                         .foregroundColor(.secondary)
                                 }
-                                Slider(value: $simulation.config.linkDistance, in: 30...200, step: 5)
+                                Slider(
+                                    value: Binding(
+                                        get: { simulation.config.linkDistance },
+                                        set: { newVal in
+                                            simulation.config.linkDistance = newVal
+                                            simulation.wakeAndStep(targetAlpha: 0.85)
+                                        }
+                                    ),
+                                    in: 40...350,
+                                    step: 10
+                                )
                             }
 
-                            // Center Gravity
-                            VStack(alignment: .leading, spacing: 4) {
+                            // Link Attraction Force Slider
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text("Link Attraction Force:")
+                                        .font(.system(size: 11, weight: .medium))
+                                    Spacer()
+                                    Text(String(format: "%.3f", simulation.config.linkForce))
+                                        .font(.system(size: 10).monospaced())
+                                        .foregroundColor(.secondary)
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { simulation.config.linkForce },
+                                        set: { newVal in
+                                            simulation.config.linkForce = newVal
+                                            simulation.wakeAndStep(targetAlpha: 0.85)
+                                        }
+                                    ),
+                                    in: 0.01...0.20,
+                                    step: 0.005
+                                )
+                            }
+
+                            // Center Gravity Slider
+                            VStack(alignment: .leading, spacing: 3) {
                                 HStack {
                                     Text("Center Gravity:")
-                                        .font(.subheadline)
+                                        .font(.system(size: 11, weight: .medium))
                                     Spacer()
-                                    Text(String(format: "%.3f", simulation.config.centerGravity))
-                                        .font(.caption.monospaced())
+                                    Text(String(format: "%.4f", simulation.config.centerGravity))
+                                        .font(.system(size: 10).monospaced())
                                         .foregroundColor(.secondary)
                                 }
-                                Slider(value: $simulation.config.centerGravity, in: 0.005...0.12, step: 0.005)
+                                Slider(
+                                    value: Binding(
+                                        get: { simulation.config.centerGravity },
+                                        set: { newVal in
+                                            simulation.config.centerGravity = newVal
+                                            simulation.wakeAndStep(targetAlpha: 0.85)
+                                        }
+                                    ),
+                                    in: 0.000...0.030,
+                                    step: 0.001
+                                )
                             }
 
-                            Button("Reset Physics to Defaults") {
-                                simulation.config = GraphPhysicsConfig()
-                                simulation.config.save()
-                                simulation.restart(targetAlpha: 0.8)
+                            HStack {
+                                Button("Reset to Optimal") {
+                                    simulation.config = GraphPhysicsConfig()
+                                    simulation.config.save()
+                                    simulation.wakeAndStep(targetAlpha: 0.95)
+                                }
+                                .controlSize(.small)
+
+                                Spacer()
+
+                                Button(action: {
+                                    simulation.restart(targetAlpha: 0.9)
+                                }) {
+                                    Label("Re-shake", systemImage: "sparkles")
+                                }
+                                .controlSize(.small)
                             }
-                            .controlSize(.small)
                         }
-                        .padding(12)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                        .padding(10)
+                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                         .cornerRadius(8)
                     }
 
