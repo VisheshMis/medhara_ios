@@ -3,14 +3,16 @@ import Combine
 
 // MARK: - AI Provider
 public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
+    case groq = "groq"
+    case local = "local"
     case gemini = "gemini"
     case openai = "openai"
-    case local = "local"
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
+        case .groq: return "Groq (Ultra-Fast Free Cloud)"
         case .gemini: return "Google Gemini"
         case .openai: return "OpenAI"
         case .local: return "Local AI (Ollama / Self-Hosted)"
@@ -19,6 +21,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 
     public var defaultModel: String {
         switch self {
+        case .groq: return "qwen/qwen3.8-27b"
         case .gemini: return "gemini-3.6-flash"
         case .openai: return "gpt-4o-mini"
         case .local: return "qwen2.5:1.5b"
@@ -27,6 +30,13 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 
     public var availableModels: [String] {
         switch self {
+        case .groq:
+            return [
+                "qwen/qwen3.8-27b",
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "allam-2-7b"
+            ]
         case .gemini:
             return ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
         case .openai:
@@ -48,6 +58,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 
     public var helpUrlString: String {
         switch self {
+        case .groq: return "https://console.groq.com/keys"
         case .gemini: return "https://aistudio.google.com/app/apikey"
         case .openai: return "https://platform.openai.com/api-keys"
         case .local: return "https://ollama.com"
@@ -73,12 +84,62 @@ public final class AISettings: ObservableObject {
     private let keyWikipediaGrounding = "medha_ai_wikipedia_grounding"
     private let keyStudySources = "medha_ai_study_sources"
 
+    // Per-provider Dedicated Keys for Flashcards
+    private let keyGeminiKey = "medha_ai_key_gemini"
+    private let keyGroqKey = "medha_ai_key_groq"
+    private let keyOpenaiKey = "medha_ai_key_openai"
+
+    // Per-provider Dedicated Keys for Notes AI
+    private let keyNotesGeminiKey = "medha_notes_key_gemini"
+    private let keyNotesGroqKey = "medha_notes_key_groq"
+    private let keyNotesOpenaiKey = "medha_notes_key_openai"
+
+    // Dedicated provider keys (Flashcards AI)
+    @Published public var geminiKey: String {
+        didSet { UserDefaults.standard.set(geminiKey, forKey: keyGeminiKey) }
+    }
+    @Published public var groqKey: String {
+        didSet { UserDefaults.standard.set(groqKey, forKey: keyGroqKey) }
+    }
+    @Published public var openaiKey: String {
+        didSet { UserDefaults.standard.set(openaiKey, forKey: keyOpenaiKey) }
+    }
+
+    // Dedicated provider keys (Notes AI)
+    @Published public var notesGeminiKey: String {
+        didSet { UserDefaults.standard.set(notesGeminiKey, forKey: keyNotesGeminiKey) }
+    }
+    @Published public var notesGroqKey: String {
+        didSet { UserDefaults.standard.set(notesGroqKey, forKey: keyNotesGroqKey) }
+    }
+    @Published public var notesOpenaiKey: String {
+        didSet { UserDefaults.standard.set(notesOpenaiKey, forKey: keyNotesOpenaiKey) }
+    }
+
     @Published public var apiKey: String {
-        didSet { UserDefaults.standard.set(apiKey, forKey: keyApiKey) }
+        didSet {
+            UserDefaults.standard.set(apiKey, forKey: keyApiKey)
+            let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                let target: AIProvider = {
+                    if trimmed.starts(with: "gsk_") { return .groq }
+                    if trimmed.starts(with: "AIza") { return .gemini }
+                    if trimmed.starts(with: "sk-") { return .openai }
+                    return provider
+                }()
+                setKey(trimmed, for: target, syncActiveKey: false)
+            }
+        }
     }
 
     @Published public var provider: AIProvider {
-        didSet { UserDefaults.standard.set(provider.rawValue, forKey: keyProvider) }
+        didSet {
+            UserDefaults.standard.set(provider.rawValue, forKey: keyProvider)
+            let resolved = key(for: provider)
+            if apiKey != resolved {
+                apiKey = resolved
+            }
+        }
     }
 
     @Published public var model: String {
@@ -132,11 +193,29 @@ public final class AISettings: ObservableObject {
     }
 
     @Published public var notesApiKey: String {
-        didSet { UserDefaults.standard.set(notesApiKey, forKey: keyNotesApiKey) }
+        didSet {
+            UserDefaults.standard.set(notesApiKey, forKey: keyNotesApiKey)
+            let trimmed = notesApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                let target: AIProvider = {
+                    if trimmed.starts(with: "gsk_") { return .groq }
+                    if trimmed.starts(with: "AIza") { return .gemini }
+                    if trimmed.starts(with: "sk-") { return .openai }
+                    return notesProvider
+                }()
+                setNotesKey(trimmed, for: target, syncActiveKey: false)
+            }
+        }
     }
 
     @Published public var notesProvider: AIProvider {
-        didSet { UserDefaults.standard.set(notesProvider.rawValue, forKey: keyNotesProvider) }
+        didSet {
+            UserDefaults.standard.set(notesProvider.rawValue, forKey: keyNotesProvider)
+            let resolved = notesKey(for: notesProvider)
+            if notesApiKey != resolved {
+                notesApiKey = resolved
+            }
+        }
     }
 
     @Published public var notesModel: String {
@@ -144,7 +223,6 @@ public final class AISettings: ObservableObject {
     }
 
     public init() {
-        let savedKey = UserDefaults.standard.string(forKey: keyApiKey) ?? ""
         let savedProviderRaw = UserDefaults.standard.string(forKey: keyProvider) ?? AIProvider.gemini.rawValue
         let prov = AIProvider(rawValue: savedProviderRaw) ?? .gemini
         var savedModel = UserDefaults.standard.string(forKey: keyModel) ?? prov.defaultModel
@@ -175,7 +253,6 @@ public final class AISettings: ObservableObject {
         let useSharedForNotes = UserDefaults.standard.object(forKey: keyUseFlashcardSettingsForNotes) != nil
             ? UserDefaults.standard.bool(forKey: keyUseFlashcardSettingsForNotes)
             : true
-        let savedNotesKey = UserDefaults.standard.string(forKey: keyNotesApiKey) ?? ""
         let savedNotesProvRaw = UserDefaults.standard.string(forKey: keyNotesProvider) ?? AIProvider.gemini.rawValue
         let notesProv = AIProvider(rawValue: savedNotesProvRaw) ?? .gemini
         var savedNotesModel = UserDefaults.standard.string(forKey: keyNotesModel) ?? notesProv.defaultModel
@@ -183,7 +260,69 @@ public final class AISettings: ObservableObject {
             savedNotesModel = "gemini-3.6-flash"
         }
 
-        self.apiKey = savedKey
+        // Load per-provider keys
+        var gemKey = UserDefaults.standard.string(forKey: keyGeminiKey) ?? ""
+        var groqK = UserDefaults.standard.string(forKey: keyGroqKey) ?? ""
+        var oaiKey = UserDefaults.standard.string(forKey: keyOpenaiKey) ?? ""
+
+        var nGemKey = UserDefaults.standard.string(forKey: keyNotesGeminiKey) ?? ""
+        var nGroqK = UserDefaults.standard.string(forKey: keyNotesGroqKey) ?? ""
+        var nOaiKey = UserDefaults.standard.string(forKey: keyNotesOpenaiKey) ?? ""
+
+        // Legacy single-key migration
+        let legacySharedKey = UserDefaults.standard.string(forKey: keyApiKey) ?? ""
+        if !legacySharedKey.isEmpty {
+            if legacySharedKey.starts(with: "gsk_") {
+                if groqK.isEmpty { groqK = legacySharedKey; UserDefaults.standard.set(groqK, forKey: keyGroqKey) }
+            } else if legacySharedKey.starts(with: "AIza") {
+                if gemKey.isEmpty { gemKey = legacySharedKey; UserDefaults.standard.set(gemKey, forKey: keyGeminiKey) }
+            } else if legacySharedKey.starts(with: "sk-") {
+                if oaiKey.isEmpty { oaiKey = legacySharedKey; UserDefaults.standard.set(oaiKey, forKey: keyOpenaiKey) }
+            } else {
+                switch prov {
+                case .groq: if groqK.isEmpty { groqK = legacySharedKey; UserDefaults.standard.set(groqK, forKey: keyGroqKey) }
+                case .gemini: if gemKey.isEmpty { gemKey = legacySharedKey; UserDefaults.standard.set(gemKey, forKey: keyGeminiKey) }
+                case .openai: if oaiKey.isEmpty { oaiKey = legacySharedKey; UserDefaults.standard.set(oaiKey, forKey: keyOpenaiKey) }
+                case .local: break
+                }
+            }
+        }
+
+        let legacyNotesKey = UserDefaults.standard.string(forKey: keyNotesApiKey) ?? ""
+        if !legacyNotesKey.isEmpty {
+            if legacyNotesKey.starts(with: "gsk_") {
+                if nGroqK.isEmpty { nGroqK = legacyNotesKey; UserDefaults.standard.set(nGroqK, forKey: keyNotesGroqKey) }
+            } else if legacyNotesKey.starts(with: "AIza") {
+                if nGemKey.isEmpty { nGemKey = legacyNotesKey; UserDefaults.standard.set(nGemKey, forKey: keyNotesGeminiKey) }
+            } else if legacyNotesKey.starts(with: "sk-") {
+                if nOaiKey.isEmpty { nOaiKey = legacyNotesKey; UserDefaults.standard.set(nOaiKey, forKey: keyNotesOpenaiKey) }
+            } else {
+                switch notesProv {
+                case .groq: if nGroqK.isEmpty { nGroqK = legacyNotesKey; UserDefaults.standard.set(nGroqK, forKey: keyNotesGroqKey) }
+                case .gemini: if nGemKey.isEmpty { nGemKey = legacyNotesKey; UserDefaults.standard.set(nGemKey, forKey: keyNotesGeminiKey) }
+                case .openai: if nOaiKey.isEmpty { nOaiKey = legacyNotesKey; UserDefaults.standard.set(nOaiKey, forKey: keyNotesOpenaiKey) }
+                case .local: break
+                }
+            }
+        }
+
+        self.geminiKey = gemKey
+        self.groqKey = groqK
+        self.openaiKey = oaiKey
+
+        self.notesGeminiKey = nGemKey
+        self.notesGroqKey = nGroqK
+        self.notesOpenaiKey = nOaiKey
+
+        let initialActiveKey: String = {
+            switch prov {
+            case .gemini: return gemKey
+            case .groq: return groqK
+            case .openai: return oaiKey
+            case .local: return ""
+            }
+        }()
+        self.apiKey = initialActiveKey.isEmpty ? legacySharedKey : initialActiveKey
         self.provider = prov
         self.model = savedModel
         self.isSocraticEnabled = isEnabled
@@ -195,9 +334,103 @@ public final class AISettings: ObservableObject {
         self.enabledStudySources = loadedSources
 
         self.useFlashcardSettingsForNotes = useSharedForNotes
-        self.notesApiKey = savedNotesKey
+        let initialActiveNotesKey: String = {
+            switch notesProv {
+            case .gemini: return nGemKey.isEmpty ? gemKey : nGemKey
+            case .groq: return nGroqK.isEmpty ? groqK : nGroqK
+            case .openai: return nOaiKey.isEmpty ? oaiKey : nOaiKey
+            case .local: return ""
+            }
+        }()
+        self.notesApiKey = initialActiveNotesKey.isEmpty ? legacyNotesKey : initialActiveNotesKey
         self.notesProvider = notesProv
         self.notesModel = savedNotesModel
+    }
+
+    // MARK: - Per-Provider Key Accessors
+    public func key(for provider: AIProvider) -> String {
+        switch provider {
+        case .gemini: return geminiKey
+        case .groq: return groqKey
+        case .openai: return openaiKey
+        case .local: return ""
+        }
+    }
+
+    public func setKey(_ key: String, for provider: AIProvider, syncActiveKey: Bool = true) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch provider {
+        case .gemini:
+            if geminiKey != trimmed { geminiKey = trimmed }
+        case .groq:
+            if groqKey != trimmed { groqKey = trimmed }
+        case .openai:
+            if openaiKey != trimmed { openaiKey = trimmed }
+        case .local:
+            break
+        }
+        if syncActiveKey && provider == self.provider && self.apiKey != trimmed {
+            self.apiKey = trimmed
+        }
+    }
+
+    public func notesKey(for provider: AIProvider) -> String {
+        let nKey: String = {
+            switch provider {
+            case .gemini: return notesGeminiKey
+            case .groq: return notesGroqKey
+            case .openai: return notesOpenaiKey
+            case .local: return ""
+            }
+        }()
+        if !nKey.isEmpty { return nKey }
+        // Fallback to flashcard key for same provider if not explicitly set for notes
+        return key(for: provider)
+    }
+
+    public func setNotesKey(_ key: String, for provider: AIProvider, syncActiveKey: Bool = true) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch provider {
+        case .gemini:
+            if notesGeminiKey != trimmed { notesGeminiKey = trimmed }
+        case .groq:
+            if notesGroqKey != trimmed { notesGroqKey = trimmed }
+        case .openai:
+            if notesOpenaiKey != trimmed { notesOpenaiKey = trimmed }
+        case .local:
+            break
+        }
+        if syncActiveKey && provider == self.notesProvider && self.notesApiKey != trimmed {
+            self.notesApiKey = trimmed
+        }
+    }
+
+    public func hasKey(for provider: AIProvider) -> Bool {
+        if provider == .local { return true }
+        return !key(for: provider).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public func hasNotesKey(for provider: AIProvider) -> Bool {
+        if provider == .local { return true }
+        return !notesKey(for: provider).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public func maskedKey(for prov: AIProvider) -> String {
+        if prov == .local { return "No key needed (Local)" }
+        let k = key(for: prov).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard k.count > 8 else {
+            return k.isEmpty ? "Not configured" : "••••••••"
+        }
+        return "\(k.prefix(4))••••\(k.suffix(4))"
+    }
+
+    public func maskedNotesKey(for prov: AIProvider) -> String {
+        if prov == .local { return "No key needed (Local)" }
+        let k = notesKey(for: prov).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard k.count > 8 else {
+            return k.isEmpty ? "Not configured" : "••••••••"
+        }
+        return "\(k.prefix(4))••••\(k.suffix(4))"
     }
 
     public func isStudySourceEnabled(_ source: StudyGroundingSource) -> Bool {
@@ -428,6 +661,17 @@ public final class AISocraticService: Sendable {
         }
 
         switch settings.provider {
+        case .groq:
+            return try await evaluateWithOpenAI(
+                apiKey: settings.apiKey,
+                model: settings.model,
+                question: question,
+                targetAnswer: effectiveTargetAnswer,
+                hint: hint,
+                userAnswer: userAnswer,
+                dialogueHistory: dialogueHistory,
+                customEndpoint: "https://api.groq.com/openai/v1"
+            )
         case .gemini:
             return try await evaluateWithGemini(
                 apiKey: settings.apiKey,
@@ -484,6 +728,29 @@ public final class AISocraticService: Sendable {
             guard let id = item["id"] as? String, !id.contains("embed") else { return nil }
             return id
         }
+    }
+
+    /// Discovers active chat models from Groq Cloud
+    public func fetchGroqModels(apiKey: String) async -> [String] {
+        let cleanKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanKey.isEmpty, let url = URL(string: "https://api.groq.com/openai/v1/models") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4.0
+        request.addValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataList = json["data"] as? [[String: Any]] else {
+            return []
+        }
+
+        return dataList.compactMap { item -> String? in
+            guard let id = item["id"] as? String else { return nil }
+            if id.contains("whisper") || id.contains("guard") { return nil }
+            return id
+        }.sorted()
     }
 
     /// Validates the given API key or local endpoint with a test ping
@@ -543,6 +810,65 @@ public final class AISocraticService: Sendable {
                         cleanMsg = String(bodyString.prefix(120))
                     }
                     return (false, "Gemini error: \(cleanMsg)")
+                }
+
+            case .groq:
+                // 1. Fetch available models from Groq using the key
+                let availableGroq = await fetchGroqModels(apiKey: cleanKey)
+                guard !availableGroq.isEmpty else {
+                    guard let mUrl = URL(string: "https://api.groq.com/openai/v1/models") else {
+                        return (false, "Invalid Groq endpoint URL.")
+                    }
+                    var mReq = URLRequest(url: mUrl)
+                    mReq.addValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+                    if let (data, resp) = try? await URLSession.shared.data(for: mReq),
+                       let http = resp as? HTTPURLResponse {
+                        let body = String(data: data, encoding: .utf8) ?? ""
+                        return (false, "Groq error (\(http.statusCode)): \(body.prefix(120))")
+                    }
+                    return (false, "Could not connect to Groq API. Please verify your API key and connection.")
+                }
+
+                // 2. Select an active model: if selected model is missing/deprecated, fallback to active one
+                let effectiveModel: String
+                if availableGroq.contains(model) {
+                    effectiveModel = model
+                } else if availableGroq.contains("qwen/qwen3.8-27b") {
+                    effectiveModel = "qwen/qwen3.8-27b"
+                } else if availableGroq.contains("openai/gpt-oss-120b") {
+                    effectiveModel = "openai/gpt-oss-120b"
+                } else {
+                    effectiveModel = availableGroq.first ?? "qwen/qwen3.8-27b"
+                }
+
+                // 3. Test ping chat completion
+                guard let url = URL(string: "https://api.groq.com/openai/v1/chat/completions") else {
+                    return (false, "Invalid Groq endpoint URL.")
+                }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.addValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+
+                let payload: [String: Any] = [
+                    "model": effectiveModel,
+                    "messages": [
+                        ["role": "user", "content": "Ping"]
+                    ],
+                    "max_tokens": 10
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    return (false, "Invalid HTTP response.")
+                }
+
+                if httpResponse.statusCode == 200 {
+                    return (true, "Groq API verified successfully with \(effectiveModel)!")
+                } else {
+                    let bodyString = String(data: data, encoding: .utf8) ?? ""
+                    return (false, "Groq error (\(httpResponse.statusCode)): \(bodyString.prefix(120))")
                 }
 
             case .openai:
@@ -840,8 +1166,13 @@ public final class AISocraticService: Sendable {
 
         messages.append(["role": "user", "content": promptBuilder])
 
+        var effectiveModel = model
+        if customEndpoint?.contains("groq.com") == true && (model.contains("llama-3.3-70b") || model.isEmpty) {
+            effectiveModel = "qwen/qwen3.8-27b"
+        }
+
         var requestBody: [String: Any] = [
-            "model": model,
+            "model": effectiveModel,
             "messages": messages,
             "temperature": 0.3
         ]
@@ -1047,6 +1378,16 @@ public final class AISocraticService: Sendable {
 
         promptBuilder += "\n### TASK & INSTRUCTION\n"
         switch mode {
+        case .autoNotePipeline:
+            promptBuilder += "Action: Formulate a multi-source auto-note tree (Ground → Plan skeleton → Review → Fill → Link + QA).\n"
+            if let custom = customInstruction, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                promptBuilder += "Focus / Direction: \(custom)\n"
+            }
+        case .deepMasterPlan:
+            promptBuilder += "Action: Deconstruct this topic into an exhaustive, rigorous academic master plan with downward chapters.\n"
+            if let custom = customInstruction, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                promptBuilder += "Focus / Direction: \(custom)\n"
+            }
         case .expandSubtopics:
             promptBuilder += "Action: Expand this note into structured subtopics and sub-subtopics.\n"
             if let custom = customInstruction, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1095,6 +1436,14 @@ public final class AISocraticService: Sendable {
         promptBuilder += "\nRemember: Generate a strictly downward hierarchy rooting from this note. Return valid JSON matching the schema."
 
         switch provider {
+        case .groq:
+            return try await generateHierarchyWithOpenAI(
+                apiKey: apiKey,
+                model: model,
+                prompt: promptBuilder,
+                fallbackTitle: currentNoteTitle,
+                customEndpoint: "https://api.groq.com/openai/v1"
+            )
         case .gemini:
             return try await generateHierarchyWithGemini(
                 apiKey: apiKey,
@@ -1209,8 +1558,13 @@ public final class AISocraticService: Sendable {
             ["role": "user", "content": prompt]
         ]
 
+        var effectiveModel = model
+        if customEndpoint?.contains("groq.com") == true && (model.contains("llama-3.3-70b") || model.isEmpty) {
+            effectiveModel = "qwen/qwen3.8-27b"
+        }
+
         var requestBody: [String: Any] = [
-            "model": model,
+            "model": effectiveModel,
             "messages": messages,
             "temperature": 0.4
         ]
@@ -1315,6 +1669,8 @@ public final class AISocraticService: Sendable {
 
 // MARK: - Generation Modes
 public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
+    case autoNotePipeline = "Auto-Note Pipeline"
+    case deepMasterPlan = "Deep Master Plan"
     case expandSubtopics = "Expand Subtopics"
     case summarizeAndSplit = "Summarize & Split"
     case custom = "Custom Instruction"
@@ -1323,6 +1679,8 @@ public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
 
     public var shortTitle: String {
         switch self {
+        case .autoNotePipeline: return "Auto-Note"
+        case .deepMasterPlan: return "Master Plan"
         case .expandSubtopics: return "Expand"
         case .summarizeAndSplit: return "Split"
         case .custom: return "Custom"
@@ -1331,6 +1689,8 @@ public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
 
     public var systemIcon: String {
         switch self {
+        case .autoNotePipeline: return "point.3.filled.connected.trianglepath.dotted"
+        case .deepMasterPlan: return "graduationcap.fill"
         case .expandSubtopics: return "arrow.turn.right.down"
         case .summarizeAndSplit: return "scissors"
         case .custom: return "text.badge.sparkles"
@@ -1339,6 +1699,10 @@ public enum NotesGenerationMode: String, CaseIterable, Identifiable, Sendable {
 
     public var description: String {
         switch self {
+        case .autoNotePipeline:
+            return "Ground → Plan skeleton → Review → ⏸ User approval → Fill (route APIs) → Link + QA"
+        case .deepMasterPlan:
+            return "Deconstruct topic into a rigorous master syllabus and sequentially synthesize deep academic chapters."
         case .expandSubtopics:
             return "Break down this note into structured downward subtopics and sub-subtopics."
         case .summarizeAndSplit:

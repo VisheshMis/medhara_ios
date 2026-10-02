@@ -418,6 +418,7 @@ public struct CodeBlockView: View {
             )
             .padding(10)
             .frame(minHeight: 60)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .background(Color(NSColor.textBackgroundColor))
         .cornerRadius(8)

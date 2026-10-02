@@ -24,6 +24,13 @@ public struct SlashMenuView: View {
             mode: nil
         ),
         AISlashItem(
+            id: "ai-masterplan",
+            title: "Deep Master Plan (AI)",
+            icon: "graduationcap.fill",
+            subtitle: "Academic syllabus & sequential chapter synthesis",
+            mode: .deepMasterPlan
+        ),
+        AISlashItem(
             id: "ai-expand",
             title: "Expand Subtopics (AI)",
             icon: "arrow.turn.right.down",
@@ -36,6 +43,13 @@ public struct SlashMenuView: View {
             icon: "scissors",
             subtitle: "Split note into modular sub-notes",
             mode: .summarizeAndSplit
+        ),
+        AISlashItem(
+            id: "research",
+            title: "Research Subject Sources",
+            icon: "books.vertical.fill",
+            subtitle: "Search PubMed, arXiv, History & Lexicons",
+            mode: nil
         )
     ]
 

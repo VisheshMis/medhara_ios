@@ -63,7 +63,7 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
     }
 
     public func makeNSView(context: Context) -> CustomNSTextView {
-        let textView = CustomNSTextView()
+        let textView = CustomNSTextView(frame: NSRect(x: 0, y: 0, width: 700, height: 24))
         textView.delegate = context.coordinator
         textView.font = font
         textView.textColor = textColor
@@ -77,9 +77,9 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         if let container = textView.textContainer {
-            container.widthTracksTextView = true
+            container.widthTracksTextView = false
             container.lineFragmentPadding = 0
-            container.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+            container.containerSize = NSSize(width: 700, height: CGFloat.greatestFiniteMagnitude)
         }
         textView.textContainerInset = NSSize(width: 0, height: 2)
         textView.placeholderString = placeholder
@@ -101,34 +101,63 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         textView.string = text
         if let storage = textView.textStorage, storage.length > 0 {
             storage.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: storage.length))
+            storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+            storage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: storage.length))
         }
         return textView
     }
 
     public func sizeThatFits(_ proposal: ProposedViewSize, nsView: CustomNSTextView, context: Context) -> CGSize? {
-        let targetWidth = proposal.width ?? (nsView.bounds.width > 0 ? nsView.bounds.width : 500)
-        guard targetWidth > 0 else {
-            return CGSize(width: targetWidth, height: 24)
+        let proposedWidth = proposal.width ?? 0
+        let targetWidth = max(proposedWidth > 0 ? proposedWidth : (nsView.bounds.width > 0 ? nsView.bounds.width : 700), 100)
+        let fontHeight = ceil(font.pointSize * 1.35)
+        let defaultSingleLineHeight = max(24, fontHeight + 4)
+
+        guard let container = nsView.textContainer, let layoutManager = nsView.layoutManager else {
+            return CGSize(width: targetWidth, height: defaultSingleLineHeight)
         }
 
-        if let container = nsView.textContainer, let layoutManager = nsView.layoutManager {
-            container.containerSize = CGSize(width: targetWidth, height: .greatestFiniteMagnitude)
-            layoutManager.ensureLayout(for: container)
-            let usedRect = layoutManager.usedRect(for: container)
-            let totalHeight = max(24, ceil(usedRect.height) + nsView.textContainerInset.height * 2)
-            return CGSize(width: targetWidth, height: totalHeight)
+        container.widthTracksTextView = false
+        container.containerSize = CGSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
+        layoutManager.ensureLayout(for: container)
+
+        let usedRect = layoutManager.usedRect(for: container)
+        if usedRect.height <= 0 || nsView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return CGSize(width: targetWidth, height: defaultSingleLineHeight)
         }
-        return CGSize(width: targetWidth, height: 24)
+
+        let totalHeight = max(defaultSingleLineHeight, ceil(usedRect.height) + nsView.textContainerInset.height * 2)
+        return CGSize(width: targetWidth, height: totalHeight)
     }
 
     public func updateNSView(_ nsView: CustomNSTextView, context: Context) {
         if nsView.string != text {
             nsView.string = text
+            let style = customParagraphStyle
+            if let storage = nsView.textStorage, storage.length > 0 {
+                storage.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: storage.length))
+                storage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: storage.length))
+                storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+            }
             nsView.invalidateIntrinsicContentSize()
         }
-        nsView.font = font
-        nsView.textColor = textColor
-        nsView.placeholderString = placeholder
+
+        if nsView.font != font {
+            nsView.font = font
+            if let storage = nsView.textStorage, storage.length > 0 {
+                storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+            }
+            nsView.invalidateIntrinsicContentSize()
+        }
+        if nsView.textColor != textColor {
+            nsView.textColor = textColor
+            if let storage = nsView.textStorage, storage.length > 0 {
+                storage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: storage.length))
+            }
+        }
+        if nsView.placeholderString != placeholder {
+            nsView.placeholderString = placeholder
+        }
 
         let style = customParagraphStyle
         nsView.defaultParagraphStyle = style
@@ -137,9 +166,6 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
             .foregroundColor: textColor,
             .paragraphStyle: style
         ]
-        if let storage = nsView.textStorage, storage.length > 0 {
-            storage.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: storage.length))
-        }
 
         context.coordinator.parent = self
 
@@ -198,20 +224,32 @@ public final class CustomNSTextView: NSTextView {
     public var placeholderString: String = ""
 
     public override var intrinsicContentSize: NSSize {
+        let fallbackWidth: CGFloat = 700
+        let w = bounds.width > 0 ? bounds.width : fallbackWidth
+        let f = font ?? NSFont.systemFont(ofSize: 14)
+        let defaultLineHeight = max(24, ceil(f.pointSize * 1.35) + textContainerInset.height * 2)
+
         guard let container = textContainer, let layoutManager = layoutManager else {
-            return super.intrinsicContentSize
+            return NSSize(width: NSView.noIntrinsicMetric, height: defaultLineHeight)
         }
-        let w = bounds.width > 0 ? bounds.width : 500
-        container.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
+        container.widthTracksTextView = false
+        container.containerSize = NSSize(width: w, height: CGFloat.greatestFiniteMagnitude)
         layoutManager.ensureLayout(for: container)
         let used = layoutManager.usedRect(for: container)
-        let h = max(22, ceil(used.height) + textContainerInset.height * 2)
+        if used.height <= 0 || string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return NSSize(width: NSView.noIntrinsicMetric, height: defaultLineHeight)
+        }
+        let h = max(defaultLineHeight, ceil(used.height) + textContainerInset.height * 2)
         return NSSize(width: NSView.noIntrinsicMetric, height: h)
     }
 
     public override func setFrameSize(_ newSize: NSSize) {
         let oldWidth = bounds.width
         super.setFrameSize(newSize)
+        if let container = textContainer {
+            container.widthTracksTextView = false
+            container.containerSize = NSSize(width: newSize.width, height: CGFloat.greatestFiniteMagnitude)
+        }
         if abs(oldWidth - newSize.width) > 1 {
             invalidateIntrinsicContentSize()
         }

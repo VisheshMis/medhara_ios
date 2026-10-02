@@ -613,6 +613,9 @@ public final class BlockStore: ObservableObject {
                             currentBlockSort += 1
 
                             for item in node.blocks {
+                                if item.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == node.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                                    continue
+                                }
                                 let bType = item.blockType == .callout ? .paragraph : item.blockType
                                 let b = Block(
                                     id: Block.generateId(),
@@ -643,6 +646,179 @@ public final class BlockStore: ObservableObject {
             reloadBlocks()
         } catch {
             print("Error committing hierarchical notes: \(error)")
+        }
+    }
+
+    // MARK: - Deep Master Plan Live Commit Engine
+    public func commitMasterSyllabusIndex(
+        rootDocId: String,
+        curriculumTitle: String,
+        overview: String,
+        chapterTitles: [String]
+    ) {
+        guard let _ = documents.first(where: { $0.id == rootDocId }) ?? getBlock(id: rootDocId) else { return }
+        let now = Date()
+
+        do {
+            try dbManager.dbWriter.write { db in
+                var currentBlockSort = ((try Block.filter(Block.Columns.rootDocId == rootDocId && Block.Columns.type != BlockType.doc.rawValue)
+                    .order(Block.Columns.sortOrder)
+                    .fetchAll(db).last?.sortOrder) ?? -1) + 1
+
+                let calloutBlock = Block(
+                    id: Block.generateId(),
+                    rootDocId: rootDocId,
+                    parentId: rootDocId,
+                    type: .callout,
+                    content: "📚 MASTER CURRICULUM SYLLABUS: \(curriculumTitle)\n\n\(overview)",
+                    sortOrder: currentBlockSort,
+                    createdAt: now,
+                    updatedAt: now
+                )
+                try calloutBlock.insert(db)
+                currentBlockSort += 1
+
+                let tocHeading = Block(
+                    id: Block.generateId(),
+                    rootDocId: rootDocId,
+                    parentId: rootDocId,
+                    type: .heading2,
+                    content: "Curriculum Chapters",
+                    sortOrder: currentBlockSort,
+                    createdAt: now,
+                    updatedAt: now
+                )
+                try tocHeading.insert(db)
+                currentBlockSort += 1
+
+                for (idx, chTitle) in chapterTitles.enumerated() {
+                    let bullet = Block(
+                        id: Block.generateId(),
+                        rootDocId: rootDocId,
+                        parentId: rootDocId,
+                        type: .bulletList,
+                        content: "**Chapter \(idx + 1)**: [[\(chTitle)]]",
+                        sortOrder: currentBlockSort,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try bullet.insert(db)
+                    currentBlockSort += 1
+                }
+            }
+            reloadBlocks()
+        } catch {
+            print("Error committing master syllabus index: \(error)")
+        }
+    }
+
+    @discardableResult
+    public func commitSingleMasterPlanChapter(
+        rootDocId: String,
+        chapterTitle: String,
+        summary: String,
+        blocks: [HierarchicalBlockItem],
+        sortOrder: Int
+    ) -> Block? {
+        guard let parentDoc = documents.first(where: { $0.id == rootDocId }) ?? getBlock(id: rootDocId) else {
+            return nil
+        }
+        let now = Date()
+        let targetNbId = parentDoc.notebookId ?? selectedNotebookId ?? notebooks.first?.id ?? "nb-default"
+
+        do {
+            let existingDoc: Block? = try dbManager.dbWriter.read { db in
+                try Block.filter(Block.Columns.parentId == rootDocId && Block.Columns.type == BlockType.doc.rawValue)
+                    .fetchAll(db)
+                    .first(where: { $0.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == chapterTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+            }
+
+            let childDocId = existingDoc?.id ?? Block.generateId()
+            var childDoc = existingDoc ?? Block(
+                id: childDocId,
+                rootDocId: childDocId,
+                parentId: rootDocId, // STRICT DOWNWARD HIERARCHY
+                type: .doc,
+                content: chapterTitle,
+                sortOrder: sortOrder,
+                createdAt: now,
+                updatedAt: now,
+                notebookId: targetNbId
+            )
+            childDoc.sortOrder = sortOrder
+            childDoc.updatedAt = now
+
+            try dbManager.dbWriter.write { db in
+                if existingDoc != nil {
+                    try childDoc.update(db)
+                    // Clear out old blocks so they are replaced freshly
+                    try Block.filter(Block.Columns.rootDocId == childDocId && Block.Columns.type != BlockType.doc.rawValue)
+                        .deleteAll(db)
+                } else {
+                    try childDoc.insert(db)
+                }
+
+                var innerSort = 0
+                let cleanSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Never commit raw JSON syntax as a quote block
+                if !cleanSummary.isEmpty && !cleanSummary.hasPrefix("{") && !cleanSummary.contains("\"chapterTitle\"") && !cleanSummary.contains("\"blocks\"") {
+                    let summaryBlock = Block(
+                        id: Block.generateId(),
+                        rootDocId: childDocId,
+                        parentId: childDocId,
+                        type: .quote,
+                        content: cleanSummary,
+                        sortOrder: innerSort,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try summaryBlock.insert(db)
+                    innerSort += 1
+                }
+
+                for item in blocks {
+                    if item.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == chapterTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                        continue
+                    }
+                    let bType = item.blockType == .callout ? .paragraph : item.blockType
+                    let contentBlock = Block(
+                        id: Block.generateId(),
+                        rootDocId: childDocId,
+                        parentId: childDocId,
+                        type: bType,
+                        content: item.content,
+                        sortOrder: innerSort,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try contentBlock.insert(db)
+                    innerSort += 1
+                }
+
+                if innerSort == 0 {
+                    let emptyBlock = Block(
+                        id: Block.generateId(),
+                        rootDocId: childDocId,
+                        parentId: childDocId,
+                        type: .paragraph,
+                        content: "",
+                        sortOrder: 0,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try emptyBlock.insert(db)
+                }
+            }
+
+            expandedDocIds.insert(rootDocId)
+            loadDocuments()
+            if selectedDocId == childDocId || selectedDocId == rootDocId {
+                reloadBlocks()
+            }
+            return childDoc
+        } catch {
+            print("Error committing single master plan chapter: \(error)")
+            return nil
         }
     }
 
@@ -1452,6 +1628,11 @@ public final class BlockStore: ObservableObject {
         return decks.first(where: { $0.id == id })
     }
 
+    public func deck(withId id: String?) -> Deck? {
+        guard let id = id else { return nil }
+        return decks.first(where: { $0.id == id })
+    }
+
     public func loadDecks() {
         do {
             try dbManager.dbWriter.read { db in
@@ -1630,6 +1811,21 @@ public final class BlockStore: ObservableObject {
         return card
     }
 
+    /// Bulk inserts flashcards within a single database transaction for high performance (e.g. Anki imports)
+    public func batchInsertFlashcards(_ cards: [Flashcard]) {
+        guard !cards.isEmpty else { return }
+        do {
+            try dbManager.dbWriter.write { db in
+                for card in cards {
+                    try card.insert(db)
+                }
+            }
+            loadFlashcards()
+        } catch {
+            print("Error batch inserting flashcards: \(error)")
+        }
+    }
+
     public func updateFlashcard(_ card: Flashcard) {
         do {
             try dbManager.dbWriter.write { db in
@@ -1664,6 +1860,42 @@ public final class BlockStore: ObservableObject {
         let result = FSRSScheduler.shared.review(card: card, rating: rating)
         updateFlashcard(result.card)
         return result
+    }
+
+    public func resetFlashcardProgress(id: String) {
+        guard var card = flashcards.first(where: { $0.id == id }) else { return }
+        card.fsrsState = .newCard
+        card.stability = 0.0
+        card.difficulty = 0.0
+        card.elapsedDays = 0
+        card.scheduledDays = 0
+        card.reps = 0
+        card.lapses = 0
+        card.lastReview = nil
+        card.due = Date()
+        card.updatedAt = Date()
+        updateFlashcard(card)
+    }
+
+    public func toggleSuspendFlashcard(id: String) {
+        guard var card = flashcards.first(where: { $0.id == id }) else { return }
+        card.isSuspended = !(card.isSuspended ?? false)
+        card.updatedAt = Date()
+        updateFlashcard(card)
+    }
+
+    public func moveFlashcard(id: String, toDeckId: String) {
+        guard var card = flashcards.first(where: { $0.id == id }) else { return }
+        card.deckId = toDeckId
+        card.updatedAt = Date()
+        updateFlashcard(card)
+    }
+
+    public func assignPreset(presetId: String?, toDeckId: String) {
+        guard var d = decks.first(where: { $0.id == toDeckId }) else { return }
+        d.presetId = presetId
+        d.updatedAt = Date()
+        updateDeck(d)
     }
 
     // MARK: - Memory Palace (Sequential Photos & Multi-Flashcard Anchors)

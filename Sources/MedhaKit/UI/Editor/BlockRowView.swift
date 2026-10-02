@@ -31,66 +31,61 @@ public struct BlockRowView: View {
             }
 
             // Gutter Handle (⋮⋮)
-            ZStack {
-                if isHovered || isFocused {
-                    Menu {
-                        Button(action: copyBlockRef) {
-                            Label("Copy Block Reference ((\(String(block.id.prefix(8)))))...", systemImage: "doc.on.doc")
-                        }
-
-                        Menu("Turn Into...") {
-                            ForEach(BlockType.allCases.filter { $0 != .doc }, id: \.self) { type in
-                                Button(action: {
-                                    store.convertBlockType(id: block.id, to: type)
-                                    if type == .blockRef {
-                                        store.blockPendingRefId = block.id
-                                        store.isBlockPickerPresented = true
-                                    }
-                                }) {
-                                    Label(type.displayName, systemImage: type.systemIcon)
-                                }
-                            }
-                        }
-
-                        Divider()
-
-                        Button(action: { store.moveBlock(id: block.id, direction: .up) }) {
-                            Label("Move Up", systemImage: "arrow.up")
-                        }
-                        .disabled(isFirst)
-
-                        Button(action: { store.moveBlock(id: block.id, direction: .down) }) {
-                            Label("Move Down", systemImage: "arrow.down")
-                        }
-                        .disabled(isLast)
-
-                        Button(action: { store.indentBlock(id: block.id) }) {
-                            Label("Indent", systemImage: "increase.indent")
-                        }
-
-                        Button(action: { store.outdentBlock(id: block.id) }) {
-                            Label("Outdent", systemImage: "decrease.indent")
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive, action: { store.deleteBlock(id: block.id) }) {
-                            Label("Delete Block", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary.opacity(0.8))
-                            .frame(width: 18, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(width: 18)
-                } else {
-                    Color.clear
-                        .frame(width: 18, height: 22)
+            Menu {
+                Button(action: copyBlockRef) {
+                    Label("Copy Block Reference ((\(String(block.id.prefix(8)))))...", systemImage: "doc.on.doc")
                 }
+
+                Menu("Turn Into...") {
+                    ForEach(BlockType.allCases.filter { $0 != .doc }, id: \.self) { type in
+                        Button(action: {
+                            store.convertBlockType(id: block.id, to: type)
+                            if type == .blockRef {
+                                store.blockPendingRefId = block.id
+                                store.isBlockPickerPresented = true
+                            }
+                        }) {
+                            Label(type.displayName, systemImage: type.systemIcon)
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button(action: { store.moveBlock(id: block.id, direction: .up) }) {
+                    Label("Move Up", systemImage: "arrow.up")
+                }
+                .disabled(isFirst)
+
+                Button(action: { store.moveBlock(id: block.id, direction: .down) }) {
+                    Label("Move Down", systemImage: "arrow.down")
+                }
+                .disabled(isLast)
+
+                Button(action: { store.indentBlock(id: block.id) }) {
+                    Label("Indent", systemImage: "increase.indent")
+                }
+
+                Button(action: { store.outdentBlock(id: block.id) }) {
+                    Label("Outdent", systemImage: "decrease.indent")
+                }
+
+                Divider()
+
+                Button(role: .destructive, action: { store.deleteBlock(id: block.id) }) {
+                    Label("Delete Block", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .frame(width: 18, height: 22)
+                    .contentShape(Rectangle())
             }
+            .menuStyle(.borderlessButton)
+            .frame(width: 18, height: 22)
+            .opacity(isHovered || isFocused ? 1.0 : 0.0)
+            .allowsHitTesting(isHovered || isFocused)
             .padding(.top, block.type == .heading1 ? 6 : (block.type == .heading2 ? 4 : 2))
 
             // Main Block Content View
@@ -201,9 +196,36 @@ public struct BlockRowView: View {
         }
         .padding(.top, topPadding)
         .padding(.bottom, bottomPadding)
-        .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
+        }
+        .contextMenu {
+            Button(action: {
+                store.isNotesAIAssistantPresented = true
+            }) {
+                Label("Generate Downward Notes (AI)", systemImage: "sparkles")
+            }
+            Divider()
+            Button(action: copyBlockRef) {
+                Label("Copy Block Reference ((\(String(block.id.prefix(8)))))...", systemImage: "doc.on.doc")
+            }
+            Menu("Turn Into...") {
+                ForEach(BlockType.allCases.filter { $0 != .doc }, id: \.self) { type in
+                    Button(action: {
+                        store.convertBlockType(id: block.id, to: type)
+                        if type == .blockRef {
+                            store.blockPendingRefId = block.id
+                            store.isBlockPickerPresented = true
+                        }
+                    }) {
+                        Label(type.displayName, systemImage: type.systemIcon)
+                    }
+                }
+            }
+            Divider()
+            Button(role: .destructive, action: { store.deleteBlock(id: block.id) }) {
+                Label("Delete Block", systemImage: "trash")
+            }
         }
     }
 

@@ -22,6 +22,7 @@ public struct AISettingsSheet: View {
 
     // Flashcards AI State
     @State private var inputKey: String = ""
+    @State private var providerKeys: [AIProvider: String] = [:]
     @State private var localEndpoint: String = "http://localhost:11434/v1"
     @State private var selectedProvider: AIProvider = .gemini
     @State private var selectedModel: String = "gemini-3.6-flash"
@@ -31,11 +32,13 @@ public struct AISettingsSheet: View {
     @State private var testResult: (isValid: Bool, message: String)? = nil
     @State private var isKeyVisible: Bool = false
     @State private var discoveredLocalModels: [String] = []
+    @State private var discoveredGroqModels: [String] = []
     @State private var isDetectingModels: Bool = false
 
     // Notes AI State
     @State private var useFlashcardSettingsForNotes: Bool = true
     @State private var notesInputKey: String = ""
+    @State private var notesProviderKeys: [AIProvider: String] = [:]
     @State private var notesLocalEndpoint: String = "http://localhost:11434/v1"
     @State private var notesSelectedProvider: AIProvider = .gemini
     @State private var notesSelectedModel: String = "gemini-3.6-flash"
@@ -43,6 +46,7 @@ public struct AISettingsSheet: View {
     @State private var notesTestResult: (isValid: Bool, message: String)? = nil
     @State private var isNotesKeyVisible: Bool = false
     @State private var discoveredNotesLocalModels: [String] = []
+    @State private var discoveredNotesGroqModels: [String] = []
     @State private var isDetectingNotesModels: Bool = false
 
     // Global Features
@@ -194,32 +198,59 @@ public struct AISettingsSheet: View {
         .frame(width: 580, height: 680)
         .onAppear {
             // Load Flashcards AI settings
-            inputKey = settings.apiKey
-            localEndpoint = settings.localEndpoint
+            providerKeys = [
+                .gemini: settings.geminiKey,
+                .groq: settings.groqKey,
+                .openai: settings.openaiKey
+            ]
             selectedProvider = settings.provider
+            inputKey = providerKeys[selectedProvider] ?? settings.apiKey
+            localEndpoint = settings.localEndpoint
             selectedModel = settings.model
             isEnabled = settings.isSocraticEnabled
             newCardsOnly = settings.newCardsOnly
 
             // Load Notes AI settings
-            useFlashcardSettingsForNotes = settings.useFlashcardSettingsForNotes
-            notesInputKey = settings.notesApiKey
-            notesLocalEndpoint = settings.notesLocalEndpoint
+            notesProviderKeys = [
+                .gemini: settings.notesGeminiKey,
+                .groq: settings.notesGroqKey,
+                .openai: settings.notesOpenaiKey
+            ]
             notesSelectedProvider = settings.notesProvider
+            notesInputKey = notesProviderKeys[notesSelectedProvider] ?? settings.notesApiKey
+            useFlashcardSettingsForNotes = settings.useFlashcardSettingsForNotes
+            notesLocalEndpoint = settings.notesLocalEndpoint
             notesSelectedModel = settings.notesModel
 
             // Global settings
             isWikipediaGroundingEnabled = settings.isWikipediaGroundingEnabled
             enabledStudySources = settings.enabledStudySources
 
+            // Sanitize deprecated models
+            if selectedProvider == .groq && (selectedModel.contains("llama-3.3") || selectedModel.contains("llama3-8b")) {
+                selectedModel = AIProvider.groq.defaultModel
+            }
+            if notesSelectedProvider == .groq && (notesSelectedModel.contains("llama-3.3") || notesSelectedModel.contains("llama3-8b")) {
+                notesSelectedModel = AIProvider.groq.defaultModel
+            }
+
             if selectedProvider == .local {
                 Task {
                     await detectLocalModels()
                 }
+            } else if selectedProvider == .groq && !inputKey.isEmpty {
+                Task {
+                    await detectGroqModels()
+                }
             }
+
             if notesSelectedProvider == .local {
                 Task {
                     await detectNotesLocalModels()
+                }
+            } else if notesSelectedProvider == .groq && !notesInputKey.isEmpty {
+                Task {
+                    await detectNotesGroqModels()
                 }
             }
         }
@@ -277,15 +308,49 @@ public struct AISettingsSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: selectedProvider) { _, newProv in
+                .onChange(of: selectedProvider) { oldProv, newProv in
+                    providerKeys[oldProv] = inputKey
+                    inputKey = providerKeys[newProv] ?? ""
                     selectedModel = newProv.defaultModel
                     testResult = nil
                     if newProv == .local {
                         Task {
                             await detectLocalModels()
                         }
+                    } else if newProv == .groq && !inputKey.isEmpty {
+                        Task {
+                            await detectGroqModels()
+                        }
                     }
                 }
+
+                // Provider Key Status Chips
+                HStack(spacing: 8) {
+                    Text("Saved Keys:")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                    ForEach([AIProvider.gemini, .groq, .openai]) { prov in
+                        let keyVal = providerKeys[prov] ?? ""
+                        let hasKey = !keyVal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(hasKey ? Color.green : Color.secondary.opacity(0.3))
+                                .frame(width: 5, height: 5)
+                            Text(prov == .gemini ? "Gemini" : (prov == .groq ? "Groq" : "OpenAI"))
+                                .font(.system(size: 10, weight: prov == selectedProvider ? .bold : .regular))
+                            if hasKey {
+                                Text("✓")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(prov == selectedProvider ? Color.purple.opacity(0.12) : Color.clear)
+                        .cornerRadius(4)
+                    }
+                }
+                .padding(.top, 2)
             }
 
             // Model Picker
@@ -294,10 +359,14 @@ public struct AISettingsSheet: View {
                     Text(selectedProvider == .local ? "Model (Runs Locally)" : "Model")
                         .font(.system(size: 12, weight: .semibold))
                     Spacer()
-                    if selectedProvider == .local {
+                    if selectedProvider == .local || (selectedProvider == .groq && !inputKey.isEmpty) {
                         Button(action: {
                             Task {
-                                await detectLocalModels()
+                                if selectedProvider == .local {
+                                    await detectLocalModels()
+                                } else {
+                                    await detectGroqModels()
+                                }
                             }
                         }) {
                             HStack(spacing: 3) {
@@ -307,7 +376,7 @@ public struct AISettingsSheet: View {
                                 } else {
                                     Image(systemName: "arrow.clockwise")
                                 }
-                                Text(isDetectingModels ? "Detecting..." : "Detect Local Models")
+                                Text(isDetectingModels ? "Detecting..." : (selectedProvider == .local ? "Detect Local Models" : "Refresh Models"))
                             }
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.accentColor)
@@ -317,9 +386,14 @@ public struct AISettingsSheet: View {
                     }
                 }
 
-                let allAvailable = (selectedProvider == .local && !discoveredLocalModels.isEmpty)
-                    ? (discoveredLocalModels + selectedProvider.availableModels.filter { !discoveredLocalModels.contains($0) })
-                    : selectedProvider.availableModels
+                let allAvailable: [String] = {
+                    if selectedProvider == .local && !discoveredLocalModels.isEmpty {
+                        return discoveredLocalModels + selectedProvider.availableModels.filter { !discoveredLocalModels.contains($0) }
+                    } else if selectedProvider == .groq && !discoveredGroqModels.isEmpty {
+                        return discoveredGroqModels + selectedProvider.availableModels.filter { !discoveredGroqModels.contains($0) }
+                    }
+                    return selectedProvider.availableModels
+                }()
 
                 Picker("Model", selection: $selectedModel) {
                     ForEach(allAvailable, id: \.self) { mod in
@@ -352,13 +426,21 @@ public struct AISettingsSheet: View {
                 // Cloud API Key Input
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("API Key")
+                        Text("\(selectedProvider.displayName) API Key")
                             .font(.system(size: 12, weight: .semibold))
                         Spacer()
                         if let url = URL(string: selectedProvider.helpUrlString) {
                             Link(destination: url) {
                                 HStack(spacing: 3) {
-                                    Text(selectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
+                                    let btnLabel: String = {
+                                        switch selectedProvider {
+                                        case .groq: return "Get Free Groq Key"
+                                        case .gemini: return "Get Free Gemini Key"
+                                        case .openai: return "Get OpenAI Key"
+                                        case .local: return "Ollama Guide"
+                                        }
+                                    }()
+                                    Text(btnLabel)
                                     Image(systemName: "arrow.up.right")
                                 }
                                 .font(.system(size: 11))
@@ -369,13 +451,19 @@ public struct AISettingsSheet: View {
 
                     HStack(spacing: 8) {
                         if isKeyVisible {
-                            TextField("Paste API key here...", text: $inputKey)
+                            TextField("Paste \(selectedProvider.displayName) API key here...", text: $inputKey)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
+                                .onChange(of: inputKey) { _, newKey in
+                                    providerKeys[selectedProvider] = newKey
+                                }
                         } else {
-                            SecureField("Paste API key here...", text: $inputKey)
+                            SecureField("Paste \(selectedProvider.displayName) API key here...", text: $inputKey)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
+                                .onChange(of: inputKey) { _, newKey in
+                                    providerKeys[selectedProvider] = newKey
+                                }
                         }
 
                         Button(action: { isKeyVisible.toggle() }) {
@@ -386,8 +474,12 @@ public struct AISettingsSheet: View {
                         .help(isKeyVisible ? "Hide key" : "Show key")
                     }
 
-                    if selectedProvider == .gemini {
-                        Text("💡 Google Gemini offers a generous free tier with zero setup cost.")
+                    if selectedProvider == .groq {
+                        Text("⚡ Groq runs fast open-source models (Qwen 27B, GPT-OSS 120B) on ultra-fast LPUs for free.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    } else if selectedProvider == .gemini {
+                        Text("💡 Google Gemini offers a free tier with zero setup cost.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -548,15 +640,49 @@ public struct AISettingsSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: notesSelectedProvider) { _, newProv in
+                    .onChange(of: notesSelectedProvider) { oldProv, newProv in
+                        notesProviderKeys[oldProv] = notesInputKey
+                        notesInputKey = notesProviderKeys[newProv] ?? ""
                         notesSelectedModel = newProv.defaultModel
                         notesTestResult = nil
                         if newProv == .local {
                             Task {
                                 await detectNotesLocalModels()
                             }
+                        } else if newProv == .groq && !notesInputKey.isEmpty {
+                            Task {
+                                await detectNotesGroqModels()
+                            }
                         }
                     }
+
+                    // Provider Key Status Chips
+                    HStack(spacing: 8) {
+                        Text("Saved Keys:")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                        ForEach([AIProvider.gemini, .groq, .openai]) { prov in
+                            let keyVal = notesProviderKeys[prov] ?? ""
+                            let hasKey = !keyVal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(hasKey ? Color.green : Color.secondary.opacity(0.3))
+                                    .frame(width: 5, height: 5)
+                                Text(prov == .gemini ? "Gemini" : (prov == .groq ? "Groq" : "OpenAI"))
+                                    .font(.system(size: 10, weight: prov == notesSelectedProvider ? .bold : .regular))
+                                if hasKey {
+                                    Text("✓")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(.green)
+                                }
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(prov == notesSelectedProvider ? Color.purple.opacity(0.12) : Color.clear)
+                            .cornerRadius(4)
+                        }
+                    }
+                    .padding(.top, 2)
                 }
 
                 // Model Picker
@@ -565,10 +691,14 @@ public struct AISettingsSheet: View {
                         Text(notesSelectedProvider == .local ? "Model (Runs Locally)" : "Model")
                             .font(.system(size: 12, weight: .semibold))
                         Spacer()
-                        if notesSelectedProvider == .local {
+                        if notesSelectedProvider == .local || (notesSelectedProvider == .groq && !notesInputKey.isEmpty) {
                             Button(action: {
                                 Task {
-                                    await detectNotesLocalModels()
+                                    if notesSelectedProvider == .local {
+                                        await detectNotesLocalModels()
+                                    } else {
+                                        await detectNotesGroqModels()
+                                    }
                                 }
                             }) {
                                 HStack(spacing: 3) {
@@ -578,7 +708,7 @@ public struct AISettingsSheet: View {
                                     } else {
                                         Image(systemName: "arrow.clockwise")
                                     }
-                                    Text(isDetectingNotesModels ? "Detecting..." : "Detect Local Models")
+                                    Text(isDetectingNotesModels ? "Detecting..." : (notesSelectedProvider == .local ? "Detect Local Models" : "Refresh Models"))
                                 }
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.accentColor)
@@ -588,9 +718,14 @@ public struct AISettingsSheet: View {
                         }
                     }
 
-                    let allNotesAvailable = (notesSelectedProvider == .local && !discoveredNotesLocalModels.isEmpty)
-                        ? (discoveredNotesLocalModels + notesSelectedProvider.availableModels.filter { !discoveredNotesLocalModels.contains($0) })
-                        : notesSelectedProvider.availableModels
+                    let allNotesAvailable: [String] = {
+                        if notesSelectedProvider == .local && !discoveredNotesLocalModels.isEmpty {
+                            return discoveredNotesLocalModels + notesSelectedProvider.availableModels.filter { !discoveredNotesLocalModels.contains($0) }
+                        } else if notesSelectedProvider == .groq && !discoveredNotesGroqModels.isEmpty {
+                            return discoveredNotesGroqModels + notesSelectedProvider.availableModels.filter { !discoveredNotesGroqModels.contains($0) }
+                        }
+                        return notesSelectedProvider.availableModels
+                    }()
 
                     Picker("Model", selection: $notesSelectedModel) {
                         ForEach(allNotesAvailable, id: \.self) { mod in
@@ -623,13 +758,21 @@ public struct AISettingsSheet: View {
                     // API Key Input
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("API Key")
+                            Text("\(notesSelectedProvider.displayName) API Key")
                                 .font(.system(size: 12, weight: .semibold))
                             Spacer()
                             if let url = URL(string: notesSelectedProvider.helpUrlString) {
                                 Link(destination: url) {
                                     HStack(spacing: 3) {
-                                        Text(notesSelectedProvider == .gemini ? "Get Free Gemini Key" : "Get OpenAI Key")
+                                        let btnLabel: String = {
+                                            switch notesSelectedProvider {
+                                            case .groq: return "Get Free Groq Key"
+                                            case .gemini: return "Get Free Gemini Key"
+                                            case .openai: return "Get OpenAI Key"
+                                            case .local: return "Ollama Guide"
+                                            }
+                                        }()
+                                        Text(btnLabel)
                                         Image(systemName: "arrow.up.right")
                                     }
                                     .font(.system(size: 11))
@@ -640,13 +783,19 @@ public struct AISettingsSheet: View {
 
                         HStack(spacing: 8) {
                             if isNotesKeyVisible {
-                                TextField("Paste Notes AI API key here...", text: $notesInputKey)
+                                TextField("Paste \(notesSelectedProvider.displayName) API key here...", text: $notesInputKey)
                                     .textFieldStyle(.roundedBorder)
                                     .font(.system(size: 12, design: .monospaced))
+                                    .onChange(of: notesInputKey) { _, newKey in
+                                        notesProviderKeys[notesSelectedProvider] = newKey
+                                    }
                             } else {
-                                SecureField("Paste Notes AI API key here...", text: $notesInputKey)
+                                SecureField("Paste \(notesSelectedProvider.displayName) API key here...", text: $notesInputKey)
                                     .textFieldStyle(.roundedBorder)
                                     .font(.system(size: 12, design: .monospaced))
+                                    .onChange(of: notesInputKey) { _, newKey in
+                                        notesProviderKeys[notesSelectedProvider] = newKey
+                                    }
                             }
 
                             Button(action: { isNotesKeyVisible.toggle() }) {
@@ -655,6 +804,33 @@ public struct AISettingsSheet: View {
                             }
                             .buttonStyle(.plain)
                             .help(isNotesKeyVisible ? "Hide key" : "Show key")
+                        }
+
+                        if notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           let fcKey = providerKeys[notesSelectedProvider],
+                           !fcKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button(action: {
+                                notesInputKey = fcKey
+                                notesProviderKeys[notesSelectedProvider] = fcKey
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "doc.on.clipboard")
+                                    Text("Use saved \(notesSelectedProvider.displayName) key from Flashcards AI")
+                                }
+                                .font(.system(size: 11))
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundColor(.accentColor)
+                        }
+
+                        if notesSelectedProvider == .groq {
+                            Text("⚡ Groq runs fast open-source models (Qwen 27B, GPT-OSS 120B) on ultra-fast LPUs for free.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        } else if notesSelectedProvider == .gemini {
+                            Text("💡 Google Gemini offers a free tier with zero setup cost.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
@@ -730,6 +906,22 @@ public struct AISettingsSheet: View {
         }
     }
 
+    private func detectGroqModels() async {
+        let key = inputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard selectedProvider == .groq, !key.isEmpty else { return }
+        await MainActor.run { isDetectingModels = true }
+        let models = await AISocraticService.shared.fetchGroqModels(apiKey: key)
+        await MainActor.run {
+            isDetectingModels = false
+            if !models.isEmpty {
+                discoveredGroqModels = models
+                if !models.contains(selectedModel) || selectedModel.contains("llama-3.3") {
+                    selectedModel = models.first ?? AIProvider.groq.defaultModel
+                }
+            }
+        }
+    }
+
     private func detectNotesLocalModels() async {
         guard notesSelectedProvider == .local else { return }
         await MainActor.run { isDetectingNotesModels = true }
@@ -740,6 +932,22 @@ public struct AISettingsSheet: View {
             if !models.isEmpty && (!models.contains(notesSelectedModel) || notesSelectedModel == AIProvider.local.defaultModel) {
                 if let first = models.first {
                     notesSelectedModel = first
+                }
+            }
+        }
+    }
+
+    private func detectNotesGroqModels() async {
+        let key = notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard notesSelectedProvider == .groq, !key.isEmpty else { return }
+        await MainActor.run { isDetectingNotesModels = true }
+        let models = await AISocraticService.shared.fetchGroqModels(apiKey: key)
+        await MainActor.run {
+            isDetectingNotesModels = false
+            if !models.isEmpty {
+                discoveredNotesGroqModels = models
+                if !models.contains(notesSelectedModel) || notesSelectedModel.contains("llama-3.3") {
+                    notesSelectedModel = models.first ?? AIProvider.groq.defaultModel
                 }
             }
         }
@@ -763,6 +971,8 @@ public struct AISettingsSheet: View {
             }
             if selectedProvider == .local {
                 await detectLocalModels()
+            } else if selectedProvider == .groq {
+                await detectGroqModels()
             }
         }
     }
@@ -785,22 +995,34 @@ public struct AISettingsSheet: View {
             }
             if notesSelectedProvider == .local {
                 await detectNotesLocalModels()
+            } else if notesSelectedProvider == .groq {
+                await detectNotesGroqModels()
             }
         }
     }
 
     private func saveSettings() {
+        providerKeys[selectedProvider] = inputKey
+        notesProviderKeys[notesSelectedProvider] = notesInputKey
+
+        for (prov, key) in providerKeys {
+            settings.setKey(key, for: prov, syncActiveKey: false)
+        }
+        for (prov, key) in notesProviderKeys {
+            settings.setNotesKey(key, for: prov, syncActiveKey: false)
+        }
+
+        settings.provider = selectedProvider
         settings.apiKey = inputKey.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.localEndpoint = localEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.provider = selectedProvider
         settings.model = selectedModel
         settings.isSocraticEnabled = isEnabled
         settings.newCardsOnly = newCardsOnly
 
         settings.useFlashcardSettingsForNotes = useFlashcardSettingsForNotes
+        settings.notesProvider = notesSelectedProvider
         settings.notesApiKey = notesInputKey.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.notesLocalEndpoint = notesLocalEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.notesProvider = notesSelectedProvider
         settings.notesModel = notesSelectedModel
 
         settings.enabledStudySources = enabledStudySources

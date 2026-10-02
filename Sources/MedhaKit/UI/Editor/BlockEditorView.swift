@@ -4,6 +4,10 @@ public struct BlockEditorView: View {
     @ObservedObject public var store: BlockStore
     @State private var isIconPickerPresented: Bool = false
     @State private var isAddFlashcardPresented: Bool = false
+    @State private var isFillingSingleNote: Bool = false
+    @State private var singleNoteFillStage: String = ""
+    @State private var singleNoteFillError: String? = nil
+    @State private var selectedDepthForFill: String = "working"
     @FocusState private var isTitleFocused: Bool
 
     private let availableIcons = ["doc.text", "brain.head.profile", "lightbulb", "sparkles", "folder", "star", "bookmark", "tag", "checklist", "terminal", "cube"]
@@ -53,6 +57,11 @@ public struct BlockEditorView: View {
 
                             // Nested Subfolders & Documents in this Folder
                             subfoldersGalleryView(doc: doc)
+
+                            // Interactive Skeletal Fill Card (2-step on-demand generation)
+                            if isCurrentDocSkeletal || isFillingSingleNote {
+                                skeletalFillCard(doc: doc)
+                            }
 
                             Divider()
 
@@ -109,6 +118,11 @@ public struct BlockEditorView: View {
                             preselectedDeckId: Deck.notesDefaultId,
                             preselectedDocId: doc.id
                         )
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TriggerFillNote"))) { notif in
+                        if let targetId = notif.object as? String, targetId == doc.id {
+                            startSingleNoteFill(doc: doc)
+                        }
                     }
                 }
             } else {
@@ -422,8 +436,9 @@ public struct BlockEditorView: View {
                 .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
                 .cornerRadius(6)
             } else {
+                let displayedCards = Array(cards.prefix(25))
                 VStack(spacing: 6) {
-                    ForEach(cards) { card in
+                    ForEach(displayedCards) { card in
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(card.front)
@@ -457,6 +472,21 @@ public struct BlockEditorView: View {
                         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                         .cornerRadius(6)
                     }
+
+                    if cards.count > 25 {
+                        HStack {
+                            Text("Showing 25 of \(cards.count) cards attached to this document")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Open in Flashcards Hub") {
+                                store.activeMainView = .flashcards
+                            }
+                            .font(.system(size: 11))
+                            .buttonStyle(.link)
+                        }
+                        .padding(.top, 6)
+                    }
                 }
             }
         }
@@ -482,6 +512,150 @@ public struct BlockEditorView: View {
                             sourceBlockId: next.id
                         )
                     }
+                }
+            }
+        }
+    }
+
+    // MARK: - Skeletal Note Detection & On-Demand Fill
+    private var skeletalMarkerBlock: Block? {
+        store.blocks.first(where: {
+            $0.content.contains("Skeletal Note") || $0.content.hasPrefix("🪄 Skeletal")
+        })
+    }
+
+    private var isCurrentDocSkeletal: Bool {
+        skeletalMarkerBlock != nil
+    }
+
+    private var extractedScopeNote: String {
+        if let block = skeletalMarkerBlock {
+            if let range = block.content.range(of: "Scope:") {
+                let after = String(block.content[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !after.isEmpty { return after }
+            }
+            let cleaned = block.content.replacingOccurrences(of: "🪄 Skeletal Note", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty { return cleaned }
+        }
+        return "Comprehensive coverage, foundational mechanisms, and key principles"
+    }
+
+    @ViewBuilder
+    private func skeletalFillCard(doc: Block) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.purple)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Skeletal Note • Ready to Fill Content")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.primary)
+                    Text("Generate deep verified content, academic evidence, and backlinks on-demand.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Picker("Depth", selection: $selectedDepthForFill) {
+                    Text("Overview").tag("overview")
+                    Text("Working").tag("working")
+                    Text("Expert").tag("expert")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+            }
+
+            // Scope Preview
+            HStack(alignment: .top, spacing: 6) {
+                Text("Scope:")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text(extractedScopeNote)
+                    .font(.system(size: 11))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+            }
+            .padding(8)
+            .background(Color(NSColor.textBackgroundColor).opacity(0.6))
+            .cornerRadius(6)
+
+            if isFillingSingleNote {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(singleNoteFillStage.isEmpty ? "Synthesizing content..." : singleNoteFillStage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.purple)
+                    Spacer()
+                }
+                .padding(8)
+                .background(Color.purple.opacity(0.08))
+                .cornerRadius(6)
+            } else {
+                HStack(spacing: 8) {
+                    Button(action: {
+                        startSingleNoteFill(doc: doc)
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                            Text("Generate Full Content & Citations (AI)")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .controlSize(.regular)
+
+                    if let err = singleNoteFillError {
+                        Text(err)
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.purple.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.purple.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private func startSingleNoteFill(doc: Block) {
+        guard !isFillingSingleNote else { return }
+        isFillingSingleNote = true
+        singleNoteFillError = nil
+        singleNoteFillStage = "Routing APIs & Querying Evidence..."
+
+        Task {
+            do {
+                try await AutoNotePipelineService.shared.fillSingleDocument(
+                    docId: doc.id,
+                    store: store,
+                    customScope: extractedScopeNote,
+                    customDepth: selectedDepthForFill,
+                    onProgress: { stage in
+                        Task { @MainActor in
+                            self.singleNoteFillStage = stage
+                        }
+                    }
+                )
+                await MainActor.run {
+                    self.isFillingSingleNote = false
+                    self.singleNoteFillStage = ""
+                }
+            } catch {
+                await MainActor.run {
+                    self.isFillingSingleNote = false
+                    self.singleNoteFillError = error.localizedDescription
                 }
             }
         }

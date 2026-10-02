@@ -8,6 +8,7 @@ public struct DocumentRowView: View {
     public let onToggleExpand: () -> Void
     public let onNewSubnote: () -> Void
     public let onDelete: () -> Void
+    public var onOpenAI: (() -> Void)? = nil
 
     @State private var isHovered: Bool = false
 
@@ -86,6 +87,20 @@ public struct DocumentRowView: View {
             isHovered = hovering
         }
         .contextMenu {
+            Button(action: {
+                onSelect()
+                NotificationCenter.default.post(name: NSNotification.Name("TriggerFillNote"), object: node.doc.id)
+            }) {
+                Label("Fill Note Content & Citations (AI)", systemImage: "sparkles")
+            }
+            Divider()
+            Button(action: {
+                onSelect()
+                onOpenAI?()
+            }) {
+                Label("Generate Downward Notes (AI)", systemImage: "point.3.filled.connected.trianglepath.dotted")
+            }
+            Divider()
             Button("New Sub-note") { onNewSubnote() }
             if node.hasChildren {
                 Button(isExpanded ? "Collapse Sub-notes" : "Expand Sub-notes") { onToggleExpand() }
@@ -219,7 +234,8 @@ public struct DocumentTreeView: View {
                                 onSelect: { store.selectDocument(id: node.doc.id) },
                                 onToggleExpand: { store.toggleDocExpansion(id: node.doc.id) },
                                 onNewSubnote: { store.createDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
-                                onDelete: { store.deleteDocument(docId: node.doc.id) }
+                                onDelete: { store.deleteDocument(docId: node.doc.id) },
+                                onOpenAI: { store.isNotesAIAssistantPresented = true }
                             )
                         }
                     }
