@@ -79,6 +79,9 @@ public final class BlockStore: ObservableObject {
     @Published public var blocks: [Block] = []
     @Published public var focusedBlockId: String?
 
+    // Handwritten (Ink) Notes
+    @Published public var inkPages: [InkDocumentPage] = []
+
     // Flashcards & FSRS Decks
     @Published public var flashcards: [Flashcard] = []
     @Published public var decks: [Deck] = []
@@ -226,9 +229,10 @@ public final class BlockStore: ObservableObject {
     public func deleteNotebook(id: String) {
         do {
             try dbManager.dbWriter.write { db in
-                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue && Block.Columns.notebookId == id).fetchAll(db)
+                let docs = try Block.filter((Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue) && Block.Columns.notebookId == id).fetchAll(db)
                 for doc in docs {
                     _ = try Block.filter(Block.Columns.rootDocId == doc.id).deleteAll(db)
+                    _ = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == doc.id).deleteAll(db)
                 }
                 _ = try Notebook.filter(Notebook.Columns.id == id).deleteAll(db)
             }
@@ -274,7 +278,7 @@ public final class BlockStore: ObservableObject {
     public func loadDocuments() {
         do {
             try dbManager.dbWriter.read { db in
-                var query = Block.filter(Block.Columns.type == BlockType.doc.rawValue)
+                var query = Block.filter(Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue)
                 if let nbId = self.selectedNotebookId {
                     query = query.filter(Block.Columns.notebookId == nbId)
                 }
@@ -435,6 +439,55 @@ public final class BlockStore: ObservableObject {
         return doc
     }
 
+    @discardableResult
+    public func createInkDocument(
+        title: String = "Untitled Handwritten Note",
+        notebookId: String? = nil,
+        parentDocId: String? = nil,
+        templateType: InkTemplateType = .lined
+    ) -> Block {
+        let now = Date()
+        let parentDoc = parentDocId != nil ? (documents.first(where: { $0.id == parentDocId }) ?? getBlock(id: parentDocId!)) : nil
+        let targetNbId = notebookId ?? parentDoc?.notebookId ?? selectedNotebookId ?? notebooks.first?.id ?? "nb-default"
+        let newDocId = Block.generateId()
+
+        if let parentId = parentDocId {
+            expandedDocIds.insert(parentId)
+        }
+
+        let doc = Block(
+            id: newDocId,
+            rootDocId: newDocId,
+            parentId: parentDocId,
+            type: .inkDoc,
+            content: title,
+            sortOrder: documents.count,
+            createdAt: now,
+            updatedAt: now,
+            notebookId: targetNbId
+        )
+
+        let initialPage = InkDocumentPage(
+            docId: newDocId,
+            pageIndex: 0,
+            templateType: templateType,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        do {
+            try dbManager.dbWriter.write { db in
+                try doc.insert(db)
+                try initialPage.insert(db)
+            }
+            loadDocuments()
+            selectDocument(id: newDocId)
+        } catch {
+            print("Error creating ink document: \(error)")
+        }
+        return doc
+    }
+
     public func renameDocument(docId: String, newTitle: String) {
         if let idx = documents.firstIndex(where: { $0.id == docId }) {
             documents[idx].content = newTitle
@@ -463,7 +516,7 @@ public final class BlockStore: ObservableObject {
                 var queue = [docId]
                 while !queue.isEmpty {
                     let current = queue.removeFirst()
-                    let children = try Block.filter(Block.Columns.type == BlockType.doc.rawValue && Block.Columns.parentId == current).fetchAll(db)
+                    let children = try Block.filter((Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue) && Block.Columns.parentId == current).fetchAll(db)
                     for child in children {
                         if !toDelete.contains(child.id) {
                             toDelete.insert(child.id)
@@ -475,6 +528,7 @@ public final class BlockStore: ObservableObject {
                 for id in toDelete {
                     _ = try Block.filter(Block.Columns.rootDocId == id).deleteAll(db)
                     _ = try Block.filter(Block.Columns.id == id).deleteAll(db)
+                    _ = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == id).deleteAll(db)
                     _ = try Flashcard.filter(Flashcard.Columns.docId == id).deleteAll(db)
                     _ = try PalaceLocus.filter(PalaceLocus.Columns.docId == id).deleteAll(db)
                     _ = try DocLink.filter(DocLink.Columns.sourceDocId == id).deleteAll(db)
@@ -897,13 +951,17 @@ public final class BlockStore: ObservableObject {
         guard let id = id else {
             currentDoc = nil
             blocks = []
+            inkPages = []
             return
         }
         do {
             try dbManager.dbWriter.read { db in
                 self.currentDoc = try Block.fetchOne(db, key: id)
-                self.blocks = try Block.filter(Block.Columns.rootDocId == id && Block.Columns.type != BlockType.doc.rawValue)
+                self.blocks = try Block.filter(Block.Columns.rootDocId == id && Block.Columns.type != BlockType.doc.rawValue && Block.Columns.type != BlockType.inkDoc.rawValue)
                     .order(Block.Columns.sortOrder)
+                    .fetchAll(db)
+                self.inkPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == id)
+                    .order(InkDocumentPage.Columns.pageIndex)
                     .fetchAll(db)
             }
         } catch {
@@ -915,12 +973,25 @@ public final class BlockStore: ObservableObject {
         guard let docId = selectedDocId else { return }
         do {
             try dbManager.dbWriter.read { db in
-                self.blocks = try Block.filter(Block.Columns.rootDocId == docId && Block.Columns.type != BlockType.doc.rawValue)
+                self.blocks = try Block.filter(Block.Columns.rootDocId == docId && Block.Columns.type != BlockType.doc.rawValue && Block.Columns.type != BlockType.inkDoc.rawValue)
                     .order(Block.Columns.sortOrder)
                     .fetchAll(db)
             }
         } catch {
             print("Error reloading blocks: \(error)")
+        }
+    }
+
+    public func reloadInkPages() {
+        guard let docId = selectedDocId else { return }
+        do {
+            try dbManager.dbWriter.read { db in
+                self.inkPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
+                    .order(InkDocumentPage.Columns.pageIndex)
+                    .fetchAll(db)
+            }
+        } catch {
+            print("Error reloading ink pages: \(error)")
         }
     }
 
@@ -1259,7 +1330,7 @@ public final class BlockStore: ObservableObject {
     public func getGraphData() -> (nodes: [GraphNode], edges: [GraphEdge]) {
         do {
             return try dbManager.dbWriter.read { db in
-                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue).fetchAll(db)
+                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue).fetchAll(db)
                 var nodes: [GraphNode] = []
                 for doc in docs {
                     let count = try Block.filter(Block.Columns.rootDocId == doc.id).fetchCount(db)
@@ -1314,7 +1385,7 @@ public final class BlockStore: ObservableObject {
     public func getGlobalGraphData(filter: GraphFilterConfig = GraphFilterConfig()) -> (nodes: [GraphNode], edges: [GraphEdge]) {
         do {
             return try dbManager.dbWriter.read { db in
-                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue).fetchAll(db)
+                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue).fetchAll(db)
                 var docMap: [String: Block] = [:]
                 var parentMap: [String: String] = [:]
                 for doc in docs {
@@ -1453,7 +1524,7 @@ public final class BlockStore: ObservableObject {
                 let targetDoc = try Block.fetchOne(db, key: docId)
                 guard targetDoc != nil else { return ([], []) }
 
-                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue).fetchAll(db)
+                let docs = try Block.filter(Block.Columns.type == BlockType.doc.rawValue || Block.Columns.type == BlockType.inkDoc.rawValue).fetchAll(db)
                 var docMap: [String: Block] = [:]
                 var parentMap: [String: String] = [:]
                 for doc in docs {

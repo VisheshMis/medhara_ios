@@ -2436,7 +2436,52 @@ struct TestRunner {
 
         print("✅ testAutoNoteFormationPipeline & Suite 34 passed")
 
-        print("\n🎉 ALL 34 TEST SUITES PASSED SUCCESSFULLY!")
+        // MARK: - Suite 35: Handwritten (Ink) Notes Integration & Persistence
+        print("\n--- Running Suite 35: Handwritten (Ink) Notes Integration & Persistence ---")
+        let inkNote = store.createInkDocument(title: "Linear Algebra Derivations", templateType: .grid)
+        assert(inkNote.type == .inkDoc, "Failed: inkNote type should be .inkDoc")
+        assert(inkNote.isDocument, "Failed: inkNote isDocument must be true")
+        assert(inkNote.isInkDocument, "Failed: inkNote isInkDocument must be true")
+        assert(store.selectedDocId == inkNote.id, "Failed: inkNote must be selected")
+        assert(store.currentDoc?.id == inkNote.id, "Failed: currentDoc must be inkNote")
+        assert(store.inkPages.count == 1, "Failed: inkPages must have 1 initial page")
+        assert(store.inkPages.first?.templateType == .grid, "Failed: inkPage templateType must be .grid")
+
+        // Verify ink note is in document tree
+        let treeNodes = store.getDocTree()
+        assert(treeNodes.contains(where: { $0.doc.id == inkNote.id }), "Failed: ink note must appear in document tree")
+
+        // Verify nesting: create child text note under ink note, and child ink note under text note
+        let childText = store.createDocument(title: "Eigenvalues Sub-note", parentDocId: inkNote.id)
+        assert(childText.parentId == inkNote.id, "Failed: child text note parentId must be inkNote.id")
+        let childInk = store.createInkDocument(title: "Matrix Sketches", parentDocId: childText.id, templateType: .dotGrid)
+        assert(childInk.parentId == childText.id, "Failed: child ink note parentId must be childText.id")
+
+        let updatedTree = store.getDocTree()
+        let inkTreeNode = updatedTree.first(where: { $0.doc.id == inkNote.id })
+        assert(inkTreeNode?.hasChildren == true, "Failed: ink note node must report hasChildren == true")
+        assert(inkTreeNode?.children.contains(where: { $0.doc.id == childText.id }) == true, "Failed: child text note in ink note children")
+
+        // Verify database persistence reload
+        let newStore = BlockStore(dbManager: db)
+        assert(newStore.documents.contains(where: { $0.id == inkNote.id }), "Failed: reloaded store must contain inkNote")
+        newStore.selectDocument(id: inkNote.id)
+        assert(newStore.currentDoc?.type == .inkDoc, "Failed: selected note in reloaded store must be .inkDoc")
+        assert(newStore.inkPages.count == 1, "Failed: reloaded store must have 1 inkPage")
+        assert(newStore.inkPages.first?.templateType == .grid, "Failed: reloaded inkPage template must be .grid")
+
+        // Verify cascade deletion
+        store.deleteDocument(docId: inkNote.id)
+        assert(!store.documents.contains(where: { $0.id == inkNote.id }), "Failed: deleted ink note must be removed from store")
+        assert(!store.documents.contains(where: { $0.id == childText.id }), "Failed: child text note must be cascaded")
+        assert(!store.documents.contains(where: { $0.id == childInk.id }), "Failed: child ink note must be cascaded")
+        let orphanPages = try await db.dbWriter.read { db in
+            try InkDocumentPage.filter(InkDocumentPage.Columns.docId == inkNote.id).fetchAll(db)
+        }
+        assert(orphanPages.isEmpty, "Failed: ink_document_page entries must be cascaded on document deletion")
+        print("✅ testInkNotesModelAndHierarchyIntegration passed")
+
+        print("\n🎉 ALL 35 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

@@ -255,5 +255,21 @@ public enum DatabaseMigrations {
             try db.execute(sql: "ALTER TABLE deck ADD COLUMN presetId TEXT;")
             try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN isSuspended BOOLEAN DEFAULT 0;")
         }
+
+        migrator.registerMigration("v8_ink_notes") { db in
+            try db.create(table: "ink_document_page") { t in
+                t.column("id", .text).primaryKey()
+                t.column("docId", .text).notNull()
+                t.column("pageIndex", .integer).notNull().defaults(to: 0)
+                t.column("templateType", .text).notNull().defaults(to: "lined")
+                t.column("strokesData", .text).notNull()
+                t.column("textProjection", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+
+            try db.create(index: "idx_ink_page_docId", on: "ink_document_page", columns: ["docId"])
+            try db.create(index: "idx_ink_page_doc_idx", on: "ink_document_page", columns: ["docId", "pageIndex"])
+        }
     }
 }

@@ -15,13 +15,16 @@ public struct BlockEditorView: View {
     public var body: some View {
         Group {
             if let doc = store.currentDoc {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            // Document Header
-                            VStack(alignment: .leading, spacing: 8) {
-                                // Breadcrumbs & Header Actions
-                                breadcrumbsView(doc: doc)
+                if doc.isInkDocument {
+                    InkNoteEditorView(store: store, doc: doc)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                // Document Header
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Breadcrumbs & Header Actions
+                                    breadcrumbsView(doc: doc)
 
                                 // Document Title
                                 HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -125,6 +128,7 @@ public struct BlockEditorView: View {
                         }
                     }
                 }
+            }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "doc.text.magnifyingglass")

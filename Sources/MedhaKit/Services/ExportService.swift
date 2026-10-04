@@ -9,7 +9,7 @@ public enum ExportService {
         for block in blocks {
             let indentLevel = block.parentId != nil && block.parentId != doc.id ? "    " : ""
             switch block.type {
-            case .doc:
+            case .doc, .inkDoc:
                 continue
             case .heading1:
                 lines.append("\n# \(block.content)\n")

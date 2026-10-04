@@ -91,7 +91,7 @@ public struct BlockRowView: View {
             // Main Block Content View
             VStack(alignment: .leading, spacing: 0) {
                 switch block.type {
-                case .doc:
+                case .doc, .inkDoc:
                     EmptyView()
                 case .heading1, .heading2, .heading3:
                     HeadingBlockView(

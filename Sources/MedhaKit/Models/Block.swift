@@ -3,6 +3,7 @@ import GRDB
 
 public enum BlockType: String, Codable, CaseIterable, Sendable {
     case doc
+    case inkDoc
     case heading1
     case heading2
     case heading3
@@ -17,6 +18,7 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
     public var displayName: String {
         switch self {
         case .doc: return "Document"
+        case .inkDoc: return "Handwritten Note"
         case .heading1: return "Heading 1"
         case .heading2: return "Heading 2"
         case .heading3: return "Heading 3"
@@ -33,6 +35,7 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
     public var systemIcon: String {
         switch self {
         case .doc: return "doc.text"
+        case .inkDoc: return "pencil.tip"
         case .heading1: return "textformat.size.larger"
         case .heading2: return "textformat.size"
         case .heading3: return "textformat.size.smaller"
@@ -49,6 +52,7 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
     public var placeholder: String {
         switch self {
         case .doc: return "Document Title..."
+        case .inkDoc: return "Handwritten Note Title..."
         case .heading1: return "Heading 1"
         case .heading2: return "Heading 2"
         case .heading3: return "Heading 3"
@@ -107,7 +111,11 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
     }
 
     public var isDocument: Bool {
-        type == .doc
+        type == .doc || type == .inkDoc
+    }
+
+    public var isInkDocument: Bool {
+        type == .inkDoc
     }
 
     public var isHeading: Bool {

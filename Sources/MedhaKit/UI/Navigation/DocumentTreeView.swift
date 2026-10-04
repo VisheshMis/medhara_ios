@@ -7,10 +7,21 @@ public struct DocumentRowView: View {
     public let onSelect: () -> Void
     public let onToggleExpand: () -> Void
     public let onNewSubnote: () -> Void
+    public var onNewInkSubnote: (() -> Void)? = nil
     public let onDelete: () -> Void
     public var onOpenAI: (() -> Void)? = nil
 
     @State private var isHovered: Bool = false
+
+    private var nodeIcon: String {
+        if node.hasChildren {
+            return isExpanded ? "folder.fill" : "folder"
+        }
+        if node.doc.isInkDocument {
+            return "pencil.tip"
+        }
+        return "doc.text"
+    }
 
     public var body: some View {
         Button(action: onSelect) {
@@ -38,13 +49,13 @@ public struct DocumentRowView: View {
                 }
 
                 // Document Icon
-                Image(systemName: node.hasChildren ? (isExpanded ? "folder.fill" : "folder") : "doc.text")
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                Image(systemName: nodeIcon)
+                    .foregroundColor(isSelected ? .accentColor : (node.doc.isInkDocument ? .orange : .secondary))
                     .font(.system(size: 12))
                     .frame(width: 14)
 
                 // Document Title
-                Text(node.doc.content.isEmpty ? "Untitled Note" : node.doc.content)
+                Text(node.doc.content.isEmpty ? (node.doc.isInkDocument ? "Untitled Ink Note" : "Untitled Note") : node.doc.content)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -102,6 +113,15 @@ public struct DocumentRowView: View {
             }
             Divider()
             Button("New Sub-note") { onNewSubnote() }
+            Button(action: {
+                if let onNewInk = onNewInkSubnote {
+                    onNewInk()
+                } else {
+                    onNewSubnote()
+                }
+            }) {
+                Label("New Ink Sub-note", systemImage: "pencil.tip")
+            }
             if node.hasChildren {
                 Button(isExpanded ? "Collapse Sub-notes" : "Expand Sub-notes") { onToggleExpand() }
             }
@@ -160,6 +180,17 @@ public struct DocumentTreeView: View {
                 }
                 .buttonStyle(.plain)
                 .help("New Note (⌘N)")
+
+                // New Root Ink Document Button
+                Button(action: {
+                    store.createInkDocument()
+                }) {
+                    Image(systemName: "pencil.tip")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("New Handwritten Note")
 
                 // Hide Notes Tab Button
                 Button(action: {
@@ -234,6 +265,7 @@ public struct DocumentTreeView: View {
                                 onSelect: { store.selectDocument(id: node.doc.id) },
                                 onToggleExpand: { store.toggleDocExpansion(id: node.doc.id) },
                                 onNewSubnote: { store.createDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
+                                onNewInkSubnote: { store.createInkDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
                                 onDelete: { store.deleteDocument(docId: node.doc.id) },
                                 onOpenAI: { store.isNotesAIAssistantPresented = true }
                             )
