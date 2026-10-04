@@ -81,6 +81,14 @@ public final class BlockStore: ObservableObject {
 
     // Handwritten (Ink) Notes
     @Published public var inkPages: [InkDocumentPage] = []
+    @Published public var activeInkTool: InkToolType = .ballpoint
+    @Published public var activeInkColorHex: String = "#3B82F6" // Default modern blue ink
+    @Published public var activeInkWidth: Double = 2.5
+    @Published public var activeInkTemplate: InkTemplateType = .lined
+
+    // Undo / Redo Stacks for Active Ink Document (Strokes history)
+    public var inkUndoStack: [[InkStroke]] = []
+    public var inkRedoStack: [[InkStroke]] = []
 
     // Flashcards & FSRS Decks
     @Published public var flashcards: [Flashcard] = []
@@ -989,9 +997,60 @@ public final class BlockStore: ObservableObject {
                 self.inkPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
                     .order(InkDocumentPage.Columns.pageIndex)
                     .fetchAll(db)
+                if let first = self.inkPages.first {
+                    self.activeInkTemplate = first.templateType
+                }
             }
         } catch {
             print("Error reloading ink pages: \(error)")
+        }
+    }
+
+    public func saveInkPageStrokes(pageIndex: Int, strokes: [InkStroke]) {
+        guard let docId = selectedDocId else { return }
+        let payload = InkPagePayload(schemaVersion: 1, strokes: strokes)
+        let json = payload.serialize()
+        let now = Date()
+        let pageId = InkDocumentPage.generateId(docId: docId, pageIndex: pageIndex)
+
+        do {
+            try dbManager.dbWriter.write { db in
+                if var page = try InkDocumentPage.fetchOne(db, key: pageId) {
+                    page.strokesData = json
+                    page.updatedAt = now
+                    try page.update(db)
+                } else {
+                    let page = InkDocumentPage(
+                        id: pageId,
+                        docId: docId,
+                        pageIndex: pageIndex,
+                        templateType: self.activeInkTemplate,
+                        strokesData: json,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try page.insert(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error saving ink page strokes: \(error)")
+        }
+    }
+
+    public func setInkTemplate(template: InkTemplateType) {
+        guard let docId = selectedDocId else { return }
+        activeInkTemplate = template
+        do {
+            try dbManager.dbWriter.write { db in
+                try db.execute(
+                    sql: "UPDATE ink_document_page SET templateType = ?, updatedAt = ? WHERE docId = ?",
+                    arguments: [template.rawValue, Date(), docId]
+                )
+            }
+            reloadInkPages()
+        } catch {
+            print("Error updating ink template: \(error)")
         }
     }
 

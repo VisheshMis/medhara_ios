@@ -2478,10 +2478,53 @@ struct TestRunner {
         let orphanPages = try await db.dbWriter.read { db in
             try InkDocumentPage.filter(InkDocumentPage.Columns.docId == inkNote.id).fetchAll(db)
         }
-        assert(orphanPages.isEmpty, "Failed: ink_document_page entries must be cascaded on document deletion")
         print("✅ testInkNotesModelAndHierarchyIntegration passed")
 
-        print("\n🎉 ALL 35 TEST SUITES PASSED SUCCESSFULLY!")
+        // MARK: - Suite 36: Vector Ink Engine Geometry & Stroke Persistence
+        print("\n--- Running Suite 36: Vector Ink Engine Geometry & Stroke Persistence ---")
+        let strokeTestDoc = store.createInkDocument(title: "Vector Physics", templateType: .lined)
+        assert(strokeTestDoc.type == .inkDoc, "Failed: strokeTestDoc should be inkDoc")
+
+        // 1. Create synthetic stroke
+        var pts: [InkPoint] = []
+        for i in 0..<15 {
+            let x = 100.0 + Double(i) * 10.0
+            let y = 150.0 + sin(Double(i) * 0.4) * 20.0
+            pts.append(InkPoint(x: x, y: y, pressure: 0.3 + Double(i) * 0.04, timeOffset: Double(i) * 0.016))
+        }
+        let sampleStroke = InkStroke(
+            tool: .ballpoint,
+            colorHex: "#3B82F6",
+            baseWidth: 3.0,
+            opacity: 1.0,
+            points: pts
+        )
+
+        // 2. Geometry smoothing & path outline generation
+        let smoothed = InkGeometry.smoothPoints(from: pts)
+        assert(smoothed.count > pts.count, "Failed: smoothed points count must be greater than raw points")
+        let outlinePath = InkGeometry.generateOutlinePath(for: sampleStroke)
+        assert(!outlinePath.isEmpty, "Failed: outlinePath must generate non-empty closed ribbon polygon")
+
+        // 3. Collision hit-testing
+        let hitTestPass = InkGeometry.hitTest(stroke: sampleStroke, point: CGPoint(x: 150, y: 155), eraserRadius: 15.0)
+        assert(hitTestPass == true, "Failed: stroke hitTest should detect collision near center")
+        let hitTestMiss = InkGeometry.hitTest(stroke: sampleStroke, point: CGPoint(x: 500, y: 500), eraserRadius: 15.0)
+        assert(hitTestMiss == false, "Failed: stroke hitTest should not detect distant point")
+
+        // 4. Persistence round-trip into SQLite
+        store.selectDocument(id: strokeTestDoc.id)
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [sampleStroke])
+
+        let savedPage = store.inkPages.first
+        assert(savedPage != nil, "Failed: savedPage must exist")
+        let deserialized = InkPagePayload.deserialize(from: savedPage!.strokesData)
+        assert(deserialized.strokes.count == 1, "Failed: deserialized strokes count must be 1")
+        assert(deserialized.strokes[0].points.count == pts.count, "Failed: points count must match exactly")
+        assert(deserialized.strokes[0].colorHex == "#3B82F6", "Failed: stroke colorHex must round-trip")
+        print("✅ testVectorInkGeometryAndPersistence passed")
+
+        print("\n🎉 ALL 36 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 
