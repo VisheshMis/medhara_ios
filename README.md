@@ -3,16 +3,22 @@
   <br /><br />
 
   [![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue?logo=apple&style=for-the-badge)](https://www.apple.com/macos/)
+  [![Download DMG](https://img.shields.io/badge/Download-macOS%20App%20(.dmg)-success?logo=apple&style=for-the-badge)](https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.dmg)
   [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift&style=for-the-badge)](https://swift.org)
   [![Spaced Repetition: FSRS-4.5](https://img.shields.io/badge/Spaced%20Repetition-FSRS--4.5-green?style=for-the-badge)](https://github.com/open-spaced-repetition/fsrs4anki)
   [![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple?style=for-the-badge)](#6--dual-mode-ai-with-per-provider-key-isolation)
   [![Anki Ecosystem Compatible](https://img.shields.io/badge/Anki-Importer%20.anki2%20%26%20.anki21-blue?logo=anki&style=for-the-badge)](#3--anki-ecosystem--deck-customization)
-  [![Test Suite: 34 Passed](https://img.shields.io/badge/tests-34%20suites%20passed-brightgreen?style=for-the-badge)](#-automated-testing--verification-34-suites)
+  [![Test Suite: 35 Passed](https://img.shields.io/badge/tests-35%20suites%20passed-brightgreen?style=for-the-badge)](#-automated-testing--verification-35-suites)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
   <p align="center">
     <strong>An offline-first, native macOS Cognitive Retention Engine & Spatial PKM.</strong><br />
-    Unifying 2-step hierarchical auto-notes, GPU knowledge graphs, the ancient Method of Loci, and modern FSRS-4.5 spaced repetition with multi-source academic grounding.
+    Unifying 2-step hierarchical auto-notes, handwritten vector notes, GPU knowledge graphs, the ancient Method of Loci, and modern FSRS-4.5 spaced repetition with multi-source academic grounding.
+  </p>
+  <p align="center">
+    <a href="https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.dmg"><strong>⬇️ Download Medha for macOS (.dmg)</strong></a> &bull;
+    <a href="https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.zip">Download (.zip)</a> &bull;
+    <a href="https://github.com/VisheshMis/medhara_ios/releases/latest">Release Notes</a>
   </p>
 </div>
 
