@@ -5,6 +5,8 @@ public struct InkCanvasRepresentable: NSViewRepresentable {
     public let docId: String
     public let pageIndex: Int
     public let templateType: InkTemplateType
+    public let pdfPath: String?
+    public let pdfPageIndex: Int?
     public let strokes: [InkStroke]
     public let activeTool: InkToolType
     public let activeColorHex: String
@@ -15,6 +17,8 @@ public struct InkCanvasRepresentable: NSViewRepresentable {
         docId: String,
         pageIndex: Int = 0,
         templateType: InkTemplateType = .lined,
+        pdfPath: String? = nil,
+        pdfPageIndex: Int? = nil,
         strokes: [InkStroke],
         activeTool: InkToolType,
         activeColorHex: String,
@@ -24,6 +28,8 @@ public struct InkCanvasRepresentable: NSViewRepresentable {
         self.docId = docId
         self.pageIndex = pageIndex
         self.templateType = templateType
+        self.pdfPath = pdfPath
+        self.pdfPageIndex = pdfPageIndex
         self.strokes = strokes
         self.activeTool = activeTool
         self.activeColorHex = activeColorHex
@@ -36,6 +42,8 @@ public struct InkCanvasRepresentable: NSViewRepresentable {
             docId: docId,
             pageIndex: pageIndex,
             templateType: templateType,
+            pdfPath: pdfPath,
+            pdfPageIndex: pdfPageIndex,
             initialStrokes: strokes,
             onStrokesChanged: onStrokesChanged
         )
@@ -49,6 +57,8 @@ public struct InkCanvasRepresentable: NSViewRepresentable {
         if nsView.templateType != templateType {
             nsView.setTemplate(templateType)
         }
+
+        nsView.setPDFInfo(pdfPath: pdfPath, pdfPageIndex: pdfPageIndex)
 
         // Only update strokes if external source changed them (e.g. undo/redo or note switch)
         if nsView.strokes != strokes {

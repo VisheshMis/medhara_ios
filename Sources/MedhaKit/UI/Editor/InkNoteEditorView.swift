@@ -8,8 +8,11 @@ public struct InkNoteEditorView: View {
     // Per-page strokes dictionary: [pageIndex: [InkStroke]]
     @State private var pagesStrokes: [Int: [InkStroke]] = [:]
     @State private var zoomScale: CGFloat = 1.0
-    @State private var isExporting: Bool = false
-    @State private var exportMessage: String? = nil
+
+    // PDF Import Trimming State
+    @State private var isShowingPDFImportSheet: Bool = false
+    @State private var pendingImportPDFURL: URL? = nil
+    @State private var pendingImportTotalPages: Int = 0
 
     public init(store: BlockStore, doc: Block) {
         self.store = store
@@ -47,7 +50,7 @@ public struct InkNoteEditorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ancestryBreadcrumbsView
 
-                // Title bar with Ink Note badge, export, & page info
+                // Title bar with Ink Note badge, import/export, & page info
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "pencil.tip")
                         .font(.system(size: 20))
@@ -88,6 +91,22 @@ public struct InkNoteEditorView: View {
                     .padding(.vertical, 4)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(6)
+
+                    // Import PDF Button
+                    Button(action: promptImportPDF) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 11))
+                            Text("Import PDF...")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Import and trim PDF pages into this note")
 
                     // Export Menu Button
                     Menu {
@@ -144,23 +163,40 @@ public struct InkNoteEditorView: View {
                             pageCard(index: index, page: page)
                         }
 
-                        // Bottom Add Page Button
-                        Button(action: {
-                            store.addInkPage()
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 14))
-                                Text("Add Next Page")
-                                    .font(.system(size: 13, weight: .medium))
+                        // Bottom Actions: Add Page or Import PDF
+                        HStack(spacing: 16) {
+                            Button(action: {
+                                store.addInkPage()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 13))
+                                    Text("Add Next Blank Page")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                                .cornerRadius(8)
                             }
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                            .cornerRadius(8)
+                            .buttonStyle(.plain)
+
+                            Button(action: promptImportPDF) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "doc.badge.plus")
+                                        .font(.system(size: 13))
+                                    Text("Import PDF Pages")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         .padding(.bottom, 48)
                     }
                     .scaleEffect(zoomScale)
@@ -181,6 +217,21 @@ public struct InkNoteEditorView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .sheet(isPresented: $isShowingPDFImportSheet) {
+            if let url = pendingImportPDFURL {
+                PDFImportTrimSheet(
+                    sourceURL: url,
+                    totalPages: pendingImportTotalPages,
+                    onImport: { startPage, endPage in
+                        store.importTrimmedPDFPages(from: url, startPage: startPage, endPage: endPage)
+                        isShowingPDFImportSheet = false
+                    },
+                    onCancel: {
+                        isShowingPDFImportSheet = false
+                    }
+                )
+            }
+        }
         .onAppear {
             loadPagesData()
         }
@@ -195,11 +246,25 @@ public struct InkNoteEditorView: View {
     // MARK: - Individual Page Card View
     private func pageCard(index: Int, page: InkDocumentPage) -> some View {
         VStack(alignment: .center, spacing: 8) {
-            // Page Header with Page Number, Template, and Delete
-            HStack {
+            // Page Header with Page Number, PDF Info badge, Template, and Delete
+            HStack(spacing: 8) {
                 Text("Page \(index + 1)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.secondary)
+
+                if page.pdfPath != nil {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 9))
+                        Text("PDF Page \(page.pdfPageIndex ?? 1)")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12))
+                    .foregroundColor(.accentColor)
+                    .cornerRadius(4)
+                }
 
                 Spacer()
 
@@ -237,11 +302,13 @@ public struct InkNoteEditorView: View {
             }
             .frame(width: 794)
 
-            // Sheet Paper Canvas
+            // Sheet Paper Canvas (with PDF background under vector ink)
             InkCanvasRepresentable(
                 docId: doc.id,
                 pageIndex: page.pageIndex,
                 templateType: page.templateType,
+                pdfPath: page.pdfPath,
+                pdfPageIndex: page.pdfPageIndex,
                 strokes: pagesStrokes[page.pageIndex] ?? [],
                 activeTool: store.activeInkTool,
                 activeColorHex: store.activeInkColorHex,
@@ -254,6 +321,27 @@ public struct InkNoteEditorView: View {
             .background(Color.white)
             .cornerRadius(4)
             .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        }
+    }
+
+    // MARK: - PDF Import Prompt
+    private func promptImportPDF() {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [.pdf]
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+        openPanel.prompt = "Choose PDF to Import"
+
+        openPanel.begin { response in
+            if response == .OK, let url = openPanel.url {
+                let total = InkPDFImporterService.pageCount(for: url)
+                if total > 0 {
+                    self.pendingImportPDFURL = url
+                    self.pendingImportTotalPages = total
+                    self.isShowingPDFImportSheet = true
+                }
+            }
         }
     }
 

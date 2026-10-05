@@ -1146,6 +1146,57 @@ public final class BlockStore: ObservableObject {
         }
     }
 
+    public func importTrimmedPDFPages(from sourceURL: URL, startPage: Int, endPage: Int) {
+        guard let docId = selectedDocId else { return }
+        do {
+            let result = try InkPDFImporterService.importTrimmedPDF(
+                from: sourceURL,
+                docId: docId,
+                startPage: startPage,
+                endPage: endPage
+            )
+
+            let now = Date()
+            try dbManager.dbWriter.write { db in
+                var allPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
+                    .order(InkDocumentPage.Columns.pageIndex.asc)
+                    .fetchAll(db)
+
+                // If document only had 1 empty page with no strokes, replace it
+                let hasSingleBlankPage = allPages.count == 1 &&
+                    InkPagePayload.deserialize(from: allPages[0].strokesData).strokes.isEmpty &&
+                    allPages[0].pdfPath == nil
+
+                if hasSingleBlankPage {
+                    _ = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId).deleteAll(db)
+                    allPages.removeAll()
+                }
+
+                let startIndex = allPages.count
+                for i in 0..<result.pageCount {
+                    let pageIdx = startIndex + i
+                    let pageId = InkDocumentPage.generateId(docId: docId, pageIndex: pageIdx)
+                    let emptyPayload = InkPagePayload(schemaVersion: 1, strokes: [])
+                    let page = InkDocumentPage(
+                        id: pageId,
+                        docId: docId,
+                        pageIndex: pageIdx,
+                        templateType: .blank, // PDF pages default to clean blank template under PDF content
+                        strokesData: emptyPayload.serialize(),
+                        pdfPath: result.relativeFilename,
+                        pdfPageIndex: i + 1, // 1-indexed in trimmed PDF
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                    try page.insert(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error importing trimmed PDF pages: \(error)")
+        }
+    }
+
     // MARK: - Block Editing Operations
     @discardableResult
     public func createBlock(

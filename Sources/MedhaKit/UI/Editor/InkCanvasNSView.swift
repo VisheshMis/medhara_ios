@@ -7,6 +7,8 @@ public final class InkCanvasNSView: NSView {
     public var docId: String
     public var pageIndex: Int
     public var templateType: InkTemplateType
+    public var pdfPath: String?
+    public var pdfPageIndex: Int?
     public var onStrokesChanged: (([InkStroke]) -> Void)?
 
     // State
@@ -37,12 +39,16 @@ public final class InkCanvasNSView: NSView {
         docId: String,
         pageIndex: Int = 0,
         templateType: InkTemplateType = .lined,
+        pdfPath: String? = nil,
+        pdfPageIndex: Int? = nil,
         initialStrokes: [InkStroke] = [],
         onStrokesChanged: (([InkStroke]) -> Void)? = nil
     ) {
         self.docId = docId
         self.pageIndex = pageIndex
         self.templateType = templateType
+        self.pdfPath = pdfPath
+        self.pdfPageIndex = pdfPageIndex
         self.strokes = initialStrokes
         self.onStrokesChanged = onStrokesChanged
         super.init(frame: NSRect(x: 0, y: 0, width: 794, height: 1123))
@@ -56,6 +62,15 @@ public final class InkCanvasNSView: NSView {
 
     public override var isFlipped: Bool {
         return true // Top-left origin coordinates
+    }
+
+    public func setPDFInfo(pdfPath: String?, pdfPageIndex: Int?) {
+        if self.pdfPath != pdfPath || self.pdfPageIndex != pdfPageIndex {
+            self.pdfPath = pdfPath
+            self.pdfPageIndex = pdfPageIndex
+            self.isCacheDirty = true
+            self.needsDisplay = true
+        }
     }
 
     public func setStrokes(_ newStrokes: [InkStroke]) {
@@ -174,6 +189,12 @@ public final class InkCanvasNSView: NSView {
         // Base paper color
         context.setFillColor(NSColor(calibratedRed: 0.99, green: 0.99, blue: 0.99, alpha: 1.0).cgColor)
         context.fill(bounds)
+
+        // If this page has an imported PDF page attached, render it onto the canvas
+        if let pdfPath = self.pdfPath, let pageIdx = self.pdfPageIndex,
+           let pdfURL = InkPDFImporterService.resolvePDFURL(for: pdfPath) {
+            InkPDFImporterService.renderPDFPage(from: pdfURL, pageIndex: pageIdx, in: context, targetRect: bounds)
+        }
 
         let lineColor = NSColor(calibratedRed: 0.88, green: 0.91, blue: 0.95, alpha: 0.7).cgColor
 

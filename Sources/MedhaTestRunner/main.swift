@@ -1,6 +1,9 @@
 import Foundation
 import MedhaKit
 import GRDB
+import CoreGraphics
+import AppKit
+import PDFKit
 
 @main
 struct TestRunner {
@@ -2572,7 +2575,76 @@ struct TestRunner {
         assert(pngData != nil && pngData!.count > 1000, "Failed: PNG bitmap data should be generated")
         print("✅ testMultiPageContinuousCanvasLassoAndExport passed")
 
-        print("\n🎉 ALL 37 TEST SUITES PASSED SUCCESSFULLY!")
+        // --- Suite 38: PDF Document Import, Page Range Trimming & Persistent Canvas Embedding ---
+        print("\n--- Running Suite 38: PDF Document Import, Range Trimming & Rendering ---")
+        let pdfTestDoc = store.createInkDocument(title: "Neuroscience Textbook", templateType: .blank)
+        store.selectDocument(id: pdfTestDoc.id)
+
+        // 1. Create a 15-page synthetic PDF document to test range trimming (e.g. pages 7 to 11)
+        let syntheticPDFData = NSMutableData()
+        var pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
+        if let consumer = CGDataConsumer(data: syntheticPDFData as CFMutableData),
+           let pdfCtx = CGContext(consumer: consumer, mediaBox: &pageRect, nil as CFDictionary?) {
+            for pageNum in 1...15 {
+                var box = pageRect
+                pdfCtx.beginPage(mediaBox: &box)
+                // Draw page marker text
+                let str = "Synthetic Textbook Page \(pageNum)" as NSString
+                let font = NSFont.systemFont(ofSize: 24, weight: .bold)
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+                str.draw(at: NSPoint(x: 100, y: 650), withAttributes: attrs)
+                pdfCtx.endPage()
+            }
+            pdfCtx.closePDF()
+        }
+
+        let tempPDFURL = FileManager.default.temporaryDirectory.appendingPathComponent("sample_textbook_\(UUID().uuidString).pdf")
+        try (syntheticPDFData as Data).write(to: tempPDFURL)
+
+        // 2. Verify page count detection
+        let detectedPageCount = InkPDFImporterService.pageCount(for: tempPDFURL)
+        assert(detectedPageCount == 15, "Failed: detectedPageCount must be 15")
+
+        // 3. Test trimming e.g. pages 7 to 11 (5 pages total)
+        let trimmedResult = try InkPDFImporterService.importTrimmedPDF(
+            from: tempPDFURL,
+            docId: pdfTestDoc.id,
+            startPage: 7,
+            endPage: 11
+        )
+        assert(trimmedResult.pageCount == 5, "Failed: trimmedResult must contain exactly 5 pages")
+        assert(!trimmedResult.relativeFilename.isEmpty, "Failed: relativeFilename must be saved")
+
+        let resolvedURL = InkPDFImporterService.resolvePDFURL(for: trimmedResult.relativeFilename)
+        assert(resolvedURL != nil, "Failed: resolvedURL must locate trimmed PDF in document assets")
+
+        // 4. Import trimmed pages directly into store
+        store.importTrimmedPDFPages(from: tempPDFURL, startPage: 7, endPage: 11)
+        assert(store.inkPages.count == 5, "Failed: store should have 5 ink pages after importing trimmed PDF")
+        for (i, p) in store.inkPages.enumerated() {
+            assert(p.pdfPath != nil && !p.pdfPath!.isEmpty, "Failed: page \(i) must link to trimmed PDF")
+            assert(p.pdfPageIndex == i + 1, "Failed: page \(i) pdfPageIndex must be \(i + 1)")
+        }
+
+        // 5. Test drawing strokes on top of imported PDF page
+        var pdfAnnotationStroke = sampleStroke
+        pdfAnnotationStroke.colorHex = "#EF4444" // red markup
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [pdfAnnotationStroke])
+        let page0Strokes = InkPagePayload.deserialize(from: store.inkPages[0].strokesData).strokes
+        assert(page0Strokes.count == 1, "Failed: stroke saved on top of PDF page")
+
+        // 6. Test vector PDF export with underlying PDF page
+        let reExportedPDF = InkExportService.exportToVectorPDF(title: "Annotated Textbook", pages: store.inkPages)
+        assert(reExportedPDF != nil && reExportedPDF!.count > 1000, "Failed: Re-exported vector PDF with underlying pages")
+
+        // 7. Test PNG rendering with underlying PDF page
+        let reExportedPNG = InkExportService.exportToPNG(page: store.inkPages[0])
+        assert(reExportedPNG != nil && reExportedPNG!.count > 1000, "Failed: Re-exported PNG with underlying PDF")
+
+        try? FileManager.default.removeItem(at: tempPDFURL)
+        print("✅ testPDFDocumentImportRangeTrimmingAndEmbedding passed")
+
+        print("\n🎉 ALL 38 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

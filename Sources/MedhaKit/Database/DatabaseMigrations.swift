@@ -271,5 +271,10 @@ public enum DatabaseMigrations {
             try db.create(index: "idx_ink_page_docId", on: "ink_document_page", columns: ["docId"])
             try db.create(index: "idx_ink_page_doc_idx", on: "ink_document_page", columns: ["docId", "pageIndex"])
         }
+
+        migrator.registerMigration("v9_ink_page_pdf_import") { db in
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN pdfPath TEXT;")
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN pdfPageIndex INTEGER;")
+        }
     }
 }

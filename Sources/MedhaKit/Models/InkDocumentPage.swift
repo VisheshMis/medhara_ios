@@ -33,6 +33,8 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
     public var templateType: InkTemplateType
     public var strokesData: String    // Serialized JSON vector payload
     public var textProjection: String? // Reserved for future OCR
+    public var pdfPath: String?       // Relative filename or absolute path in DocumentAssets
+    public var pdfPageIndex: Int?     // 1-based page number in the trimmed PDF
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -43,6 +45,8 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
         templateType: InkTemplateType = .lined,
         strokesData: String = "{\"schemaVersion\":1,\"pageWidth\":794.0,\"pageHeight\":1123.0,\"strokes\":[]}",
         textProjection: String? = nil,
+        pdfPath: String? = nil,
+        pdfPageIndex: Int? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -52,6 +56,8 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
         self.templateType = templateType
         self.strokesData = strokesData
         self.textProjection = textProjection
+        self.pdfPath = pdfPath
+        self.pdfPageIndex = pdfPageIndex
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -71,6 +77,8 @@ extension InkDocumentPage {
         public static let templateType = Column(CodingKeys.templateType)
         public static let strokesData = Column(CodingKeys.strokesData)
         public static let textProjection = Column(CodingKeys.textProjection)
+        public static let pdfPath = Column(CodingKeys.pdfPath)
+        public static let pdfPageIndex = Column(CodingKeys.pdfPageIndex)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
     }

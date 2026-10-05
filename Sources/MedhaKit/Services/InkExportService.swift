@@ -28,13 +28,24 @@ public enum InkExportService {
             pdfContext.translateBy(x: 0, y: pageHeight)
             pdfContext.scaleBy(x: 1.0, y: -1.0)
 
-            // 1. Draw page background template
+            // 1. Draw page background template or imported PDF
             drawTemplate(
                 template: page.templateType,
                 width: pageWidth,
                 height: pageHeight,
                 in: pdfContext
             )
+
+            // If page has an imported PDF page attached, render it
+            if let pdfPath = page.pdfPath, let pIdx = page.pdfPageIndex,
+               let pdfURL = InkPDFImporterService.resolvePDFURL(for: pdfPath) {
+                InkPDFImporterService.renderPDFPage(
+                    from: pdfURL,
+                    pageIndex: pIdx,
+                    in: pdfContext,
+                    targetRect: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+                )
+            }
 
             // 2. Render vector strokes
             let payload = InkPagePayload.deserialize(from: page.strokesData)
@@ -93,6 +104,17 @@ public enum InkExportService {
             height: pageHeight,
             in: context
         )
+
+        // If page has an imported PDF page attached, render it
+        if let pdfPath = page.pdfPath, let pIdx = page.pdfPageIndex,
+           let pdfURL = InkPDFImporterService.resolvePDFURL(for: pdfPath) {
+            InkPDFImporterService.renderPDFPage(
+                from: pdfURL,
+                pageIndex: pIdx,
+                in: context,
+                targetRect: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+            )
+        }
 
         // Render strokes
         let payload = InkPagePayload.deserialize(from: page.strokesData)
