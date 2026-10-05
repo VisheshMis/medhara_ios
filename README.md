@@ -6,9 +6,9 @@
   [![Download DMG](https://img.shields.io/badge/Download-macOS%20App%20(.dmg)-success?logo=apple&style=for-the-badge)](https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.dmg)
   [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift&style=for-the-badge)](https://swift.org)
   [![Spaced Repetition: FSRS-4.5](https://img.shields.io/badge/Spaced%20Repetition-FSRS--4.5-green?style=for-the-badge)](https://github.com/open-spaced-repetition/fsrs4anki)
-  [![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple?style=for-the-badge)](#6--dual-mode-ai-with-per-provider-key-isolation)
+  [![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple?style=for-the-badge)](#9--dual-mode-ai-with-per-provider-key-isolation)
   [![Anki Ecosystem Compatible](https://img.shields.io/badge/Anki-Importer%20.anki2%20%26%20.anki21-blue?logo=anki&style=for-the-badge)](#3--anki-ecosystem--deck-customization)
-  [![Test Suite: 35 Passed](https://img.shields.io/badge/tests-35%20suites%20passed-brightgreen?style=for-the-badge)](#-automated-testing--verification-35-suites)
+  [![Tests: Passing](https://img.shields.io/badge/tests-passing-brightgreen?style=for-the-badge)](#-testing--quality-assurance)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
   <p align="center">
@@ -33,17 +33,18 @@
   - [2. 📚 Deep Master Plan Curriculum Generator](#2--deep-master-plan-curriculum-generator)
   - [3. 📦 Anki Ecosystem & Deck Customization](#3--anki-ecosystem--deck-customization)
   - [4. 🗂️ Refined Hierarchical Block Notes & PKM](#4-️-refined-hierarchical-block-notes--pkm)
-  - [5. 🧠 3D Spaced Repetition (FSRS-4.5)](#5--3d-spaced-repetition-fsrs-45)
-  - [6. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)](#6-️-2d-spatial-memory-palace--walk-mode-method-of-loci)
-  - [7. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)](#7-️-gpu-accelerated-knowledge-graph-global--local)
-  - [8. 🤖 Dual-Mode AI with Per-Provider Key Isolation](#8--dual-mode-ai-with-per-provider-key-isolation)
-  - [9. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)](#9--8-multi-subject-academic-open-apis-0-api-keys)
-  - [10. ⏱️ Focus Engine & Native macOS Lifecycle](#10-️-focus-engine--native-macos-lifecycle)
-  - [11. 🌐 Standalone Web Companion Client](#11--standalone-web-companion-client)
+  - [5. ✍️ Infinite & Multi-Page Vector Ink Notes](#5-️-infinite--multi-page-vector-ink-notes)
+  - [6. 🧠 3D Spaced Repetition (FSRS-4.5)](#6--3d-spaced-repetition-fsrs-45)
+  - [7. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)](#7-️-2d-spatial-memory-palace--walk-mode-method-of-loci)
+  - [8. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)](#8-️-gpu-accelerated-knowledge-graph-global--local)
+  - [9. 🤖 Dual-Mode AI with Per-Provider Key Isolation](#9--dual-mode-ai-with-per-provider-key-isolation)
+  - [10. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)](#10--8-multi-subject-academic-open-apis-0-api-keys)
+  - [11. ⏱️ Focus Engine & Native macOS Lifecycle](#11-️-focus-engine--native-macos-lifecycle)
+  - [12. 🌐 Standalone Web Companion Client](#12--standalone-web-companion-client)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
 - [🏗️ Technical Architecture & Stack](#️-technical-architecture--stack)
 - [📂 Project Structure](#-project-structure)
-- [🧪 Automated Testing & Verification (34 Suites)](#-automated-testing--verification-34-suites)
+- [🧪 Testing & Quality Assurance](#-testing--quality-assurance)
 - [🚀 Building & Running](#-building--running)
 - [📖 Documentation Links](#-documentation-links)
 - [📄 License](#-license)
@@ -160,7 +161,19 @@ Full interoperability with the broader spaced repetition ecosystem:
 
 ---
 
-### 5. 🧠 3D Spaced Repetition (FSRS-4.5)
+### 5. ✍️ Infinite & Multi-Page Vector Ink Notes
+
+Medha includes a high-performance vector handwriting canvas designed for Apple Pencil, stylus, and trackpad drawing:
+- **Continuous Multi-Page Canvas**: Organize complex mathematical derivations, anatomical sketches, and visual mindmaps across sequential, independently indexed vector pages.
+- **Paper Template Presets**: Switch instantly between Blank, Lined (28pt rule), Grid (20pt graph paper), and Dot Matrix (20pt grid) background scrims.
+- **Natural Stroke Smoothing**: High-fidelity Catmull-Rom cubic spline interpolation transforms raw digitizer coordinates into fluid, organic curves without geometric jitter.
+- **Velocity & Dynamic Pressure Modeling**: Stroke thickness and opacity dynamically respond to stylus velocity and contact pressure curves for expressive penmanship.
+- **Lasso Selection & Spatial Manipulation**: Freehand lasso tool powered by ray-casting point-in-polygon math lets you circle, select, translate, and re-position strokes across the canvas.
+- **Lossless Storage & SVG Vector Export**: Strokes are serialized as compact point arrays in SQLite, enabling infinite zoom fidelity and sharp vector export without pixelation.
+
+---
+
+### 6. 🧠 3D Spaced Repetition (FSRS-4.5)
 
 - **FSRS-4.5 Scheduler**: Implements the Free Spaced Repetition Scheduler modeling memory Stability ($S$), Difficulty ($D$), and Retrievability ($R$), vastly outperforming legacy SM-2 algorithms.
 - **3D Perspective Card Flip**: Spring-animated 3D flip card (`rotation3DEffect`, perspective 0.6) for tactile review sessions.
@@ -173,7 +186,7 @@ Full interoperability with the broader spaced repetition ecosystem:
 
 ---
 
-### 6. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)
+### 7. 🏛️ 2D Spatial Memory Palace & Walk Mode (Method of Loci)
 
 - **Multi-Photo Infinite 2D Canvas**: Import multiple high-resolution photos of real-world spaces (homes, campuses, art galleries, architecture) into a vast, zoomable, pannable 2D canvas.
 - **Sequential Loci Pathways**: Place numbered locus pins onto architectural landmarks and link them into sequential memory journeys with visual pathway lines.
@@ -184,7 +197,7 @@ Full interoperability with the broader spaced repetition ecosystem:
 
 ---
 
-### 7. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)
+### 8. 🕸️ GPU-Accelerated Knowledge Graph (Global & Local)
 
 - **Metal / SwiftUI Immediate-Mode Canvas**: Renders 1,000+ nodes and edges at **60–120 FPS** with zero DOM overhead.
 - **1-Click Layer Presets**:
@@ -202,7 +215,7 @@ Full interoperability with the broader spaced repetition ecosystem:
 
 ---
 
-### 8. 🤖 Dual-Mode AI with Per-Provider Key Isolation
+### 9. 🤖 Dual-Mode AI with Per-Provider Key Isolation
 
 - **Per-Provider Key Isolation**: Independent API key storage and state management for Groq, Google Gemini, and OpenAI, preventing cross-model key overwriting.
 - **100% Offline Local AI (<4 GB RAM)**:
@@ -217,7 +230,7 @@ Full interoperability with the broader spaced repetition ecosystem:
 
 ---
 
-### 9. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)
+### 10. 🌐 8+ Multi-Subject Academic Open APIs (0 API Keys)
 
 Medha pairs inference with real-time academic evidence retrieval across 8+ public repositories with zero subscriptions or API keys:
 
@@ -238,7 +251,7 @@ Medha pairs inference with real-time academic evidence retrieval across 8+ publi
 
 ---
 
-### 10. ⏱️ Focus Engine & Native macOS Lifecycle
+### 11. ⏱️ Focus Engine & Native macOS Lifecycle
 
 - **Pomodoro Focus Timer**: Persistent timer ring at the top of the sidebar supporting Focus (25m), Short Break (5m), and Long Break (15m).
 - **Active Screen Window Positioning**: Intelligently positions and centers windows on the display where the user's cursor is active.
@@ -246,7 +259,7 @@ Medha pairs inference with real-time academic evidence retrieval across 8+ publi
 
 ---
 
-### 11. 🌐 Standalone Web Companion Client
+### 12. 🌐 Standalone Web Companion Client
 
 Located in [`/web`](web/):
 - Full-featured browser-based PKM implementation with matched styling and behavior.
@@ -327,65 +340,86 @@ medharara/
 │   │   └── MedhaApp.swift                    # Application entrypoint, menu commands, shortcuts
 │   ├── MedhaKit/
 │   │   ├── Database/                         # GRDB DatabaseManager, schema migrations, seeders
-│   │   ├── Models/                           # Block, DocLink, Flashcard, DeckOptions, AutoNoteSchemas
-│   │   ├── Services/                         # BlockStore, ForceSimulation, AISocratic, FSRS,
+│   │   ├── Models/                           # Block, DocLink, Flashcard, DeckOptions, InkStroke, AutoNoteSchemas
+│   │   ├── Services/                         # BlockStore, ForceSimulation, AISocratic, FSRS, InkGeometry,
 │   │   │                                     # AutoNotePipelineService, MasterPlanService, AnkiImporter
 │   │   └── UI/
-│   │       ├── Editor/                       # BlockEditor, BlockRow, SlashMenu, NotesAIAssistant
+│   │       ├── Editor/                       # BlockEditor, InkNoteEditor, InkCanvas, SlashMenu, NotesAIAssistant
 │   │       ├── Flashcards/                   # FlashcardManager, CardBrowser, DeckOptionsSheet
 │   │       ├── Graph/                        # GlobalGraphView, GraphCanvasView, GraphControlsSheet
 │   │       ├── Inspector/                    # InspectorView, Outline, Backlinks, LocalGraphView
 │   │       ├── MemoryPalace/                 # MemoryPalaceView, Multi-photo 2D canvas, Walk mode
 │   │       └── Navigation/                   # SidebarView, DocumentTreeView, MainSplitView
 │   └── MedhaTestRunner/
-│       └── main.swift                        # 34 automated integration test suites
+│       └── main.swift                        # Automated integration test runner (37 suites)
 ```
 
 ---
 
-## 🧪 Automated Testing & Verification (34 Suites)
+## 🧪 Testing & Quality Assurance
 
-Medha is verified by an extensive, non-mocked integration test runner ensuring rock-solid database integrity, rendering performance, and algorithmic accuracy:
+Medha incorporates an extensive, non-mocked integration test runner that verifies core storage invariants, mathematical scheduling correctness, spatial rendering bounds, and API recovery against live and in-memory SQLite instances:
 
 ```bash
-swift run MedhaTestRunner < /dev/null
+# Execute the complete automated test suite
+swift run MedhaTestRunner
 ```
 
-### Verified Test Suites:
-1. `testDatabaseInitializationAndSeeding`: SQLite schema setup, WAL mode, foreign key integrity.
-2. `testBlockCRUDOperations`: Block creation, indentation, hierarchy assignment, and sort orders.
-3. `testTaskBlockToggle`: Interactive to-do checkmarks and persistence.
-4. `testFTS5Search`: Millisecond BM25 full-text queries across document blocks.
-5. `testBlockReferencesAndBacklinks`: Bi-directional transclusion index and backlinks discovery.
-6. `testOutlineGeneration`: Dynamic heading hierarchy extraction (H1–H3).
-7. `testDocumentHierarchyAndTree`: Parent-child folder nesting and breadcrumb traversal.
-8. `testDocumentAncestryBreadcrumbs`: Root-to-leaf path resolution.
-9. `testTreeExpansionAndFilter`: Folder expansion states and text filtering.
-10. `testRecursiveCascadeDeletion`: Safe recursive deletion of sub-trees without orphaned rows.
-11. `testDiskDatabaseAndSeededHierarchy`: Multi-session disk persistence and SQLite stability.
-12. `testFocusTimerStateCycle`: Pomodoro cycle transitions and countdown tick accuracy.
-13. `testFSRSScheduler`: FSRS-4.5 interval calculation, stability, and difficulty curves.
-14. `testFlashcardsInHierarchyAndStore`: Card generation scoped to note hierarchies.
-15. `testMemoryPalaceAnd2DLoci`: Spatial loci placement, coordinate math, and persistence.
-16. `testLinksAreNotHierarchyConstraint`: Structural separation of `LINKS_TO` directed graph vs `CONTAINS` tree.
-17. `testMultiPhotoPalaceAndLocusAnchors`: Multi-photo 2D canvas positioning and locus route sequencing.
-18. `testVastSpatialCanvasAndAssetStorage`: Safe local asset copying and high-resolution photo bounds.
-19. `testFlashcardDecksAndNoteGrouping`: Custom decks and note-grouped default decks.
-20. `testMockNotesDecksAndMemoryPalaces`: Default study retention seeder validation.
-21. `testAISocraticEvaluationAndSettings`: Multi-provider AI configuration and key verification.
-22. `testNotesAIDownwardHierarchyAndDualConfiguration`: Downward note outline synthesis and dual configs.
-23. `testLocalAIAndWikipediaGrounding`: Ollama endpoint validation, Wikipedia grounding prompt injection.
-24. `testBulletListFormattingAndMultilineCollision`: Text line spacing and multiline collision prevention.
-25. `testNoteTitleFocusStability`: Keystroke isolation and stable title focus without cursor shifts.
-26. `testCalloutExclusionInAIGeneration`: Clean outline generation without redundant callout boxes.
-27. `testGraphViewAndPhysicsEngine`: Indexed graph reads, layer separation, ghost nodes, orphan filtering, BFS local graph hops, and cooling alpha physics rest.
-28. `testHybridStudyGroundingAndReasoningSanitization`: OpenAlex inverted index abstract decoding, Europe PMC biomedical search, Wiktionary lexical definitions, multi-source parallel fetch, parameter-aware budget limits, and DeepSeek-R1 / QwQ `<think>` tag sanitization.
-29. `testDeckOptionsPresetsAndCardManagement`: Anki-style options presets, daily review limits, and card browser operations.
-30. `testAnkiImporterSuite`: `.anki2` and `.anki21` zstd-decompressed database parsing and card extraction.
-31. `testMultiSubjectDomainsAndOpenAPIs`: PubMed biomedical, arXiv physics/math/CS, Open Library, and Free Dictionary integrations.
-32. `testDeepMasterPlanSynthesis`: Multi-chapter syllabus generation, Wikipedia outline extraction, and quote protection.
-33. `testMalformedJSONRecoveryAndIncrementalPersistence`: Resilience against JSON leaks and partial chapter persistence.
-34. `testAutoNoteFormationPipeline`: P1–P11 prompts, 20 API catalog normalization, tree edit safety handlers, and in-node skeletal markers.
+### Core Verification Domains
+
+| Domain | Invariants & Subsystems Verified |
+| :--- | :--- |
+| **🗄️ Relational Store & FTS5** | SQLite schema migrations, WAL mode concurrency, foreign key cascade trees, bi-directional transclusion backlinks, and millisecond BM25 full-text indexing. |
+| **🧠 Cognitive & FSRS-4.5 Engine** | Exact interval, stability ($S$), difficulty ($D$), and retrievability ($R$) state transitions across all review outcomes; deck options presets, daily limits, and leech handling. |
+| **🏛️ Spatial Memory & Physics** | Multi-photo coordinate bounds, sequential loci pathways, `.interactiveSpring` camera tracking, and Coulomb/Hooke graph physics cooling to 0% idle CPU. |
+| **✍️ Vector Ink & Continuous Canvas** | Catmull-Rom cubic spline interpolation, velocity-weighted stroke widths, ray-casting point-in-polygon lasso detection, and dynamic page reindexing. |
+| **🤖 Autonomous AI Pipeline** | P1–P11 prompt sequencing, API catalog routing, tree mutation safety, skeletal placeholder insertion, and DeepSeek-R1 / QwQ `<think>` sanitization. |
+| **📦 Anki Ecosystem Interoperability** | Direct `.anki2` and zstd-decompressed (`.anki21`) SQLite database parsing, cloze deletion extraction, and note-to-card schema mapping. |
+
+<details>
+<summary><strong>🔍 View Complete Test Suite Manifest (37 Automated Suites)</strong></summary>
+
+<br />
+
+1. `testDatabaseInitializationAndSeeding` — SQLite schema setup, WAL mode, foreign key integrity.
+2. `testBlockCRUDOperations` — Block creation, indentation, hierarchy assignment, and sort orders.
+3. `testTaskBlockToggle` — Interactive to-do checkmarks and persistence.
+4. `testFTS5Search` — Millisecond BM25 full-text queries across document blocks.
+5. `testBlockReferencesAndBacklinks` — Bi-directional transclusion index and backlinks discovery.
+6. `testOutlineGeneration` — Dynamic heading hierarchy extraction (H1–H3).
+7. `testDocumentHierarchyAndTree` — Parent-child folder nesting and breadcrumb traversal.
+8. `testDocumentAncestryBreadcrumbs` — Root-to-leaf path resolution.
+9. `testTreeExpansionAndFilter` — Folder expansion states and text filtering.
+10. `testRecursiveCascadeDeletion` — Safe recursive deletion of sub-trees without orphaned rows.
+11. `testDiskDatabaseAndSeededHierarchy` — Multi-session disk persistence and SQLite stability.
+12. `testFocusTimerStateCycle` — Pomodoro cycle transitions and countdown tick accuracy.
+13. `testFSRSScheduler` — FSRS-4.5 interval calculation, stability, and difficulty curves.
+14. `testFlashcardsInHierarchyAndStore` — Card generation scoped to note hierarchies.
+15. `testMemoryPalaceAnd2DLoci` — Spatial loci placement, coordinate math, and persistence.
+16. `testLinksAreNotHierarchyConstraint` — Structural separation of `LINKS_TO` directed graph vs `CONTAINS` tree.
+17. `testMultiPhotoPalaceAndLocusAnchors` — Multi-photo 2D canvas positioning and locus route sequencing.
+18. `testVastSpatialCanvasAndAssetStorage` — Safe local asset copying and high-resolution photo bounds.
+19. `testFlashcardDecksAndNoteGrouping` — Custom decks and note-grouped default decks.
+20. `testMockNotesDecksAndMemoryPalaces` — Default study retention seeder validation.
+21. `testAISocraticEvaluationAndSettings` — Multi-provider AI configuration and key verification.
+22. `testNotesAIDownwardHierarchyAndDualConfiguration` — Downward note outline synthesis and dual configs.
+23. `testLocalAIAndWikipediaGrounding` — Ollama endpoint validation, Wikipedia grounding prompt injection.
+24. `testBulletListFormattingAndMultilineCollision` — Text line spacing and multiline collision prevention.
+25. `testNoteTitleFocusStability` — Keystroke isolation and stable title focus without cursor shifts.
+26. `testCalloutExclusionInAIGeneration` — Clean outline generation without redundant callout boxes.
+27. `testGraphViewAndPhysicsEngine` — Indexed graph reads, layer separation, ghost nodes, orphan filtering, BFS local graph hops, and cooling alpha physics rest.
+28. `testHybridStudyGroundingAndReasoningSanitization` — OpenAlex inverted index abstract decoding, Europe PMC biomedical search, Wiktionary lexical definitions, multi-source parallel fetch, parameter-aware budget limits, and DeepSeek-R1 / QwQ `<think>` tag sanitization.
+29. `testDeckOptionsPresetsAndCardManagement` — Anki-style options presets, daily review limits, and card browser operations.
+30. `testAnkiImporterSuite` — `.anki2` and `.anki21` zstd-decompressed database parsing and card extraction.
+31. `testMultiSubjectDomainsAndOpenAPIs` — PubMed biomedical, arXiv physics/math/CS, Open Library, and Free Dictionary integrations.
+32. `testDeepMasterPlanSynthesis` — Multi-chapter syllabus generation, Wikipedia outline extraction, and quote protection.
+33. `testMalformedJSONRecoveryAndIncrementalPersistence` — Resilience against JSON leaks and partial chapter persistence.
+34. `testAutoNoteFormationPipeline` — P1–P11 prompts, 20 API catalog normalization, tree edit safety handlers, and in-node skeletal markers.
+35. `testInkNotesModelAndHierarchyIntegration` — Document hierarchy integration, template types (blank, lined, grid, dot), and page model persistence.
+36. `testVectorInkGeometryAndPersistence` — Stroke serialization, Catmull-Rom smoothing, velocity-weighted stroke width, and point compression.
+37. `testMultiPageContinuousCanvasLassoAndExport` — Multi-page continuous canvas, lasso polygon selection, stroke translation, and SVG vector export.
+
+</details>
 
 ---
 

@@ -17,6 +17,12 @@ public final class InkCanvasNSView: NSView {
     private var lastEventPoint: CGPoint = .zero
     private var lastEventTime: TimeInterval = 0
 
+    // Lasso Selection State
+    private var lassoPoints: [CGPoint] = []
+    public private(set) var selectedStrokeIds: Set<String> = []
+    private var isDraggingSelection: Bool = false
+    private var dragStartLocation: CGPoint = .zero
+
     // Tool Settings (synced from store)
     public var activeTool: InkToolType = .ballpoint
     public var activeColor: NSColor = NSColor(srgbRed: 0.12, green: 0.16, blue: 0.24, alpha: 1.0)
@@ -83,6 +89,84 @@ public final class InkCanvasNSView: NSView {
         // 3. Render Active Live Stroke (sub-8ms latency layer)
         if isDrawing && !livePoints.isEmpty {
             drawLiveStroke(in: context)
+        }
+
+        // 4. Render Lasso Selection overlay
+        if activeTool == .lasso {
+            drawLassoOverlay(in: context)
+        }
+    }
+
+    private func drawLassoOverlay(in context: CGContext) {
+        // Draw active lasso loop path while dragging
+        if !lassoPoints.isEmpty {
+            context.saveGState()
+            context.setStrokeColor(NSColor.systemBlue.withAlphaComponent(0.8).cgColor)
+            context.setFillColor(NSColor.systemBlue.withAlphaComponent(0.1).cgColor)
+            context.setLineWidth(1.5)
+            context.setLineDash(phase: 0, lengths: [6.0, 4.0])
+
+            let path = CGMutablePath()
+            path.addLines(between: lassoPoints)
+            if lassoPoints.count > 2 {
+                path.closeSubpath()
+            }
+            context.addPath(path)
+            context.drawPath(using: .fillStroke)
+            context.restoreGState()
+        }
+
+        // Draw bounding box / selection indicator around selected strokes
+        if !selectedStrokeIds.isEmpty {
+            let selectedStrokes = strokes.filter { selectedStrokeIds.contains($0.id) }
+            if !selectedStrokes.isEmpty {
+                var minX = Double.greatestFiniteMagnitude
+                var minY = Double.greatestFiniteMagnitude
+                var maxX = -Double.greatestFiniteMagnitude
+                var maxY = -Double.greatestFiniteMagnitude
+
+                for s in selectedStrokes {
+                    let b = s.boundingRect
+                    minX = min(minX, b.minX)
+                    minY = min(minY, b.minY)
+                    maxX = max(maxX, b.maxX)
+                    maxY = max(maxY, b.maxY)
+                }
+
+                let pad: CGFloat = 8.0
+                let selRect = CGRect(
+                    x: CGFloat(minX) - pad,
+                    y: CGFloat(minY) - pad,
+                    width: CGFloat(maxX - minX) + pad * 2,
+                    height: CGFloat(maxY - minY) + pad * 2
+                )
+
+                context.saveGState()
+                context.setStrokeColor(NSColor.systemBlue.cgColor)
+                context.setFillColor(NSColor.systemBlue.withAlphaComponent(0.06).cgColor)
+                context.setLineWidth(1.5)
+                context.setLineDash(phase: 0, lengths: [4.0, 4.0])
+                context.addRect(selRect)
+                context.drawPath(using: .fillStroke)
+
+                // Draw corner handles
+                let handleSize: CGFloat = 8.0
+                let corners = [
+                    CGPoint(x: selRect.minX, y: selRect.minY),
+                    CGPoint(x: selRect.maxX, y: selRect.minY),
+                    CGPoint(x: selRect.maxX, y: selRect.maxY),
+                    CGPoint(x: selRect.minX, y: selRect.maxY)
+                ]
+                context.setFillColor(NSColor.white.cgColor)
+                context.setStrokeColor(NSColor.systemBlue.cgColor)
+                context.setLineDash(phase: 0, lengths: [])
+                for corner in corners {
+                    let r = CGRect(x: corner.x - handleSize/2, y: corner.y - handleSize/2, width: handleSize, height: handleSize)
+                    context.fill(r)
+                    context.stroke(r)
+                }
+                context.restoreGState()
+            }
         }
     }
 
@@ -209,7 +293,7 @@ public final class InkCanvasNSView: NSView {
         renderStroke(liveStroke, in: context)
     }
 
-    // MARK: - Input Handling (Tablet Pressure + Mouse/Trackpad Velocity)
+    // MARK: - Input Handling (Tablet Pressure + Mouse/Trackpad Velocity + Lasso)
     public override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
         strokeStartTime = Date()
@@ -219,6 +303,17 @@ public final class InkCanvasNSView: NSView {
         if activeTool == .eraser {
             eraseStrokesAt(point: loc)
             return
+        }
+
+        if activeTool == .lasso {
+            handleLassoMouseDown(at: loc)
+            return
+        }
+
+        // If previously had a selection and switched away or tapped, deselect
+        if !selectedStrokeIds.isEmpty {
+            selectedStrokeIds.removeAll()
+            needsDisplay = true
         }
 
         isDrawing = true
@@ -235,6 +330,11 @@ public final class InkCanvasNSView: NSView {
             return
         }
 
+        if activeTool == .lasso {
+            handleLassoMouseDragged(to: loc)
+            return
+        }
+
         guard isDrawing else { return }
         let pressure = calculatePressure(event: event, currentPoint: loc)
         let elapsed = Date().timeIntervalSince(strokeStartTime)
@@ -248,7 +348,14 @@ public final class InkCanvasNSView: NSView {
     }
 
     public override func mouseUp(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+
         if activeTool == .eraser { return }
+
+        if activeTool == .lasso {
+            handleLassoMouseUp(at: loc)
+            return
+        }
 
         guard isDrawing, !livePoints.isEmpty else {
             isDrawing = false
@@ -270,6 +377,98 @@ public final class InkCanvasNSView: NSView {
         isCacheDirty = true
         needsDisplay = true
 
+        onStrokesChanged?(strokes)
+    }
+
+    // MARK: - Lasso Logic
+    private func handleLassoMouseDown(at loc: CGPoint) {
+        // If clicking inside current selection bounding box, begin drag translation
+        if !selectedStrokeIds.isEmpty {
+            let selectedStrokes = strokes.filter { selectedStrokeIds.contains($0.id) }
+            if !selectedStrokes.isEmpty {
+                var minX = Double.greatestFiniteMagnitude
+                var minY = Double.greatestFiniteMagnitude
+                var maxX = -Double.greatestFiniteMagnitude
+                var maxY = -Double.greatestFiniteMagnitude
+                for s in selectedStrokes {
+                    let b = s.boundingRect
+                    minX = min(minX, b.minX)
+                    minY = min(minY, b.minY)
+                    maxX = max(maxX, b.maxX)
+                    maxY = max(maxY, b.maxY)
+                }
+                let pad: CGFloat = 16.0
+                let selRect = CGRect(x: CGFloat(minX) - pad, y: CGFloat(minY) - pad, width: CGFloat(maxX - minX) + pad * 2, height: CGFloat(maxY - minY) + pad * 2)
+                if selRect.contains(loc) {
+                    isDraggingSelection = true
+                    dragStartLocation = loc
+                    return
+                }
+            }
+        }
+
+        // Otherwise begin drawing lasso loop
+        selectedStrokeIds.removeAll()
+        isDraggingSelection = false
+        lassoPoints = [loc]
+        needsDisplay = true
+    }
+
+    private func handleLassoMouseDragged(to loc: CGPoint) {
+        if isDraggingSelection {
+            let dx = Double(loc.x - dragStartLocation.x)
+            let dy = Double(loc.y - dragStartLocation.y)
+            dragStartLocation = loc
+
+            // Translate selected strokes
+            strokes = strokes.map { stroke in
+                if selectedStrokeIds.contains(stroke.id) {
+                    return InkGeometry.translate(stroke: stroke, dx: dx, dy: dy)
+                }
+                return stroke
+            }
+            isCacheDirty = true
+            needsDisplay = true
+            return
+        }
+
+        lassoPoints.append(loc)
+        needsDisplay = true
+    }
+
+    private func handleLassoMouseUp(at loc: CGPoint) {
+        if isDraggingSelection {
+            isDraggingSelection = false
+            onStrokesChanged?(strokes)
+            return
+        }
+
+        guard lassoPoints.count > 3 else {
+            lassoPoints.removeAll()
+            selectedStrokeIds.removeAll()
+            needsDisplay = true
+            return
+        }
+
+        // Find all strokes that intersect or fall within lasso polygon
+        var newlySelected: Set<String> = []
+        for stroke in strokes {
+            if InkGeometry.lassoSelects(stroke: stroke, polygon: lassoPoints) {
+                newlySelected.insert(stroke.id)
+            }
+        }
+
+        self.selectedStrokeIds = newlySelected
+        self.lassoPoints.removeAll()
+        needsDisplay = true
+    }
+
+    public func deleteSelectedStrokes() {
+        guard !selectedStrokeIds.isEmpty else { return }
+        strokes.removeAll { selectedStrokeIds.contains($0.id) }
+        selectedStrokeIds.removeAll()
+        isCacheDirty = true
+        needsDisplay = true
         onStrokesChanged?(strokes)
     }
 

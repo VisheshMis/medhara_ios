@@ -1038,15 +1038,107 @@ public final class BlockStore: ObservableObject {
         }
     }
 
-    public func setInkTemplate(template: InkTemplateType) {
+    public func addInkPage(afterPageIndex: Int? = nil) {
+        guard let docId = selectedDocId else { return }
+        let now = Date()
+        let targetIndex: Int
+        if let after = afterPageIndex {
+            targetIndex = after + 1
+        } else {
+            targetIndex = inkPages.count
+        }
+
+        do {
+            try dbManager.dbWriter.write { db in
+                // Read all existing pages for this doc
+                var allPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
+                    .order(InkDocumentPage.Columns.pageIndex.asc)
+                    .fetchAll(db)
+
+                // Delete all current pages for this doc from table
+                _ = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId).deleteAll(db)
+
+                // Insert new blank page into allPages list
+                let emptyPayload = InkPagePayload(schemaVersion: 1, strokes: [])
+                let placeholder = InkDocumentPage(
+                    id: "",
+                    docId: docId,
+                    pageIndex: targetIndex,
+                    templateType: self.activeInkTemplate,
+                    strokesData: emptyPayload.serialize(),
+                    createdAt: now,
+                    updatedAt: now
+                )
+                if targetIndex < allPages.count {
+                    allPages.insert(placeholder, at: targetIndex)
+                } else {
+                    allPages.append(placeholder)
+                }
+
+                // Re-insert all with sequential 0-based pageIndex and matching id
+                for (idx, var page) in allPages.enumerated() {
+                    page.pageIndex = idx
+                    page.id = InkDocumentPage.generateId(docId: docId, pageIndex: idx)
+                    page.updatedAt = now
+                    try page.insert(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error adding ink page: \(error)")
+        }
+    }
+
+    public func deleteInkPage(pageIndex: Int) {
+        guard let docId = selectedDocId, inkPages.count > 1 else { return }
+        let now = Date()
+
+        do {
+            try dbManager.dbWriter.write { db in
+                // Read all existing pages for this doc
+                var allPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
+                    .order(InkDocumentPage.Columns.pageIndex.asc)
+                    .fetchAll(db)
+
+                guard pageIndex < allPages.count else { return }
+
+                // Delete all current pages for this doc
+                _ = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId).deleteAll(db)
+
+                // Remove target page from list
+                allPages.remove(at: pageIndex)
+
+                // Re-insert remaining pages with sequential indices
+                for (idx, var page) in allPages.enumerated() {
+                    page.pageIndex = idx
+                    page.id = InkDocumentPage.generateId(docId: docId, pageIndex: idx)
+                    page.updatedAt = now
+                    try page.insert(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error deleting ink page: \(error)")
+        }
+    }
+
+    public func setInkTemplate(template: InkTemplateType, forPageIndex pageIndex: Int? = nil) {
         guard let docId = selectedDocId else { return }
         activeInkTemplate = template
         do {
             try dbManager.dbWriter.write { db in
-                try db.execute(
-                    sql: "UPDATE ink_document_page SET templateType = ?, updatedAt = ? WHERE docId = ?",
-                    arguments: [template.rawValue, Date(), docId]
-                )
+                if let pIndex = pageIndex {
+                    let pageId = InkDocumentPage.generateId(docId: docId, pageIndex: pIndex)
+                    try db.execute(
+                        sql: "UPDATE ink_document_page SET templateType = ?, updatedAt = ? WHERE id = ?",
+                        arguments: [template.rawValue, Date(), pageId]
+                    )
+                } else {
+                    try db.execute(
+                        sql: "UPDATE ink_document_page SET templateType = ?, updatedAt = ? WHERE docId = ?",
+                        arguments: [template.rawValue, Date(), docId]
+                    )
+                }
             }
             reloadInkPages()
         } catch {

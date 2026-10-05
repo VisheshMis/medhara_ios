@@ -1223,8 +1223,9 @@ public final class AutoNotePipelineService: ObservableObject {
             ).blocks
             summary = node.scope_note
         } else {
-            summary = "🪄 Skeletal Note • Scope: \(node.scope_note)"
-            blocks = [HierarchicalBlockItem(typeString: "paragraph", content: "")]
+            let skeletalText = "🪄 Skeletal Note • Scope: \(node.scope_note)"
+            summary = skeletalText
+            blocks = [HierarchicalBlockItem(typeString: "quote", content: skeletalText)]
         }
 
         let createdDoc = store.commitSingleMasterPlanChapter(

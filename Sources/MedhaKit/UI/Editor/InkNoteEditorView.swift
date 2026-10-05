@@ -1,11 +1,15 @@
 import SwiftUI
+import AppKit
 
 public struct InkNoteEditorView: View {
     @ObservedObject public var store: BlockStore
     public let doc: Block
 
-    @State private var currentStrokes: [InkStroke] = []
-    @State private var isLoaded: Bool = false
+    // Per-page strokes dictionary: [pageIndex: [InkStroke]]
+    @State private var pagesStrokes: [Int: [InkStroke]] = [:]
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var isExporting: Bool = false
+    @State private var exportMessage: String? = nil
 
     public init(store: BlockStore, doc: Block) {
         self.store = store
@@ -43,7 +47,7 @@ public struct InkNoteEditorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ancestryBreadcrumbsView
 
-                // Title bar with Ink Note badge & page info
+                // Title bar with Ink Note badge, export, & page info
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "pencil.tip")
                         .font(.system(size: 20))
@@ -58,7 +62,56 @@ public struct InkNoteEditorView: View {
 
                     Spacer()
 
-                    // Template & page info badge
+                    // Zoom Controls
+                    HStack(spacing: 4) {
+                        Button(action: { zoomScale = max(0.5, zoomScale - 0.1) }) {
+                            Image(systemName: "minus.magnifyingglass")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Zoom Out")
+
+                        Text("\(Int(round(zoomScale * 100)))%")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .frame(width: 38)
+                            .onTapGesture { zoomScale = 1.0 }
+                            .help("Click to reset to 100%")
+
+                        Button(action: { zoomScale = min(2.0, zoomScale + 0.1) }) {
+                            Image(systemName: "plus.magnifyingglass")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Zoom In")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(6)
+
+                    // Export Menu Button
+                    Menu {
+                        Button(action: exportPDF) {
+                            Label("Export as Vector PDF...", systemImage: "doc.richtext")
+                        }
+                        Button(action: exportPNG) {
+                            Label("Export Current Page as PNG...", systemImage: "photo")
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 11))
+                            Text("Export")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Page Count Badge
                     HStack(spacing: 6) {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: 11))
@@ -78,35 +131,41 @@ public struct InkNoteEditorView: View {
 
             Divider()
 
-            // Main Interactive Ink Canvas Area
+            // Main Interactive Multi-Page Canvas Area
             ZStack(alignment: .top) {
                 // Background desk area
                 Color(NSColor.windowBackgroundColor)
                     .ignoresSafeArea()
 
-                // Scrollable Page Canvas
+                // Continuous Vertical Scrollable Pages
                 ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                    VStack(spacing: 32) {
-                        // Continuous A4 Sheet Container
-                        InkCanvasRepresentable(
-                            docId: doc.id,
-                            pageIndex: 0,
-                            templateType: store.activeInkTemplate,
-                            strokes: currentStrokes,
-                            activeTool: store.activeInkTool,
-                            activeColorHex: store.activeInkColorHex,
-                            activeWidth: store.activeInkWidth,
-                            onStrokesChanged: { newStrokes in
-                                recordStrokeHistory(newStrokes: newStrokes)
+                    VStack(spacing: 36) {
+                        ForEach(Array(store.inkPages.enumerated()), id: \.element.id) { index, page in
+                            pageCard(index: index, page: page)
+                        }
+
+                        // Bottom Add Page Button
+                        Button(action: {
+                            store.addInkPage()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 14))
+                                Text("Add Next Page")
+                                    .font(.system(size: 13, weight: .medium))
                             }
-                        )
-                        .frame(width: 794, height: 1123) // Standard A4 Aspect Ratio
-                        .background(Color.white)
-                        .cornerRadius(4)
-                        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
-                        .padding(.vertical, 32)
-                        .padding(.horizontal, 24)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 48)
                     }
+                    .scaleEffect(zoomScale)
+                    .padding(.vertical, 32)
+                    .padding(.horizontal, 24)
                     .frame(maxWidth: .infinity)
                 }
 
@@ -123,51 +182,154 @@ public struct InkNoteEditorView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
-            loadInitialStrokes()
+            loadPagesData()
         }
         .onChange(of: doc.id) { _, _ in
-            loadInitialStrokes()
+            loadPagesData()
+        }
+        .onChange(of: store.inkPages.count) { _, _ in
+            loadPagesData()
         }
     }
 
-    private func loadInitialStrokes() {
-        if let firstPage = store.inkPages.first {
-            let payload = InkPagePayload.deserialize(from: firstPage.strokesData)
-            self.currentStrokes = payload.strokes
-            self.store.activeInkTemplate = firstPage.templateType
-        } else {
-            self.currentStrokes = []
+    // MARK: - Individual Page Card View
+    private func pageCard(index: Int, page: InkDocumentPage) -> some View {
+        VStack(alignment: .center, spacing: 8) {
+            // Page Header with Page Number, Template, and Delete
+            HStack {
+                Text("Page \(index + 1)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                // Per-page Template Selector
+                Menu {
+                    ForEach(InkTemplateType.allCases, id: \.rawValue) { tmpl in
+                        Button(action: {
+                            store.setInkTemplate(template: tmpl, forPageIndex: page.pageIndex)
+                        }) {
+                            Label(tmpl.displayName, systemImage: tmpl.systemIcon)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: page.templateType.systemIcon)
+                            .font(.system(size: 10))
+                        Text(page.templateType.displayName)
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+
+                if store.inkPages.count > 1 {
+                    Button(action: {
+                        store.deleteInkPage(pageIndex: page.pageIndex)
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete Page")
+                }
+            }
+            .frame(width: 794)
+
+            // Sheet Paper Canvas
+            InkCanvasRepresentable(
+                docId: doc.id,
+                pageIndex: page.pageIndex,
+                templateType: page.templateType,
+                strokes: pagesStrokes[page.pageIndex] ?? [],
+                activeTool: store.activeInkTool,
+                activeColorHex: store.activeInkColorHex,
+                activeWidth: store.activeInkWidth,
+                onStrokesChanged: { newStrokes in
+                    recordStrokeHistory(pageIndex: page.pageIndex, newStrokes: newStrokes)
+                }
+            )
+            .frame(width: 794, height: 1123) // Standard A4 Aspect Ratio
+            .background(Color.white)
+            .cornerRadius(4)
+            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
         }
+    }
+
+    // MARK: - Persistence & History Handling
+    private func loadPagesData() {
+        var dict: [Int: [InkStroke]] = [:]
+        for page in store.inkPages {
+            let payload = InkPagePayload.deserialize(from: page.strokesData)
+            dict[page.pageIndex] = payload.strokes
+        }
+        self.pagesStrokes = dict
         store.inkUndoStack.removeAll()
         store.inkRedoStack.removeAll()
-        isLoaded = true
     }
 
-    private func recordStrokeHistory(newStrokes: [InkStroke]) {
-        // Push old state to undo stack
-        store.inkUndoStack.append(currentStrokes)
+    private func recordStrokeHistory(pageIndex: Int, newStrokes: [InkStroke]) {
+        let oldStrokes = pagesStrokes[pageIndex] ?? []
+        store.inkUndoStack.append(oldStrokes)
         if store.inkUndoStack.count > 50 {
             store.inkUndoStack.removeFirst()
         }
         store.inkRedoStack.removeAll()
 
-        self.currentStrokes = newStrokes
-
-        // Persist to SQLite
-        store.saveInkPageStrokes(pageIndex: 0, strokes: newStrokes)
+        pagesStrokes[pageIndex] = newStrokes
+        store.saveInkPageStrokes(pageIndex: pageIndex, strokes: newStrokes)
     }
 
     private func performUndo() {
         guard let prev = store.inkUndoStack.popLast() else { return }
-        store.inkRedoStack.append(currentStrokes)
-        self.currentStrokes = prev
-        store.saveInkPageStrokes(pageIndex: 0, strokes: prev)
+        let targetIndex = 0
+        let current = pagesStrokes[targetIndex] ?? []
+        store.inkRedoStack.append(current)
+        pagesStrokes[targetIndex] = prev
+        store.saveInkPageStrokes(pageIndex: targetIndex, strokes: prev)
     }
 
     private func performRedo() {
         guard let next = store.inkRedoStack.popLast() else { return }
-        store.inkUndoStack.append(currentStrokes)
-        self.currentStrokes = next
-        store.saveInkPageStrokes(pageIndex: 0, strokes: next)
+        let targetIndex = 0
+        let current = pagesStrokes[targetIndex] ?? []
+        store.inkUndoStack.append(current)
+        pagesStrokes[targetIndex] = next
+        store.saveInkPageStrokes(pageIndex: targetIndex, strokes: next)
+    }
+
+    // MARK: - Export Logic
+    private func exportPDF() {
+        guard let pdfData = InkExportService.exportToVectorPDF(title: doc.content, pages: store.inkPages) else {
+            return
+        }
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        let cleanName = doc.content.isEmpty ? "Untitled Note" : doc.content
+        savePanel.nameFieldStringValue = "\(cleanName).pdf"
+
+        savePanel.begin { response in
+            if response == .OK, let url = savePanel.url {
+                try? pdfData.write(to: url)
+            }
+        }
+    }
+
+    private func exportPNG() {
+        guard let firstPage = store.inkPages.first,
+              let pngData = InkExportService.exportToPNG(page: firstPage) else {
+            return
+        }
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.png]
+        let cleanName = doc.content.isEmpty ? "Untitled Note" : doc.content
+        savePanel.nameFieldStringValue = "\(cleanName)-Page1.png"
+
+        savePanel.begin { response in
+            if response == .OK, let url = savePanel.url {
+                try? pngData.write(to: url)
+            }
+        }
     }
 }

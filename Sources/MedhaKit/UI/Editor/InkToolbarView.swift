@@ -28,10 +28,11 @@ public struct InkToolbarView: View {
         HStack(spacing: 8) {
             // MARK: - Tool Selectors
             HStack(spacing: 2) {
-                toolButton(tool: .ballpoint, title: "Pen", icon: "pencil.tip")
-                toolButton(tool: .fountain, title: "Fountain", icon: "signature")
-                toolButton(tool: .highlighter, title: "Highlighter", icon: "highlighter")
-                toolButton(tool: .eraser, title: "Eraser", icon: "eraser")
+                toolButton(tool: .ballpoint, title: "Pen (P)", icon: "pencil.tip")
+                toolButton(tool: .fountain, title: "Fountain (F)", icon: "signature")
+                toolButton(tool: .highlighter, title: "Highlighter (H)", icon: "highlighter")
+                toolButton(tool: .eraser, title: "Eraser (E)", icon: "eraser")
+                toolButton(tool: .lasso, title: "Lasso Selection (L)", icon: "lasso")
             }
             .padding(3)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
@@ -151,6 +152,27 @@ public struct InkToolbarView: View {
                 .disabled(!canRedo)
                 .help("Redo (⇧⌘Z)")
             }
+
+            Divider()
+                .frame(height: 20)
+
+            // MARK: - Page Actions
+            Button(action: {
+                store.addInkPage()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.rectangle")
+                        .font(.system(size: 12))
+                    Text("Add Page")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Add New Page to Document")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

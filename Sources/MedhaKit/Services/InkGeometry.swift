@@ -179,6 +179,58 @@ public enum InkGeometry {
         return false
     }
 
+    /// Check if a 2D point lies inside a closed polygon (Ray-casting algorithm)
+    public static func polygonContains(point: CGPoint, polygon: [CGPoint]) -> Bool {
+        guard polygon.count >= 3 else { return false }
+        var inside = false
+        var j = polygon.count - 1
+        for i in 0..<polygon.count {
+            let pi = polygon[i]
+            let pj = polygon[j]
+            if ((pi.y > point.y) != (pj.y > point.y)) &&
+                (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x) {
+                inside.toggle()
+            }
+            j = i
+        }
+        return inside
+    }
+
+    /// Check if a stroke is enclosed or intersects with a lasso selection polygon
+    public static func lassoSelects(stroke: InkStroke, polygon: [CGPoint]) -> Bool {
+        guard polygon.count >= 3 else { return false }
+
+        // Quick check: if centroid or any point of stroke is inside polygon
+        let (minX, minY, maxX, maxY) = stroke.boundingRect
+        let mid = CGPoint(x: (minX + maxX) * 0.5, y: (minY + maxY) * 0.5)
+        if polygonContains(point: mid, polygon: polygon) {
+            return true
+        }
+
+        // Check if any point in the stroke lies within the polygon
+        for p in stroke.points {
+            if polygonContains(point: CGPoint(x: p.x, y: p.y), polygon: polygon) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Translate a stroke by delta (dx, dy)
+    public static func translate(stroke: InkStroke, dx: Double, dy: Double) -> InkStroke {
+        let newPoints = stroke.points.map { pt in
+            InkPoint(x: pt.x + dx, y: pt.y + dy, pressure: pt.pressure, timeOffset: pt.timeOffset)
+        }
+        return InkStroke(
+            id: stroke.id,
+            tool: stroke.tool,
+            colorHex: stroke.colorHex,
+            baseWidth: stroke.baseWidth,
+            opacity: stroke.opacity,
+            points: newPoints
+        )
+    }
+
     private static func distanceToSegment(p: CGPoint, a: CGPoint, b: CGPoint) -> CGFloat {
         let abx = b.x - a.x
         let aby = b.y - a.y

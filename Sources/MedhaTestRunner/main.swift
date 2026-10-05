@@ -2430,6 +2430,7 @@ struct TestRunner {
             // 34.11: Skeletal Marker & 2-Step Hierarchy Verification
             if let firstChild = children.first {
                 store.selectDocument(id: firstChild.id)
+                store.reloadBlocks()
                 assert(store.blocks.contains(where: { $0.content.contains("Skeletal Note") }), "Failed: Skeletal child documents must contain skeletal marker block")
             }
         }
@@ -2524,7 +2525,54 @@ struct TestRunner {
         assert(deserialized.strokes[0].colorHex == "#3B82F6", "Failed: stroke colorHex must round-trip")
         print("✅ testVectorInkGeometryAndPersistence passed")
 
-        print("\n🎉 ALL 36 TEST SUITES PASSED SUCCESSFULLY!")
+        // --- Suite 37: Multi-Page Continuous Canvas, Lasso Geometry & Vector Export ---
+        print("\n--- Running Suite 37: Multi-Page Canvas, Lasso & Vector Export ---")
+        let multiPageDoc = store.createInkDocument(title: "Calculus Derivations", templateType: .grid)
+        store.selectDocument(id: multiPageDoc.id)
+        assert(store.inkPages.count == 1, "Failed: new ink note starts with 1 page")
+
+        // Add 2 more pages
+        store.addInkPage()
+        store.addInkPage()
+        assert(store.inkPages.count == 3, "Failed: ink note should now have 3 pages")
+        assert(store.inkPages[0].pageIndex == 0, "Failed: page index 0")
+        assert(store.inkPages[1].pageIndex == 1, "Failed: page index 1")
+        assert(store.inkPages[2].pageIndex == 2, "Failed: page index 2")
+
+        // Test delete middle page and reindexing
+        store.deleteInkPage(pageIndex: 1)
+        assert(store.inkPages.count == 2, "Failed: after deleting middle page, count must be 2")
+        assert(store.inkPages[1].pageIndex == 1, "Failed: second page must be re-indexed to 1")
+
+        // Test Lasso selection polygon math
+        let lassoPolygon = [
+            CGPoint(x: 50, y: 100),
+            CGPoint(x: 300, y: 100),
+            CGPoint(x: 300, y: 250),
+            CGPoint(x: 50, y: 250)
+        ]
+        let insidePt = CGPoint(x: 150, y: 180)
+        let outsidePt = CGPoint(x: 450, y: 500)
+        assert(InkGeometry.polygonContains(point: insidePt, polygon: lassoPolygon) == true, "Failed: point inside polygon")
+        assert(InkGeometry.polygonContains(point: outsidePt, polygon: lassoPolygon) == false, "Failed: point outside polygon")
+        assert(InkGeometry.lassoSelects(stroke: sampleStroke, polygon: lassoPolygon) == true, "Failed: sampleStroke should be selected by lasso")
+
+        // Test stroke translation
+        let translated = InkGeometry.translate(stroke: sampleStroke, dx: 50.0, dy: -30.0)
+        assert(translated.points[0].x == sampleStroke.points[0].x + 50.0, "Failed: stroke x translated")
+        assert(translated.points[0].y == sampleStroke.points[0].y - 30.0, "Failed: stroke y translated")
+
+        // Test Vector PDF export
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [sampleStroke, translated])
+        let pdfData = InkExportService.exportToVectorPDF(title: "Calculus Derivations", pages: store.inkPages)
+        assert(pdfData != nil && pdfData!.count > 500, "Failed: Vector PDF data should be generated")
+
+        // Test PNG export
+        let pngData = InkExportService.exportToPNG(page: store.inkPages[0])
+        assert(pngData != nil && pngData!.count > 1000, "Failed: PNG bitmap data should be generated")
+        print("✅ testMultiPageContinuousCanvasLassoAndExport passed")
+
+        print("\n🎉 ALL 37 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 
