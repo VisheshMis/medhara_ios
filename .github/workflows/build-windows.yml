@@ -1,0 +1,55 @@
+name: Build & Release Windows Port
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: desktop/package.json
+
+      - name: Install dependencies & compile Windows binaries
+        run: |
+          cd desktop
+          npm ci
+
+      - name: Run automated test suite (All 36 suites)
+        run: |
+          cd desktop
+          npm test
+
+      - name: Build Windows .exe Installer and Portable App
+        run: |
+          cd desktop
+          npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Medha-Windows-Executables
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.blockmap
+
+      - name: Publish GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/dist/*.exe
+          generate_release_notes: true

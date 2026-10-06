@@ -136,17 +136,18 @@ public struct NotesAIAssistantView: View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.purple)
+                .foregroundColor(MedhaTheme.Colors.aiAccent)
 
             Text("Notes AI Assistant")
                 .font(.system(size: 13, weight: .bold))
+                .foregroundColor(MedhaTheme.Colors.textPrimary)
 
             Spacer()
 
             Button(action: { isSettingsSheetPresented = true }) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
             }
             .buttonStyle(.plain)
             .help("Notes AI Settings")
@@ -158,33 +159,33 @@ public struct NotesAIAssistantView: View {
             }) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
             }
             .buttonStyle(.plain)
             .help("Close AI Assistant")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(MedhaTheme.Colors.bgSurface)
     }
 
     @ViewBuilder
     private func miniStep(number: String, label: String, active: Bool) -> some View {
         HStack(spacing: 4) {
             Text(number)
-                .font(.system(size: 8.5, weight: .bold))
-                .frame(width: 15, height: 15)
-                .background(active ? Color.purple : Color.secondary.opacity(0.18))
-                .foregroundColor(active ? .white : .secondary)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .frame(width: 16, height: 16)
+                .background(active ? MedhaTheme.Colors.aiAccent : MedhaTheme.Colors.borderSubtle)
+                .foregroundColor(active ? .white : MedhaTheme.Colors.textTertiary)
                 .clipShape(Circle())
             Text(label)
-                .font(.system(size: 10, weight: active ? .semibold : .regular))
-                .foregroundColor(active ? .primary : .secondary)
+                .font(.system(size: 10, weight: active ? .semibold : .regular, design: .rounded))
+                .foregroundColor(active ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textTertiary)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(active ? Color.purple.opacity(0.1) : Color.clear)
-        .cornerRadius(6)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(active ? MedhaTheme.Colors.aiAccent.opacity(0.12) : Color.clear)
+        .clipShape(Capsule(style: .continuous))
     }
 
     @ViewBuilder
@@ -193,47 +194,47 @@ public struct NotesAIAssistantView: View {
             HStack(spacing: 5) {
                 Image(systemName: "doc.text.fill")
                     .font(.system(size: 10))
-                    .foregroundColor(.purple)
+                    .foregroundColor(MedhaTheme.Colors.aiAccent)
                 Text("CURRENT ROOT NOTE")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                 Spacer()
                 Text("Downward Note")
-                    .font(.system(size: 8.5, weight: .medium))
-                    .foregroundColor(.purple)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.1))
-                    .cornerRadius(4)
+                    .medhaChip(color: MedhaTheme.Colors.aiAccent, isMuted: true)
             }
 
             Text(currentNoteTitle)
-                .font(.system(size: 13, weight: .bold))
+                .font(MedhaTheme.Typography.serifHeading1)
+                .foregroundColor(MedhaTheme.Colors.textPrimary)
                 .lineLimit(2)
 
             HStack(spacing: 8) {
                 Text("\(store.blocks.count) blocks • \(currentNoteWordCount) words")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .font(MedhaTheme.Typography.monoCounter)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
 
                 Spacer()
 
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     Image(systemName: settings.activeNotesProvider == .local ? "cpu" : "cloud.fill")
                         .font(.system(size: 8.5))
                     Text(settings.activeNotesProvider == .local ? "Local" : settings.activeNotesProvider.displayName)
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
                 }
-                .foregroundColor(settings.activeNotesProvider == .local ? .green : .blue)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1.5)
-                .background((settings.activeNotesProvider == .local ? Color.green : Color.blue).opacity(0.1))
-                .cornerRadius(4)
+                .foregroundColor(settings.activeNotesProvider == .local ? MedhaTheme.Colors.success : MedhaTheme.Colors.info)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background((settings.activeNotesProvider == .local ? MedhaTheme.Colors.success : MedhaTheme.Colors.info).opacity(0.12))
+                .clipShape(Capsule(style: .continuous))
             }
         }
-        .padding(10)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
+        .padding(12)
+        .background(MedhaTheme.Colors.bgSurface)
+        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous)
+                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -497,25 +498,25 @@ public struct NotesAIAssistantView: View {
             HStack {
                 HStack(spacing: 5) {
                     Image(systemName: "point.3.filled.connected.trianglepath.dotted")
-                        .foregroundColor(.purple)
+                        .foregroundColor(MedhaTheme.Colors.aiAccent)
                         .font(.system(size: 11))
                     Text("Auto-Note Engine")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundColor(MedhaTheme.Colors.textPrimary)
                 }
 
                 Spacer()
 
                 HStack(spacing: 4) {
                     Text("Depth: \(autoNote.config.max_depth)")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(MedhaTheme.Typography.monoBadge)
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                     Text("•")
                         .font(.system(size: 8))
-                        .foregroundColor(.secondary.opacity(0.5))
+                        .foregroundColor(MedhaTheme.Colors.textTertiary.opacity(0.5))
                     Text("Max: \(autoNote.config.max_children)")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(MedhaTheme.Typography.monoBadge)
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                 }
             }
 
@@ -524,30 +525,37 @@ public struct NotesAIAssistantView: View {
                 miniStep(number: "1", label: "Plan", active: true)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(.secondary.opacity(0.4))
+                    .foregroundColor(MedhaTheme.Colors.textTertiary.opacity(0.4))
                 miniStep(number: "2", label: "Review", active: false)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(.secondary.opacity(0.4))
+                    .foregroundColor(MedhaTheme.Colors.textTertiary.opacity(0.4))
                 miniStep(number: "3", label: "Fill", active: false)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("FOCUS / DIRECTION (OPTIONAL)")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
 
                 TextField("e.g. Focus on modern mechanisms, comparative tables and benchmarks", text: $directionFocusPrompt)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11))
             }
         }
-        .padding(10)
-        .background(Color.purple.opacity(0.05))
-        .cornerRadius(8)
+        .padding(12)
+        .background(MedhaTheme.Colors.bgSurface)
+        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [MedhaTheme.Colors.aiAccent.opacity(0.5), MedhaTheme.Colors.accentStart.opacity(0.2)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -1639,14 +1647,26 @@ public struct NotesAIAssistantView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "sparkles")
                             Text("Ground & Plan Skeleton Tree")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12.5, weight: .bold, design: .rounded))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 7)
+                        .background(
+                            LinearGradient(
+                                colors: [MedhaTheme.Colors.aiAccent, MedhaTheme.Colors.palaceAccent],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.small, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: MedhaTheme.Radius.small, style: .continuous)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: MedhaTheme.Colors.aiAccent.opacity(0.3), radius: 6, x: 0, y: 2)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
-                    .controlSize(.regular)
+                    .buttonStyle(.plain)
                     .disabled(!settings.hasNotesAPIKey || store.currentDoc == nil)
                 }
             } else if selectedMode == .deepMasterPlan {

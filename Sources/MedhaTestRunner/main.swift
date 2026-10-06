@@ -2644,7 +2644,46 @@ struct TestRunner {
         try? FileManager.default.removeItem(at: tempPDFURL)
         print("✅ testPDFDocumentImportRangeTrimmingAndEmbedding passed")
 
-        print("\n🎉 ALL 38 TEST SUITES PASSED SUCCESSFULLY!")
+        // 39. Image Occlusion Flashcards for STEM & Anatomy
+        let occlusionDoc = store.createDocument(title: "Anatomy of the Human Heart")
+        let dummyImgName = "test-diagram-heart.png"
+        let sampleMasks = [
+            ImageOcclusionMask(x: 0.15, y: 0.20, width: 0.18, height: 0.08, label: "Superior Vena Cava", orderIndex: 0),
+            ImageOcclusionMask(x: 0.45, y: 0.12, width: 0.22, height: 0.09, label: "Aortic Arch", orderIndex: 1),
+            ImageOcclusionMask(x: 0.68, y: 0.35, width: 0.20, height: 0.08, label: "Left Pulmonary Artery", orderIndex: 2),
+            ImageOcclusionMask(x: 0.30, y: 0.65, width: 0.24, height: 0.10, label: "Right Ventricle", orderIndex: 3)
+        ]
+
+        let generatedCards = store.createImageOcclusionCards(
+            imagePath: dummyImgName,
+            masks: sampleMasks,
+            mode: .hideAllRevealOne,
+            deckId: nil,
+            docId: occlusionDoc.id,
+            diagramTitle: "Heart Anatomy",
+            hint: "Cardiology diagram, anterior view"
+        )
+
+        assert(generatedCards.count == 4, "Failed: Must generate exactly 4 occlusion cards")
+        for (idx, card) in generatedCards.enumerated() {
+            assert(card.effectiveCardType == .imageOcclusion, "Failed: Card must be .imageOcclusion type")
+            assert(card.imagePath == dummyImgName, "Failed: Card imagePath must match")
+            assert(card.activeMaskId == sampleMasks[idx].id, "Failed: Active mask ID must match target mask")
+            assert(card.effectiveOcclusionMode == .hideAllRevealOne, "Failed: Occlusion mode must match")
+            assert(card.parsedMasks.count == 4, "Failed: parsedMasks must contain all 4 diagram masks")
+            assert(card.back == sampleMasks[idx].label, "Failed: Answer must match mask label")
+        }
+
+        // Test FSRS review on an occlusion card
+        let firstCard = generatedCards[0]
+        let occlusionReviewResult = store.rateFlashcard(id: firstCard.id, rating: .good)
+        assert(occlusionReviewResult != nil, "Failed: Should rate occlusion flashcard")
+        assert(occlusionReviewResult!.card.reps == 1, "Failed: reps must increment to 1")
+        assert(occlusionReviewResult!.card.stability > 0, "Failed: stability must increase")
+        print("✅ testImageOcclusionFlashcards passed")
+
+        print("\n🎉 ALL 39 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
+
 

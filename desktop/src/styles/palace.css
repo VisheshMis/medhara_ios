@@ -1,0 +1,149 @@
+/* Medha Windows Desktop — 2D Spatial Memory Palace (Method of Loci) */
+
+.palace-container {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+    background: #050811;
+}
+
+/* Infinite 2D Pan/Zoom Canvas Stage */
+.palace-stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.palace-stage.panning {
+    cursor: grabbing;
+}
+
+.palace-world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+/* Photo Node Cards on Canvas */
+.photo-node-card {
+    position: absolute;
+    background: #1E293B;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    border: 2px solid var(--border-subtle);
+    overflow: hidden;
+    cursor: default;
+    transition: border-color 0.15s ease;
+}
+
+.photo-node-card:hover {
+    border-color: var(--border-medium);
+}
+
+.photo-node-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+/* Loci Pins on Photo */
+.locus-pin {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #EF4444, #DC2626);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    border: 2px solid #FFFFFF;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    z-index: 10;
+}
+
+.locus-pin:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.locus-pin.active-step {
+    background: linear-gradient(135deg, #10B981, #059669);
+    animation: pin-pulse 1.8s infinite;
+}
+
+@keyframes pin-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+    70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Pathway Connection SVG */
+.palace-pathways-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Floating Cinematic Walk Mode HUD */
+.walk-mode-hud {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-popover);
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    min-width: 440px;
+    max-width: 600px;
+}
+
+.walk-hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.walk-step-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.walk-mnemonic-text {
+    font-size: 13px;
+    color: #CBD5E1;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    width: 100%;
+    line-height: 1.5;
+}
+
+.walk-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}

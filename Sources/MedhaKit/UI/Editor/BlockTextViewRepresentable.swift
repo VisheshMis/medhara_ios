@@ -17,6 +17,9 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
     public var onSlashTrigger: () -> Void
     public var onAutoConvertToBullet: () -> Void
     public var onFocus: () -> Void
+    public var onZoomIn: (() -> Void)?
+    public var onZoomOut: (() -> Void)?
+    public var onResetZoom: (() -> Void)?
 
     public init(
         text: Binding<String>,
@@ -33,7 +36,10 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         onArrowDown: @escaping () -> Void = {},
         onSlashTrigger: @escaping () -> Void = {},
         onAutoConvertToBullet: @escaping () -> Void = {},
-        onFocus: @escaping () -> Void = {}
+        onFocus: @escaping () -> Void = {},
+        onZoomIn: (() -> Void)? = nil,
+        onZoomOut: (() -> Void)? = nil,
+        onResetZoom: (() -> Void)? = nil
     ) {
         self._text = text
         self.isFocused = isFocused
@@ -50,6 +56,9 @@ public struct BlockTextViewRepresentable: NSViewRepresentable {
         self.onSlashTrigger = onSlashTrigger
         self.onAutoConvertToBullet = onAutoConvertToBullet
         self.onFocus = onFocus
+        self.onZoomIn = onZoomIn
+        self.onZoomOut = onZoomOut
+        self.onResetZoom = onResetZoom
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -271,6 +280,28 @@ public final class CustomNSTextView: NSTextView {
         guard let parent = coordinator?.parent else {
             super.keyDown(with: event)
             return
+        }
+
+        // Command + / Command - / Command 0 Zoom Shortcuts
+        if event.modifierFlags.contains(.command) {
+            if event.keyCode == 24 || event.charactersIgnoringModifiers == "=" || event.charactersIgnoringModifiers == "+" {
+                if let onZoom = parent.onZoomIn {
+                    onZoom()
+                    return
+                }
+            }
+            if event.keyCode == 27 || event.charactersIgnoringModifiers == "-" {
+                if let onZoom = parent.onZoomOut {
+                    onZoom()
+                    return
+                }
+            }
+            if event.keyCode == 29 || event.charactersIgnoringModifiers == "0" {
+                if let onZoom = parent.onResetZoom {
+                    onZoom()
+                    return
+                }
+            }
         }
 
         // Return / Enter (Keycode 36)

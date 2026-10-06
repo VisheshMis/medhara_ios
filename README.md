@@ -3,7 +3,9 @@
   <br /><br />
 
   [![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue?logo=apple&style=for-the-badge)](https://www.apple.com/macos/)
+  [![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows&style=for-the-badge)](desktop/)
   [![Download DMG](https://img.shields.io/badge/Download-macOS%20App%20(.dmg)-success?logo=apple&style=for-the-badge)](https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.dmg)
+  [![Download Windows .exe](https://img.shields.io/badge/Download-Windows%20Installer%20(.exe)-0078D6?logo=windows&style=for-the-badge)](https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-Setup.exe)
   [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift&style=for-the-badge)](https://swift.org)
   [![Spaced Repetition: FSRS-4.5](https://img.shields.io/badge/Spaced%20Repetition-FSRS--4.5-green?style=for-the-badge)](https://github.com/open-spaced-repetition/fsrs4anki)
   [![Local AI: 100% Offline](https://img.shields.io/badge/AI-100%25%20Offline%20Local%20AI%20%28%3C4GB%20RAM%29-purple?style=for-the-badge)](#9--dual-mode-ai-with-per-provider-key-isolation)
@@ -12,12 +14,12 @@
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
   <p align="center">
-    <strong>An offline-first, native macOS Cognitive Retention Engine & Spatial PKM.</strong><br />
+    <strong>An offline-first Cognitive Retention Engine & Spatial PKM for macOS and Windows.</strong><br />
     Unifying 2-step hierarchical auto-notes, handwritten vector notes, GPU knowledge graphs, the ancient Method of Loci, and modern FSRS-4.5 spaced repetition with multi-source academic grounding.
   </p>
   <p align="center">
     <a href="https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.dmg"><strong>⬇️ Download Medha for macOS (.dmg)</strong></a> &bull;
-    <a href="https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-macOS.zip">Download (.zip)</a> &bull;
+    <a href="https://github.com/VisheshMis/medhara_ios/releases/latest/download/Medha-Setup.exe"><strong>⬇️ Download Medha for Windows (.exe)</strong></a> &bull;
     <a href="https://github.com/VisheshMis/medhara_ios/releases/latest">Release Notes</a>
   </p>
 </div>
@@ -453,6 +455,7 @@ open Medha.app
 
 ## 📖 Documentation Links
 
+- [Student Feature Backlog & Future Problem List](docs/STUDENT_FEATURE_BACKLOG.md)
 - [Local AI & Multi-Source Grounding Setup Guide](LOCAL_AI_SETUP.md)
 - [Complete Product & Technical Presentation Deck (PDF)](Medhara_Complete_Presentation_Flow.pdf)
 - [FSRS Spaced Repetition Scheduling Algorithm](https://github.com/open-spaced-repetition/fsrs4anki)

@@ -1,0 +1,259 @@
+/* Medha Windows Desktop — macOS Sonoma / Sequoia Theme on Windows */
+/* Provides authentic frosted glass vibrancy, typography, and controls */
+
+:root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", "Cascadia Code", Consolas, Menlo, Monaco, monospace;
+
+    /* Theme Palette (Dark Translucent by default matching macOS Medha) */
+    --bg-base: #0B0F19;
+    --bg-window: rgba(15, 23, 42, 0.88);
+    --bg-sidebar: rgba(11, 15, 25, 0.75);
+    --bg-panel: rgba(30, 41, 59, 0.65);
+    --bg-card: rgba(30, 41, 59, 0.8);
+    --bg-card-hover: rgba(51, 65, 85, 0.85);
+    --bg-input: rgba(15, 23, 42, 0.6);
+
+    /* Frosted Glass Vibrancy */
+    --backdrop-blur: blur(24px) saturate(160%);
+
+    /* Borders & Accents */
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-medium: rgba(255, 255, 255, 0.15);
+    --border-focus: #3B82F6;
+
+    /* Text Colors */
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+
+    /* System Highlights */
+    --accent-blue: #3B82F6;
+    --accent-indigo: #6366F1;
+    --accent-purple: #8B5CF6;
+    --accent-emerald: #10B981;
+    --accent-amber: #F59E0B;
+    --accent-rose: #F43F5E;
+
+    /* Elevation Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+    --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.6);
+
+    /* Radii */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-full: 9999px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+body {
+    font-family: var(--font-sans);
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* App Shell Container */
+#app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    background: var(--bg-window);
+    backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-subtle);
+}
+
+/* Unified macOS Titlebar */
+.app-header {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border-subtle);
+    -webkit-app-region: drag; /* Draggable window region */
+    flex-shrink: 0;
+}
+
+.header-left, .header-center, .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    -webkit-app-region: no-drag;
+}
+
+/* macOS Window Traffic Lights */
+.traffic-lights {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 6px;
+}
+
+.traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.traffic-light:hover {
+    transform: scale(1.1);
+}
+
+.traffic-light.close { background-color: #FF5F56; border: 1px solid #E0443E; }
+.traffic-light.minimize { background-color: #FFBD2E; border: 1px solid #DEA123; }
+.traffic-light.maximize { background-color: #27C93F; border: 1px solid #1AAB29; }
+
+/* Optional Windows 11 Caption Controls */
+.windows-controls {
+    display: none; /* Can be toggled in settings */
+    align-items: center;
+    gap: 0;
+}
+
+.win-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.win-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.win-btn.win-close:hover { background: #E81123; color: #FFFFFF; }
+
+/* App Brand Section */
+.brand-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}
+
+.brand-logo-oval {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    color: #FFFFFF;
+}
+
+/* Recurring Focus Timer Pill */
+.timer-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.timer-pill:hover { background: rgba(255, 255, 255, 0.12); }
+.timer-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-emerald);
+}
+.timer-pill.paused .timer-dot { background: var(--accent-amber); }
+
+/* Segmented View Switcher (Notes, Decks, Graph, Palace) */
+.segmented-control {
+    display: flex;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--border-subtle);
+    padding: 2px;
+    border-radius: var(--radius-md);
+    gap: 2px;
+}
+
+.segment-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.segment-btn:hover { color: var(--text-primary); }
+.segment-btn.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.badge-pill {
+    background: var(--accent-blue);
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+}
+
+/* Quick Action Buttons */
+.btn-header {
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-header:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-medium);
+}
+
+.btn-header.active {
+    background: rgba(139, 92, 246, 0.25);
+    border-color: var(--accent-purple);
+    color: #C4B5FD;
+}

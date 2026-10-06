@@ -12,5 +12,11 @@ Icon
 # Xcode / User Data
 *.xcuserdatad
 *.xcuserstate
-xcuserdata/
+userdata/
 DerivedData/
+
+# Node / Electron Desktop
+node_modules/
+desktop/node_modules/
+dist/
+desktop/dist/

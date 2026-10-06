@@ -33,7 +33,8 @@ public struct BlockEditorView: View {
                                         set: { store.renameDocument(docId: doc.id, newTitle: $0) }
                                     ))
                                     .focused($isTitleFocused)
-                                    .font(.system(size: 28, weight: .bold))
+                                    .font(.system(size: 28 * store.editorZoomLevel, weight: .bold, design: .serif))
+                                    .foregroundColor(MedhaTheme.Colors.textPrimary)
                                     .textFieldStyle(.plain)
                                     .id("document-title-\(doc.id)")
                                     .onSubmit {
@@ -92,11 +93,29 @@ public struct BlockEditorView: View {
                             // Flashcards Attached to this Folder / Note
                             flashcardsSectionView(doc: doc)
                         }
-                        .frame(maxWidth: 740)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .padding(.horizontal, 36)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(.horizontal, 40)
                         .padding(.top, 24)
                         .padding(.bottom, 48)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if let hudMsg = store.zoomHUDMessage {
+                            Text(hudMsg)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundColor(MedhaTheme.Colors.textPrimary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(MedhaTheme.Colors.borderSubtle, lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
+                                .padding(.top, 16)
+                                .padding(.trailing, 24)
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
                     .onChange(of: store.focusedBlockId) { _, newId in
                         if let id = newId {
@@ -136,23 +155,41 @@ public struct BlockEditorView: View {
                         .foregroundColor(.secondary.opacity(0.6))
                     Text("No Document Selected")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                     Text("Select a document from the tree, or press ⌘N to create a new page.")
                         .font(.system(size: 13))
-                        .foregroundColor(.secondary.opacity(0.8))
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                     Button(action: {
                         store.createDocument(title: "Untitled Document")
                     }) {
                         Label("New Document", systemImage: "plus")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .medhaPrimaryButton()
                     .controlSize(.regular)
                     .padding(.top, 8)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(NSColor.textBackgroundColor))
+        .background(MedhaTheme.Colors.bgBase)
+        .onAppear {
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                if event.modifierFlags.contains(.command) {
+                    let chars = event.charactersIgnoringModifiers ?? ""
+                    if chars == "+" || chars == "=" || event.keyCode == 24 {
+                        store.zoomIn()
+                        return nil
+                    } else if chars == "-" || event.keyCode == 27 {
+                        store.zoomOut()
+                        return nil
+                    } else if chars == "0" || event.keyCode == 29 {
+                        store.resetZoom()
+                        return nil
+                    }
+                }
+                return event
+            }
+        }
     }
 
     private func docWordCount() -> Int {
@@ -218,11 +255,15 @@ public struct BlockEditorView: View {
                     Text("Sub-note")
                         .font(.system(size: 10, weight: .medium))
                 }
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6)
+                .foregroundColor(MedhaTheme.Colors.textSecondary)
+                .padding(.horizontal, 7)
                 .padding(.vertical, 3)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
-                .cornerRadius(4)
+                .background(MedhaTheme.Colors.bgSurface)
+                .clipShape(Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
             .help("Create a sub-note nested under this document")
@@ -233,12 +274,16 @@ public struct BlockEditorView: View {
                 Text("•")
                 Text("\(store.blocks.count) blocks")
             }
-            .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.secondary.opacity(0.8))
-            .padding(.horizontal, 6)
+            .font(MedhaTheme.Typography.monoCounter)
+            .foregroundColor(MedhaTheme.Colors.textTertiary)
+            .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-            .cornerRadius(4)
+            .background(MedhaTheme.Colors.bgSurface)
+            .clipShape(Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+            )
         }
     }
 
@@ -257,39 +302,24 @@ public struct BlockEditorView: View {
                 Image(systemName: children.isEmpty ? "folder" : "folder.fill")
                     .font(.system(size: 10))
                 Text("\(children.count) Sub-notes")
-                    .font(.system(size: 11, weight: .medium))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
-            .foregroundColor(.secondary)
-            .cornerRadius(6)
+            .medhaChip(color: MedhaTheme.Colors.textSecondary, isMuted: true)
 
             // Flashcards count badge
             HStack(spacing: 4) {
                 Image(systemName: "rectangle.on.rectangle.angled")
                     .font(.system(size: 10))
                 Text("\(cards.count) Cards")
-                    .font(.system(size: 11, weight: .medium))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(cards.isEmpty ? Color(NSColor.controlBackgroundColor).opacity(0.6) : Color.accentColor.opacity(0.12))
-            .foregroundColor(cards.isEmpty ? .secondary : .accentColor)
-            .cornerRadius(6)
+            .medhaChip(color: MedhaTheme.Colors.notesAccent, isMuted: cards.isEmpty)
 
             // Reading estimate badge
             HStack(spacing: 4) {
                 Image(systemName: "clock")
                     .font(.system(size: 10))
                 Text("~\(estReadTime) min read")
-                    .font(.system(size: 11, weight: .medium))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
-            .foregroundColor(.secondary)
-            .cornerRadius(6)
+            .medhaChip(color: MedhaTheme.Colors.textSecondary, isMuted: true)
 
             // Memory Palace link badge if applicable
             if hasPalaceAnchors {
@@ -297,13 +327,8 @@ public struct BlockEditorView: View {
                     Image(systemName: "building.columns.fill")
                         .font(.system(size: 10))
                     Text("Palace Anchored")
-                        .font(.system(size: 11, weight: .semibold))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.purple.opacity(0.12))
-                .foregroundColor(.purple)
-                .cornerRadius(6)
+                .medhaChip(color: MedhaTheme.Colors.palaceAccent, isMuted: false)
             }
 
             Spacer()

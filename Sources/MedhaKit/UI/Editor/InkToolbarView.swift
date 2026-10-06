@@ -199,19 +199,6 @@ public struct InkToolbarView: View {
     }
 }
 
-// MARK: - SwiftUI Color Hex Extension
-extension Color {
-    public init(hex: String) {
-        let cleanHex = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
-        var int: UInt64 = 0
-        Scanner(string: cleanHex).scanHexInt64(&int)
-
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
-    }
-}
 
 // MARK: - Visual Effect Blur Helper
 public struct VisualEffectBlur: NSViewRepresentable {

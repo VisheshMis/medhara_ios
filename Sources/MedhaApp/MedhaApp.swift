@@ -172,6 +172,23 @@ struct MedhaApp: App {
                 }
                 .keyboardShortcut("g", modifiers: .command)
             }
+
+            CommandMenu("View") {
+                Button("Zoom In") {
+                    store.zoomIn()
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Zoom Out") {
+                    store.zoomOut()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Actual Size") {
+                    store.resetZoom()
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
         }
     }
 }

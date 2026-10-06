@@ -1,0 +1,234 @@
+/* Medha Windows Desktop — Block PKM Editor Styling */
+/* Strict 740px typographic measure matching native macOS Medha */
+
+.editor-view-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px 120px 20px;
+}
+
+.editor-measure {
+    width: 100%;
+    max-width: 740px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Breadcrumbs & Document Header Hub */
+.doc-header-hub {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.breadcrumbs-trail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.breadcrumb-crumb {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+.breadcrumb-crumb:hover { color: var(--text-primary); }
+
+.doc-title-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.6px;
+    color: var(--text-primary);
+    outline: none;
+    margin-bottom: 8px;
+}
+
+.doc-metadata-scrim {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Block Row Item */
+.block-row {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 2px 0;
+    min-height: 28px;
+    transition: background 0.1s ease;
+}
+
+.block-handle {
+    width: 16px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0;
+    cursor: grab;
+    transition: opacity 0.15s ease;
+}
+
+.block-row:hover .block-handle {
+    opacity: 1;
+}
+
+.block-content-area {
+    flex: 1;
+    outline: none;
+    color: var(--text-primary);
+    line-height: 1.6;
+    font-size: 15px;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.block-content-area:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Block Type Variants */
+.block-row[data-type="heading1"] .block-content-area {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin-top: 12px;
+}
+
+.block-row[data-type="heading2"] .block-content-area {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin-top: 8px;
+}
+
+.block-row[data-type="heading3"] .block-content-area {
+    font-size: 17px;
+    font-weight: 600;
+    margin-top: 6px;
+}
+
+.block-row[data-type="bulletList"] {
+    padding-left: 18px;
+}
+.block-row[data-type="bulletList"]::before {
+    content: "•";
+    position: absolute;
+    left: 24px;
+    top: 4px;
+    color: var(--accent-blue);
+    font-weight: bold;
+}
+
+.block-row[data-type="taskList"] {
+    padding-left: 20px;
+}
+.task-checkbox {
+    cursor: pointer;
+    margin-top: 5px;
+}
+.block-row[data-type="taskList"].completed .block-content-area {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.block-row[data-type="quote"] {
+    border-left: 3px solid var(--accent-purple);
+    padding-left: 14px;
+    font-style: italic;
+    color: #E2E8F0;
+}
+
+.block-row[data-type="callout"] {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin: 6px 0;
+}
+
+.block-row[data-type="codeBlock"] {
+    background: #060911;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+.block-row[data-type="blockRef"] {
+    background: rgba(139, 92, 246, 0.1);
+    border-left: 3px solid var(--accent-purple);
+    padding: 8px 12px;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* WikiLinks & Transclusion */
+.wikilink-badge {
+    background: rgba(59, 130, 246, 0.18);
+    color: #93C5FD;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+.wikilink-badge:hover {
+    background: rgba(59, 130, 246, 0.3);
+    text-decoration: underline;
+}
+
+/* Slash Command Menu */
+.slash-menu {
+    position: fixed;
+    z-index: 100;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-popover);
+    width: 260px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 6px;
+    display: none;
+}
+
+.slash-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.slash-item:hover, .slash-item.selected {
+    background: rgba(59, 130, 246, 0.25);
+    color: var(--text-primary);
+}
+
+.slash-item-icon {
+    font-size: 14px;
+    width: 20px;
+}

@@ -1,0 +1,51 @@
+{
+  "name": "medha-windows",
+  "productName": "Medha",
+  "version": "1.0.0",
+  "description": "Offline-First Cognitive Retention Engine & Spatial PKM for Windows",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron electron/main.js",
+    "test": "node tests/runner.js",
+    "dist:win": "electron-builder --win nsis portable --x64"
+  },
+  "keywords": [
+    "pkm",
+    "fsrs",
+    "flashcards",
+    "memory-palace",
+    "knowledge-graph",
+    "ink-notes"
+  ],
+  "author": "Medha Team",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "better-sqlite3": "^13.0.3",
+    "fzstd": "^0.1.1",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.medha.desktop",
+    "productName": "Medha",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

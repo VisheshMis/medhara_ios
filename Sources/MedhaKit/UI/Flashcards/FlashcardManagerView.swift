@@ -17,6 +17,7 @@ public struct FlashcardManagerView: View {
 
     // Sheets & Modals
     @State private var isAddCardSheetPresented: Bool = false
+    @State private var isImageOcclusionSheetPresented: Bool = false
     @State private var isCreateDeckSheetPresented: Bool = false
     @State private var isEditDeckSheetPresented: Bool = false
     @State private var editingDeck: Deck? = nil
@@ -147,6 +148,19 @@ public struct FlashcardManagerView: View {
             AddFlashcardSheet(
                 store: store,
                 isPresented: $isAddCardSheetPresented,
+                onOpenImageOcclusion: {
+                    isAddCardSheetPresented = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        isImageOcclusionSheetPresented = true
+                    }
+                },
+                preselectedDeckId: store.selectedDeckId
+            )
+        }
+        .sheet(isPresented: $isImageOcclusionSheetPresented) {
+            ImageOcclusionEditorSheet(
+                store: store,
+                isPresented: $isImageOcclusionSheetPresented,
                 preselectedDeckId: store.selectedDeckId
             )
         }
@@ -234,13 +248,24 @@ public struct FlashcardManagerView: View {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 13, weight: .bold))
                         Text("Study All Due (\(totalSessionCardsCount))")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.green)
-                    .cornerRadius(7)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        LinearGradient(
+                            colors: [MedhaTheme.Colors.cardDue, MedhaTheme.Colors.accentEnd],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+                    .shadow(color: MedhaTheme.Colors.cardDue.opacity(0.3), radius: 6, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
             }
@@ -283,7 +308,7 @@ public struct FlashcardManagerView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(MedhaTheme.Colors.bgSurface)
     }
 
     // MARK: - Centered Decks Home View
@@ -307,58 +332,72 @@ public struct FlashcardManagerView: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 28)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(MedhaTheme.Colors.bgBase)
     }
 
     // MARK: - Hero Stats Banner
     private var heroStatsBanner: some View {
         HStack(alignment: .center, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     Image(systemName: "brain.head.profile")
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(MedhaTheme.Colors.flashcardsAccent)
                         .font(.system(size: 20, weight: .bold))
                     Text("Spaced Repetition Hub")
                         .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(MedhaTheme.Colors.textPrimary)
                 }
 
                 Text(totalDueCount > 0 ? "You have \(totalDueCount) flashcard\(totalDueCount == 1 ? "" : "s") ready for optimal FSRS memory consolidation today." : "All caught up! No flashcards currently due for spaced review.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(MedhaTheme.Colors.textSecondary)
             }
 
             Spacer()
 
-            // 3 Stat Pills (Anki-style: New, Learn, Due)
+            // 3 Stat Tiles (Anki-style: New, Learn, Due)
             HStack(spacing: 12) {
-                statPill(label: "New", count: totalNewCount, color: .blue)
-                statPill(label: "Learn", count: totalLearningCount, color: .orange)
-                statPill(label: "Due", count: totalDueCount, color: .green)
+                statPill(label: "New", count: totalNewCount, color: MedhaTheme.Colors.cardNew)
+                statPill(label: "Learn", count: totalLearningCount, color: MedhaTheme.Colors.cardLearn)
+                statPill(label: "Due", count: totalDueCount, color: MedhaTheme.Colors.cardDue)
             }
         }
-        .padding(18)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [MedhaTheme.Colors.bgElevated, MedhaTheme.Colors.bgSurface],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous)
+                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+        )
+        .shadow(color: MedhaTheme.Shadows.softLow, radius: 8, x: 0, y: 2)
     }
 
     private func statPill(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             Text("\(count)")
-                .font(.system(size: 18, weight: .bold))
+                .font(MedhaTheme.Typography.roundedStatsMedium)
                 .foregroundColor(color)
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.secondary)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(MedhaTheme.Colors.textTertiary)
         }
-        .frame(minWidth: 54)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .frame(minWidth: 58)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(color.opacity(0.12))
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.row, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.row, style: .continuous)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
     }
 
     // MARK: - Main Decks Table Card
@@ -372,34 +411,35 @@ public struct FlashcardManagerView: View {
             HStack(spacing: 12) {
                 Text("DECK")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text("NEW")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.blue)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(MedhaTheme.Colors.cardNew)
                     .frame(width: 55, alignment: .trailing)
 
                 Text("LEARN")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.orange)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(MedhaTheme.Colors.cardLearn)
                     .frame(width: 55, alignment: .trailing)
 
                 Text("DUE")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.green)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(MedhaTheme.Colors.cardDue)
                     .frame(width: 55, alignment: .trailing)
 
                 Image(systemName: "gearshape")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                     .frame(width: 36, alignment: .center)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+            .background(MedhaTheme.Colors.bgElevated.opacity(0.6))
 
             Divider()
+                .opacity(0.4)
 
             // 1. Notes & Documents Auto-Grouped Deck Row
             notesDeckRow(notesCards: grouped[notesDeckId] ?? [])
@@ -1102,6 +1142,7 @@ public struct CreateDeckSheet: View {
 public struct AddFlashcardSheet: View {
     @ObservedObject public var store: BlockStore
     @Binding public var isPresented: Bool
+    public var onOpenImageOcclusion: (() -> Void)? = nil
     public var preselectedDeckId: String? = nil
     public var preselectedDocId: String? = nil
 
@@ -1123,6 +1164,38 @@ public struct AddFlashcardSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Mode Selector: Standard vs Image Occlusion
+            HStack(spacing: 8) {
+                Button(action: {}) {
+                    Label("Standard (Q & A)", systemImage: "text.bubble")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(MedhaTheme.Colors.accent.opacity(0.15))
+                        .foregroundColor(MedhaTheme.Colors.accent)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    if let onOpen = onOpenImageOcclusion {
+                        onOpen()
+                    } else {
+                        isPresented = false
+                    }
+                }) {
+                    Label("Image Occlusion (STEM & Anatomy)", systemImage: "photo.badge.plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(MedhaTheme.Colors.bgElevated)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 2)
 
             // Target Deck Selector
             VStack(alignment: .leading, spacing: 4) {
@@ -1301,7 +1374,7 @@ public struct FlashcardStudySessionView: View {
                         Image(systemName: "chevron.left")
                         Text("Exit Session")
                     }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -1313,23 +1386,28 @@ public struct FlashcardStudySessionView: View {
                         .foregroundColor(Color(hexString: deck?.colorHex ?? "#3B82F6"))
                     Text(deck?.name ?? "All Due Cards")
                         .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MedhaTheme.Colors.textPrimary)
                 }
 
                 Spacer()
 
                 if !sessionCards.isEmpty {
                     Text("\(currentIndex + 1) of \(sessionCards.count)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(MedhaTheme.Typography.roundedBadge)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(6)
+                        .background(MedhaTheme.Colors.bgSurface)
+                        .clipShape(Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                        )
                 }
 
                 Button(action: { isAISettingsSheetPresented = true }) {
                     Image(systemName: "sparkles")
-                        .foregroundColor(aiSettings.hasAPIKey ? .accentColor : .secondary)
+                        .foregroundColor(aiSettings.hasAPIKey ? MedhaTheme.Colors.aiAccent : MedhaTheme.Colors.textTertiary)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -1337,9 +1415,27 @@ public struct FlashcardStudySessionView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(MedhaTheme.Colors.bgSurface)
 
-            Divider()
+            // Thin Session Progress Bar
+            if !sessionCards.isEmpty {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(MedhaTheme.Colors.borderHairline)
+                            .frame(height: 2.5)
+
+                        Rectangle()
+                            .fill(MedhaTheme.Colors.brandGradient)
+                            .frame(width: geo.size.width * CGFloat(currentIndex + 1) / CGFloat(max(1, sessionCards.count)), height: 2.5)
+                            .animation(.easeOut(duration: 0.2), value: currentIndex)
+                    }
+                }
+                .frame(height: 2.5)
+            } else {
+                Divider()
+                    .opacity(0.4)
+            }
 
             if sessionCards.isEmpty {
                 emptyOrLimitReachedView
@@ -1351,54 +1447,97 @@ public struct FlashcardStudySessionView: View {
                             // Card State Header
                             HStack {
                                 Text(card.fsrsState.displayName.uppercased())
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Color(NSColor.controlBackgroundColor))
-                                    .cornerRadius(4)
+                                    .background(MedhaTheme.Colors.bgElevated)
+                                    .clipShape(Capsule(style: .continuous))
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                                    )
 
                                 Spacer()
 
                                 if let hint = card.hint, !hint.isEmpty {
                                     Text("Hint: \(hint)")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 11, design: .serif))
+                                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                                 }
                             }
 
-                            // Question / Front
-                            Text(card.front)
-                                .font(.system(size: 18, weight: .semibold))
-                                .multilineTextAlignment(.center)
-                                .padding(.vertical, 24)
+                            // Question / Front Face
+                            if card.effectiveCardType == .imageOcclusion,
+                               let imgPath = card.imagePath,
+                               let image = OcclusionAssetStorage.loadImage(for: imgPath) {
+                                // Image Occlusion Interactive Diagram
+                                VStack(spacing: 12) {
+                                    Text(card.front)
+                                        .font(MedhaTheme.Typography.headline)
+                                        .foregroundColor(MedhaTheme.Colors.textPrimary)
+
+                                    ImageOcclusionCanvasView(
+                                        image: image,
+                                        masks: card.parsedMasks,
+                                        activeMaskId: card.activeMaskId,
+                                        mode: card.effectiveOcclusionMode,
+                                        isAnswerRevealed: isAnswerRevealed,
+                                        isEditable: false
+                                    )
+                                    .frame(height: 380)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                                    )
+
+                                    if !isAnswerRevealed {
+                                        Text("Recall the label under the highlighted region")
+                                            .font(MedhaTheme.Typography.caption)
+                                            .foregroundColor(MedhaTheme.Colors.textSecondary)
+                                    }
+                                }
+                                .padding(.vertical, 8)
                                 .frame(maxWidth: .infinity)
+                            } else {
+                                // Standard Text Question / Front (New York Serif, generous sizing)
+                                Text(card.front)
+                                    .font(MedhaTheme.Typography.serifCardQuestion)
+                                    .foregroundColor(MedhaTheme.Colors.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.vertical, 28)
+                                    .frame(maxWidth: .infinity)
+                            }
 
                             // Revealed Answer or Socratic Area
                             if isAnswerRevealed {
                                 Divider()
+                                    .opacity(0.4)
 
                                 VStack(spacing: 8) {
                                     Text("ANSWER")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .foregroundColor(MedhaTheme.Colors.textTertiary)
 
                                     Text(card.back)
-                                        .font(.system(size: 15))
+                                        .font(MedhaTheme.Typography.serifCardAnswer)
+                                        .foregroundColor(MedhaTheme.Colors.textPrimary)
                                         .multilineTextAlignment(.center)
                                         .padding(.vertical, 12)
                                 }
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
-                        .padding(24)
-                        .background(Color(NSColor.textBackgroundColor))
-                        .cornerRadius(12)
+                        .padding(28)
+                        .background(MedhaTheme.Colors.bgSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: MedhaTheme.Radius.card, style: .continuous)
+                                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
                         )
-                        .frame(maxWidth: 620)
+                        .shadow(color: MedhaTheme.Shadows.softMedium, radius: 14, x: 0, y: 6)
+                        .frame(maxWidth: card.effectiveCardType == .imageOcclusion ? 720 : 620)
 
                         // Socratic Dialogue History (if active)
                         if isSocraticActiveForCurrentCard && !dialogueHistory.isEmpty {
@@ -1736,10 +1875,10 @@ public struct FlashcardStudySessionView: View {
 
     private func buttonColor(for rating: FSRSRating) -> Color {
         switch rating {
-        case .again: return .red
-        case .hard: return .orange
-        case .good: return .blue
-        case .easy: return .green
+        case .again: return MedhaTheme.Colors.ratingAgain
+        case .hard: return MedhaTheme.Colors.ratingHard
+        case .good: return MedhaTheme.Colors.ratingGood
+        case .easy: return MedhaTheme.Colors.ratingEasy
         }
     }
 

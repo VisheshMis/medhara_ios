@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import GRDB
 import Combine
 
@@ -127,6 +128,51 @@ public final class BlockStore: ObservableObject {
 
     // Notes AI Assistant Sidebar Visibility
     @Published public var isNotesAIAssistantPresented: Bool = false
+
+    // Editor Zoom Controls (⌘+ / ⌘- / ⌘0)
+    @Published public var editorZoomLevel: Double = {
+        let saved = UserDefaults.standard.double(forKey: "Medha_EditorZoomLevel")
+        return (saved >= 0.6 && saved <= 2.5) ? saved : 1.0
+    }() {
+        didSet {
+            UserDefaults.standard.set(editorZoomLevel, forKey: "Medha_EditorZoomLevel")
+        }
+    }
+    @Published public var zoomHUDMessage: String? = nil
+    private var zoomHUDWorkItem: DispatchWorkItem?
+
+    public func zoomIn() {
+        let next = min(2.5, ((editorZoomLevel + 0.1) * 10).rounded() / 10)
+        setZoomLevel(next)
+    }
+
+    public func zoomOut() {
+        let next = max(0.6, ((editorZoomLevel - 0.1) * 10).rounded() / 10)
+        setZoomLevel(next)
+    }
+
+    public func resetZoom() {
+        setZoomLevel(1.0)
+    }
+
+    public func setZoomLevel(_ level: Double) {
+        editorZoomLevel = max(0.6, min(2.5, level))
+        showZoomHUD(message: "\(Int(round(editorZoomLevel * 100)))%")
+    }
+
+    private func showZoomHUD(message: String) {
+        zoomHUDWorkItem?.cancel()
+        withAnimation(.easeInOut(duration: 0.15)) {
+            zoomHUDMessage = message
+        }
+        let work = DispatchWorkItem { [weak self] in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                self?.zoomHUDMessage = nil
+            }
+        }
+        zoomHUDWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
+    }
 
     public func toggleNotesAIAssistant() {
         isNotesAIAssistantPresented.toggle()
@@ -2097,6 +2143,64 @@ public final class BlockStore: ObservableObject {
         } catch {
             print("Error batch inserting flashcards: \(error)")
         }
+    }
+
+    /// Creates a batch of Image Occlusion flashcards for an annotated diagram image.
+    /// Each mask generates a separate FSRS flashcard card targeting that mask ID.
+    @discardableResult
+    public func createImageOcclusionCards(
+        imagePath: String,
+        masks: [ImageOcclusionMask],
+        mode: OcclusionMode = .hideAllRevealOne,
+        deckId: String? = nil,
+        docId: String? = nil,
+        diagramTitle: String = "Anatomy / STEM Diagram",
+        hint: String? = nil
+    ) -> [Flashcard] {
+        guard !masks.isEmpty else { return [] }
+
+        let targetDocId = docId ?? selectedDocId ?? documents.first?.id ?? "b-doc-welcome"
+        let nbId = documents.first(where: { $0.id == targetDocId })?.notebookId ?? selectedNotebookId ?? "nb-welcome-kb"
+
+        let resolvedDeckId: String
+        if let explicit = deckId, !explicit.isEmpty, explicit != "all" {
+            resolvedDeckId = explicit
+        } else if docId != nil {
+            resolvedDeckId = defaultNotesDeck?.id ?? Deck.notesDefaultId
+        } else if let activeDeck = selectedDeckId, !activeDeck.isEmpty, activeDeck != "all" {
+            resolvedDeckId = activeDeck
+        } else {
+            resolvedDeckId = defaultNotesDeck?.id ?? Deck.notesDefaultId
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let masksDataString = (try? encoder.encode(masks)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        var createdCards: [Flashcard] = []
+        for (index, targetMask) in masks.enumerated() {
+            let labelText = (targetMask.label?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                ? targetMask.label!
+                : "Occluded Region \(index + 1)"
+
+            let card = Flashcard(
+                docId: targetDocId,
+                notebookId: nbId,
+                deckId: resolvedDeckId,
+                front: "\(diagramTitle) [Mask \(index + 1) of \(masks.count)]",
+                back: labelText,
+                hint: hint,
+                cardType: .imageOcclusion,
+                imagePath: imagePath,
+                occlusionMasksData: masksDataString,
+                activeMaskId: targetMask.id,
+                occlusionMode: mode
+            )
+            createdCards.append(card)
+        }
+
+        batchInsertFlashcards(createdCards)
+        return createdCards
     }
 
     public func updateFlashcard(_ card: Flashcard) {

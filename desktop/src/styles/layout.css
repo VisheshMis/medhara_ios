@@ -1,0 +1,210 @@
+/* Medha Windows Desktop — 3-Column Navigation & Split Layout */
+
+.app-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Column 1: Left Navigation Sidebar */
+.nav-sidebar {
+    width: 220px;
+    min-width: 190px;
+    max-width: 280px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.sidebar-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    padding: 12px 14px 6px 14px;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    margin: 1px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.sidebar-item.active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93C5FD;
+    font-weight: 600;
+}
+
+.sidebar-item-icon {
+    font-size: 14px;
+    width: 18px;
+    display: flex;
+    justify-content: center;
+}
+
+/* Notebooks list */
+.notebooks-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 12px;
+}
+
+/* Column 2: Document Tree Panel */
+.doc-tree-panel {
+    width: 260px;
+    min-width: 210px;
+    max-width: 340px;
+    background: rgba(15, 23, 42, 0.5);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width 0.2s ease, opacity 0.2s ease;
+}
+
+.doc-tree-panel.hidden {
+    display: none;
+}
+
+.panel-header {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.panel-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-icon-sm {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.btn-icon-sm:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.tree-search-bar {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.tree-search-input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--text-primary);
+    outline: none;
+}
+
+.tree-search-input:focus {
+    border-color: var(--border-focus);
+}
+
+.tree-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.tree-node-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    margin: 1px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.tree-node-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.tree-node-row.active {
+    background: rgba(59, 130, 246, 0.22);
+    color: #BFDBFE;
+    font-weight: 600;
+}
+
+.node-arrow {
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.node-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+/* Center Column: Main Workspace */
+.workspace-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg-window);
+}
+
+/* Right Column: Inspector Panel & AI Panel */
+.side-panel {
+    width: 320px;
+    background: var(--bg-sidebar);
+    border-left: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+.side-panel.hidden {
+    display: none;
+}

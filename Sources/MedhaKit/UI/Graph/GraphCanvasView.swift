@@ -191,25 +191,25 @@ public struct GraphCanvasView: View {
                             let textSize = resolvedText.measure(in: CGSize(width: 300, height: 40))
                             let labelPoint = CGPoint(x: pos.x, y: pos.y + radius + 5)
 
-                            // Subtle dark pill background to prevent line-cross collisions and make text pop
+                            // Subtle pill background to prevent line-cross collisions and make text pop
                             let pillRect = CGRect(
-                                x: labelPoint.x - (textSize.width / 2) - 4,
+                                x: labelPoint.x - (textSize.width / 2) - 5,
                                 y: labelPoint.y - 1,
-                                width: textSize.width + 8,
-                                height: textSize.height + 2
+                                width: textSize.width + 10,
+                                height: textSize.height + 3
                             )
                             var pillPath = Path()
-                            pillPath.addRoundedRect(in: pillRect, cornerSize: CGSize(width: 3.5, height: 3.5))
+                            pillPath.addRoundedRect(in: pillRect, cornerSize: CGSize(width: 4, height: 4))
                             let pillColor = isHighlighted
                                 ? Color.black.opacity(0.85)
-                                : Color(NSColor.windowBackgroundColor).opacity(0.72 * effectiveOpacity)
+                                : Color(hexString: "#161923").opacity(0.85 * effectiveOpacity)
                             context.fill(pillPath, with: .color(pillColor))
 
                             context.draw(resolvedText, at: labelPoint, anchor: .top)
                         }
                     }
                 }
-                .background(Color(NSColor.windowBackgroundColor).opacity(0.4))
+                .background(MedhaTheme.Colors.bgBase)
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in

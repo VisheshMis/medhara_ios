@@ -31,7 +31,7 @@ public struct ParagraphBlockView: View {
                     set: { store.updateBlockContent(id: block.id, content: $0) }
                 ),
                 isFocused: isFocused,
-                font: .systemFont(ofSize: 14),
+                font: .systemFont(ofSize: 14 * store.editorZoomLevel),
                 textColor: .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
@@ -47,9 +47,12 @@ public struct ParagraphBlockView: View {
                 },
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .frame(minHeight: 22)
+            .frame(minHeight: 22 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
 
             if !inlineRefs.isEmpty || !inlineWikiLinks.isEmpty {
@@ -188,16 +191,19 @@ public struct HeadingBlockView: View {
     public let onArrowDown: () -> Void
 
     private var headingFont: NSFont {
+        let z = store.editorZoomLevel
         switch block.type {
-        case .heading1: return .systemFont(ofSize: 22, weight: .bold)
-        case .heading2: return .systemFont(ofSize: 18, weight: .bold)
-        case .heading3: return .systemFont(ofSize: 15, weight: .semibold)
-        default: return .systemFont(ofSize: 14)
+        case .heading1: return .systemFont(ofSize: 22 * z, weight: .bold)
+        case .heading2: return .systemFont(ofSize: 18 * z, weight: .bold)
+        case .heading3: return .systemFont(ofSize: 15 * z, weight: .semibold)
+        default: return .systemFont(ofSize: 14 * z)
         }
     }
 
     private var minHeight: CGFloat {
-        block.type == .heading1 ? 30 : (block.type == .heading2 ? 26 : 22)
+        let z = store.editorZoomLevel
+        let base: CGFloat = block.type == .heading1 ? 30 : (block.type == .heading2 ? 26 : 22)
+        return base * z
     }
 
     public var body: some View {
@@ -217,7 +223,10 @@ public struct HeadingBlockView: View {
             onArrowDown: onArrowDown,
             onFocus: {
                 store.focusedBlockId = block.id
-            }
+            },
+            onZoomIn: { store.zoomIn() },
+            onZoomOut: { store.zoomOut() },
+            onResetZoom: { store.resetZoom() }
         )
         .frame(minHeight: minHeight)
         .fixedSize(horizontal: false, vertical: true)
@@ -267,11 +276,15 @@ public struct TaskBlockView: View {
     public var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Button(action: {
-                store.toggleTask(id: block.id)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                    store.toggleTask(id: block.id)
+                }
             }) {
                 Image(systemName: isCompleted ? "checkmark.square.fill" : "square")
-                    .foregroundColor(isCompleted ? .accentColor : .secondary)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundColor(isCompleted ? MedhaTheme.Colors.notesAccent : MedhaTheme.Colors.textTertiary)
                     .font(.system(size: 14))
+                    .scaleEffect(isCompleted ? 1.05 : 1.0)
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
@@ -279,7 +292,7 @@ public struct TaskBlockView: View {
             BlockTextViewRepresentable(
                 text: cleanBinding,
                 isFocused: isFocused,
-                font: .systemFont(ofSize: 14),
+                font: .systemFont(ofSize: 14 * store.editorZoomLevel),
                 textColor: isCompleted ? .secondaryLabelColor : .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
@@ -291,9 +304,12 @@ public struct TaskBlockView: View {
                 onArrowDown: onArrowDown,
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .frame(minHeight: 22)
+            .frame(minHeight: 22 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -342,7 +358,7 @@ public struct BulletBlockView: View {
             BlockTextViewRepresentable(
                 text: cleanBinding,
                 isFocused: isFocused,
-                font: .systemFont(ofSize: 14),
+                font: .systemFont(ofSize: 14 * store.editorZoomLevel),
                 textColor: .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
@@ -354,9 +370,12 @@ public struct BulletBlockView: View {
                 onArrowDown: onArrowDown,
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .frame(minHeight: 22)
+            .frame(minHeight: 22 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -375,31 +394,44 @@ public struct CodeBlockView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Swift / Code")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .font(MedhaTheme.Typography.monoBadge)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                 Spacer()
                 Button(action: {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(block.content, forType: .string)
-                    copied = true
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        copied = true
+                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        copied = false
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            copied = false
+                        }
                     }
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         Text(copied ? "Copied" : "Copy")
                     }
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundColor(copied ? MedhaTheme.Colors.success : MedhaTheme.Colors.textTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(MedhaTheme.Colors.bgSurface.opacity(0.8))
+                    .clipShape(Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(copied ? MedhaTheme.Colors.success.opacity(0.3) : MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(MedhaTheme.Colors.bgElevated.opacity(0.8))
 
             Divider()
+                .opacity(0.4)
 
             BlockTextViewRepresentable(
                 text: Binding(
@@ -407,24 +439,27 @@ public struct CodeBlockView: View {
                     set: { store.updateBlockContent(id: block.id, content: $0) }
                 ),
                 isFocused: isFocused,
-                font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                font: .monospacedSystemFont(ofSize: 13 * store.editorZoomLevel, weight: .regular),
                 textColor: .textColor,
                 placeholder: "// Monospace code block...",
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .padding(10)
-            .frame(minHeight: 60)
+            .padding(12)
+            .frame(minHeight: 60 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .background(Color(NSColor.textBackgroundColor))
-        .cornerRadius(8)
+        .background(MedhaTheme.Colors.bgElevated)
+        .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.row, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+            RoundedRectangle(cornerRadius: MedhaTheme.Radius.row, style: .continuous)
+                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
         )
     }
 }
@@ -452,7 +487,7 @@ public struct QuoteBlockView: View {
                     set: { store.updateBlockContent(id: block.id, content: $0) }
                 ),
                 isFocused: isFocused,
-                font: NSFontManager.shared.convert(.systemFont(ofSize: 14), toHaveTrait: .italicFontMask),
+                font: NSFontManager.shared.convert(.systemFont(ofSize: 14 * store.editorZoomLevel), toHaveTrait: .italicFontMask),
                 textColor: .secondaryLabelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
@@ -462,9 +497,12 @@ public struct QuoteBlockView: View {
                 onArrowDown: onArrowDown,
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .frame(minHeight: 22)
+            .frame(minHeight: 22 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 2)
@@ -508,7 +546,7 @@ public struct CalloutBlockView: View {
                     set: { store.updateBlockContent(id: block.id, content: $0) }
                 ),
                 isFocused: isFocused,
-                font: .systemFont(ofSize: 13.5, weight: .regular),
+                font: .systemFont(ofSize: 13.5 * store.editorZoomLevel, weight: .regular),
                 textColor: .labelColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
@@ -516,9 +554,12 @@ public struct CalloutBlockView: View {
                 onDeleteAtStart: onDeleteAtStart,
                 onFocus: {
                     store.focusedBlockId = block.id
-                }
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
             )
-            .frame(minHeight: 22)
+            .frame(minHeight: 22 * store.editorZoomLevel)
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 10)

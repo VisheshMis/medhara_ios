@@ -503,10 +503,20 @@ public struct CardBrowserView: View {
             HStack(spacing: 8) {
                 // Front / Prompt preview
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(card.front.trimmingCharacters(in: .whitespacesAndNewlines))
-                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        if card.effectiveCardType == .imageOcclusion {
+                            Image(systemName: "photo.badge.checkmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(MedhaTheme.Colors.accent)
+                                .help("Image Occlusion Card")
+                        }
+
+                        Text(card.front.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
+
                     if let hint = card.hint, !hint.isEmpty {
                         Text("💡 \(hint)")
                             .font(.system(size: 10))
@@ -664,7 +674,40 @@ public struct CardBrowserView: View {
                         }
                         .padding(10)
                         .background(Color(NSColor.textBackgroundColor))
-                        .cornerRadius(8)
+                        // Image Occlusion Preview (if applicable)
+                        if card.effectiveCardType == .imageOcclusion,
+                           let imgPath = card.imagePath,
+                           let image = OcclusionAssetStorage.loadImage(for: imgPath) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Label("Image Occlusion Diagram", systemImage: "photo.badge.checkmark")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(MedhaTheme.Colors.accent)
+                                    Spacer()
+                                    Text("\(card.parsedMasks.count) masks")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                ImageOcclusionCanvasView(
+                                    image: image,
+                                    masks: card.parsedMasks,
+                                    activeMaskId: card.activeMaskId,
+                                    mode: card.effectiveOcclusionMode,
+                                    isAnswerRevealed: true,
+                                    isEditable: false
+                                )
+                                .frame(height: 180)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                                )
+                            }
+                            .padding(10)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(8)
+                        }
 
                         // Front Text Field
                         VStack(alignment: .leading, spacing: 4) {

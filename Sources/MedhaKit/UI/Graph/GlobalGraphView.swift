@@ -40,30 +40,32 @@ public struct GlobalGraphView: View {
                 .cornerRadius(6)
 
                 // Dim vs Hide Filter Action
-                Picker("Filter Action", selection: $store.graphFilterConfig.filterAction) {
+                Picker("", selection: $store.graphFilterConfig.filterAction) {
                     Text("Dim").tag(GraphFilterAction.dim)
                     Text("Hide").tag(GraphFilterAction.hide)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 105)
+                .labelsHidden()
+                .frame(width: 95)
                 .controlSize(.small)
 
-                Divider().frame(height: 18)
+                Divider().frame(height: 18).opacity(0.4)
 
                 // 1-Click View Presets
-                Picker("View Preset", selection: $selectedPreset) {
+                Picker("", selection: $selectedPreset) {
                     ForEach(GraphViewPreset.allCases) { preset in
                         Text(preset.rawValue).tag(preset)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 195)
+                .labelsHidden()
+                .frame(width: 175)
                 .controlSize(.small)
                 .onChange(of: selectedPreset) { _, preset in
                     applyPreset(preset)
                 }
 
-                Divider().frame(height: 18)
+                Divider().frame(height: 18).opacity(0.4)
 
                 // Toggleable Granular Layers
                 Button(action: {
@@ -136,9 +138,10 @@ public struct GlobalGraphView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(MedhaTheme.Colors.bgSurface)
 
             Divider()
+                .opacity(0.4)
 
             // Main Interactive Graph Canvas & Floating HUD Inspector
             ZStack(alignment: .topTrailing) {

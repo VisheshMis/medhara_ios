@@ -26,18 +26,24 @@ public struct DocumentRowView: View {
     public var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 6) {
-                // Indentation based on tree depth
+                // Indentation based on tree depth with subtle guideline
                 if node.level > 0 {
-                    Spacer()
-                        .frame(width: CGFloat(node.level * 14))
+                    HStack(spacing: 0) {
+                        ForEach(0..<node.level, id: \.self) { _ in
+                            Rectangle()
+                                .fill(MedhaTheme.Colors.borderHairline)
+                                .frame(width: 1)
+                                .padding(.horizontal, 6)
+                        }
+                    }
                 }
 
                 // Disclosure Chevron for notes with sub-notes
                 if node.hasChildren {
                     Button(action: onToggleExpand) {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 8.5, weight: .bold))
+                            .foregroundColor(MedhaTheme.Colors.textTertiary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .frame(width: 14, height: 14)
                             .contentShape(Rectangle())
@@ -50,14 +56,15 @@ public struct DocumentRowView: View {
 
                 // Document Icon
                 Image(systemName: nodeIcon)
-                    .foregroundColor(isSelected ? .accentColor : (node.doc.isInkDocument ? .orange : .secondary))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundColor(isSelected ? MedhaTheme.Colors.notesAccent : (node.doc.isInkDocument ? MedhaTheme.Colors.cardLearn : MedhaTheme.Colors.textTertiary))
                     .font(.system(size: 12))
                     .frame(width: 14)
 
                 // Document Title
                 Text(node.doc.content.isEmpty ? (node.doc.isInkDocument ? "Untitled Ink Note" : "Untitled Note") : node.doc.content)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(.primary)
+                    .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                     .lineLimit(1)
 
                 Spacer()
@@ -65,33 +72,37 @@ public struct DocumentRowView: View {
                 // Sub-note count badge if children exist
                 if node.hasChildren {
                     Text("\(node.children.count)")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.secondary.opacity(0.8))
+                        .font(MedhaTheme.Typography.monoCounter)
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                         .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                        .cornerRadius(4)
+                        .padding(.vertical, 1.5)
+                        .background(MedhaTheme.Colors.bgSurface)
+                        .clipShape(Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                        )
                 }
 
                 // Quick Add Sub-note Button on Hover / Selection
                 if isHovered || isSelected {
                     Button(action: onNewSubnote) {
                         Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(MedhaTheme.Colors.textSecondary)
                             .frame(width: 18, height: 18)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                            .cornerRadius(4)
+                            .background(MedhaTheme.Colors.bgSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.micro, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: MedhaTheme.Radius.micro, style: .continuous)
+                                    .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
                     .help("Add Sub-note")
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color(NSColor.controlBackgroundColor).opacity(0.5) : Color.clear))
-            .cornerRadius(6)
-            .contentShape(Rectangle())
+            .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.notesAccent)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -151,7 +162,8 @@ public struct DocumentTreeView: View {
             // Header & Actions
             HStack(spacing: 8) {
                 Text(sectionTitle)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(MedhaTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Spacer()
 
@@ -165,7 +177,7 @@ public struct DocumentTreeView: View {
                 }) {
                     Image(systemName: store.expandedDocIds.isEmpty ? "chevron.right.2" : "chevron.down.2")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help(store.expandedDocIds.isEmpty ? "Expand All Notes" : "Collapse All Notes")
@@ -176,7 +188,7 @@ public struct DocumentTreeView: View {
                 }) {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("New Note (⌘N)")
@@ -187,7 +199,7 @@ public struct DocumentTreeView: View {
                 }) {
                     Image(systemName: "pencil.tip")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("New Handwritten Note")
@@ -200,19 +212,19 @@ public struct DocumentTreeView: View {
                 }) {
                     Image(systemName: "sidebar.left")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("Hide Notes Tab")
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .padding(.top, 12)
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
 
             // Local Filter Field
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                     .font(.system(size: 11))
                 TextField("Filter notes & sub-notes...", text: $searchFilter)
                     .textFieldStyle(.plain)
@@ -220,7 +232,7 @@ public struct DocumentTreeView: View {
                 if !searchFilter.isEmpty {
                     Button(action: { searchFilter = "" }) {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(MedhaTheme.Colors.textTertiary)
                             .font(.system(size: 11))
                     }
                     .buttonStyle(.plain)
@@ -228,22 +240,27 @@ public struct DocumentTreeView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(6)
-            .padding(.horizontal, 10)
+            .background(MedhaTheme.Colors.bgSurface)
+            .clipShape(RoundedRectangle(cornerRadius: MedhaTheme.Radius.small, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: MedhaTheme.Radius.small, style: .continuous)
+                    .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
             .padding(.bottom, 8)
 
             Divider()
+                .opacity(0.4)
 
             // Hierarchical Document Tree List
             if displayedTreeNodes.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.text")
                         .font(.system(size: 26))
-                        .foregroundColor(.secondary.opacity(0.5))
+                        .foregroundColor(MedhaTheme.Colors.textTertiary.opacity(0.5))
                     Text(searchFilter.isEmpty ? "No Notes in Notebook" : "No Matching Notes")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                     if searchFilter.isEmpty {
                         Button("Create Note") {
                             store.createDocument()
@@ -275,6 +292,6 @@ public struct DocumentTreeView: View {
                 }
             }
         }
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+        .background(MedhaTheme.Colors.bgSurface.opacity(0.4))
     }
 }

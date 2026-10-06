@@ -276,5 +276,14 @@ public enum DatabaseMigrations {
             try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN pdfPath TEXT;")
             try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN pdfPageIndex INTEGER;")
         }
+
+        migrator.registerMigration("v10_image_occlusion_flashcards") { db in
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN cardType INTEGER DEFAULT 0;")
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN imagePath TEXT;")
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN occlusionMasksData TEXT;")
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN activeMaskId TEXT;")
+            try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN occlusionMode INTEGER DEFAULT 1;")
+            try db.create(index: "idx_flashcard_cardType", on: "flashcard", columns: ["cardType"])
+        }
     }
 }

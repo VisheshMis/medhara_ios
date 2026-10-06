@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medha — Cognitive Retention Engine & Spatial PKM</title>
+    <link rel="stylesheet" href="styles/macos-theme.css">
+    <link rel="stylesheet" href="styles/layout.css">
+    <link rel="stylesheet" href="styles/editor.css">
+    <link rel="stylesheet" href="styles/ink.css">
+    <link rel="stylesheet" href="styles/palace.css">
+    <link rel="stylesheet" href="styles/flashcards.css">
+    <link rel="stylesheet" href="styles/graph.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Top macOS Unified Header / Titlebar -->
+        <header class="app-header">
+            <div class="header-left">
+                <!-- macOS Window Traffic Lights -->
+                <div class="traffic-lights">
+                    <span id="tl-close" class="traffic-light close" title="Close"></span>
+                    <span id="tl-minimize" class="traffic-light minimize" title="Minimize"></span>
+                    <span id="tl-maximize" class="traffic-light maximize" title="Zoom"></span>
+                </div>
+
+                <div class="brand-section">
+                    <div class="brand-logo-oval">M</div>
+                    <span>Medha</span>
+                </div>
+
+                <!-- Recurring Focus Timer Widget -->
+                <div id="focus-timer-pill" class="timer-pill" title="Click to start/pause 10m Focus Timer">
+                    <span class="timer-dot"></span>
+                    <span id="timer-display">10:00</span>
+                </div>
+            </div>
+
+            <!-- Segmented View Switcher -->
+            <div class="segmented-control">
+                <button id="tab-editor" class="segment-btn active">
+                    <span>📄</span> Notes & Folders
+                </button>
+                <button id="tab-flashcards" class="segment-btn">
+                    <span>🗂️</span> Flashcards (FSRS)
+                    <span id="due-badge" class="badge-pill">0</span>
+                </button>
+                <button id="tab-graph" class="segment-btn">
+                    <span>🕸️</span> Knowledge Graph
+                </button>
+                <button id="tab-palace" class="segment-btn">
+                    <span>🏛️</span> Memory Palace
+                </button>
+            </div>
+
+            <!-- Header Right Actions -->
+            <div class="header-right">
+                <button id="btn-toggle-tree" class="btn-header" title="Toggle Document Tree">
+                    <span>📂</span> Tree
+                </button>
+                <button id="btn-import-anki" class="btn-header" title="Import Anki Deck (.apkg)">
+                    <span>📦</span> Anki
+                </button>
+                <button id="btn-toggle-inspector" class="btn-header" title="Toggle Inspector">
+                    <span>ℹ️</span> Inspector
+                </button>
+                <button id="btn-toggle-ai" class="btn-header" title="Toggle AI Study Assistant">
+                    <span>✨</span> Assistant
+                </button>
+
+                <!-- Optional Windows Caption Controls -->
+                <div id="windows-controls" class="windows-controls">
+                    <div id="win-minimize" class="win-btn">🗕</div>
+                    <div id="win-maximize" class="win-btn">🗖</div>
+                    <div id="win-close" class="win-btn win-close">✕</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body 3-Column Split -->
+        <div class="app-body">
+            <!-- Col 1: Left Navigation Sidebar -->
+            <aside class="nav-sidebar">
+                <div class="sidebar-section-title">Cognitive Navigation</div>
+                <div id="nav-notes" class="sidebar-item active">
+                    <span class="sidebar-item-icon">📄</span>
+                    <span>Notes & Folders</span>
+                </div>
+                <div id="nav-flashcards" class="sidebar-item">
+                    <span class="sidebar-item-icon">🗂️</span>
+                    <span>Flashcards (FSRS)</span>
+                </div>
+                <div id="nav-graph" class="sidebar-item">
+                    <span class="sidebar-item-icon">🕸️</span>
+                    <span>Knowledge Graph</span>
+                </div>
+                <div id="nav-palace" class="sidebar-item">
+                    <span class="sidebar-item-icon">🏛️</span>
+                    <span>Memory Palace</span>
+                </div>
+
+                <div class="sidebar-section-title" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <span>Notebooks</span>
+                    <button id="btn-new-ink" class="btn-icon-sm" title="New Handwritten Ink Note" style="color: var(--accent-purple);">✍️</button>
+                </div>
+                <div id="notebooks-list" class="notebooks-list"></div>
+            </aside>
+
+            <!-- Col 2: Document Tree Panel -->
+            <section id="doc-tree-panel" class="doc-tree-panel">
+                <div class="panel-header">
+                    <span>Notes Vault</span>
+                    <div class="panel-actions">
+                        <button id="btn-new-note" class="btn-icon-sm" title="New Note (Ctrl+N)">+</button>
+                    </div>
+                </div>
+                <div class="tree-search-bar">
+                    <input type="text" id="tree-search" class="tree-search-input" placeholder="Search notes..." />
+                </div>
+                <div id="tree-content" class="tree-content"></div>
+            </section>
+
+            <!-- Col 3: Center Workspace -->
+            <main class="workspace-area">
+                <!-- 1. Block PKM Editor View -->
+                <div id="view-editor" class="editor-view-container">
+                    <div id="blocks-editor-target" style="width: 100%; display: flex; justify-content: center;"></div>
+                </div>
+
+                <!-- 2. Handwritten Vector Ink View -->
+                <div id="view-ink" class="ink-view-container" style="display: none;">
+                    <!-- Floating Tool Dock -->
+                    <div class="ink-dock-toolbar">
+                        <button class="ink-tool-btn active" data-tool="ballpoint" title="Ballpoint Pen">🖊️</button>
+                        <button class="ink-tool-btn" data-tool="fountain" title="Fountain Pen">✒️</button>
+                        <button class="ink-tool-btn" data-tool="highlighter" title="Highlighter">🖍️</button>
+                        <button class="ink-tool-btn" data-tool="eraser" title="Stroke Eraser">🧹</button>
+                        <button class="ink-tool-btn" data-tool="lasso" title="Lasso Selection">➰</button>
+                        <div class="ink-divider-v"></div>
+                        <div class="ink-colors-group">
+                            <span class="color-swatch active" style="background: #1E293B;" data-color="#1E293B"></span>
+                            <span class="color-swatch" style="background: #3B82F6;" data-color="#3B82F6"></span>
+                            <span class="color-swatch" style="background: #10B981;" data-color="#10B981"></span>
+                            <span class="color-swatch" style="background: #EF4444;" data-color="#EF4444"></span>
+                            <span class="color-swatch" style="background: #8B5CF6;" data-color="#8B5CF6"></span>
+                        </div>
+                    </div>
+                    <div id="ink-pages-column" class="ink-pages-column"></div>
+                </div>
+
+                <!-- 3. Flashcards (FSRS-4.5) View -->
+                <div id="view-flashcards" class="flashcards-container" style="display: none;">
+                    <div style="font-size: 13px; color: var(--text-muted); margin-top: 10px;">
+                        Press <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">Space</kbd> to Flip Card • <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">1-4</kbd> to Rate
+                    </div>
+
+                    <!-- 3D Perspective Flip Card Stage -->
+                    <div id="flip-card-stage" class="card-stage">
+                        <div id="flip-card-inner" class="flip-card-inner">
+                            <!-- Card Front -->
+                            <div class="card-face card-face-front">
+                                <div class="card-header-bar">
+                                    <span>QUESTION (ACTIVE RECALL)</span>
+                                    <span>FSRS-4.5</span>
+                                </div>
+                                <div id="card-front-text" class="card-content-text">Loading flashcard...</div>
+                                <div id="card-hint-text" class="card-hint-text"></div>
+                            </div>
+                            <!-- Card Back -->
+                            <div class="card-face card-face-back">
+                                <div class="card-header-bar">
+                                    <span>ANSWER</span>
+                                    <span>MEMORY CONSOLIDATION</span>
+                                </div>
+                                <div id="card-back-text" class="card-content-text"></div>
+                                <div style="font-size: 11px; color: #93C5FD; text-align: center;">Click or press Space to flip back</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rating Controls with Live Interval Chips -->
+                    <div id="rating-controls" class="rating-controls-row">
+                        <button class="btn-rating again" onclick="window.medhaApp?.rateCurrentCard(1)">
+                            <span>Again</span>
+                            <span id="chip-again" class="interval-chip">10m</span>
+                        </button>
+                        <button class="btn-rating hard" onclick="window.medhaApp?.rateCurrentCard(2)">
+                            <span>Hard</span>
+                            <span id="chip-hard" class="interval-chip">1.2d</span>
+                        </button>
+                        <button class="btn-rating good" onclick="window.medhaApp?.rateCurrentCard(3)">
+                            <span>Good</span>
+                            <span id="chip-good" class="interval-chip">4.8d</span>
+                        </button>
+                        <button class="btn-rating easy" onclick="window.medhaApp?.rateCurrentCard(4)">
+                            <span>Easy</span>
+                            <span id="chip-easy" class="interval-chip">12.5d</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4. Knowledge Graph View -->
+                <div id="view-graph" class="graph-view-container" style="display: none;">
+                    <div class="graph-layers-pill">
+                        <button class="graph-layer-btn active" data-mode="linksOnly">Links Only</button>
+                        <button class="graph-layer-btn" data-mode="treeOnly">Tree Only</button>
+                        <button class="graph-layer-btn" data-mode="blended">Blended</button>
+                    </div>
+                    <canvas id="graph-canvas"></canvas>
+                </div>
+
+                <!-- 5. Memory Palace View -->
+                <div id="view-palace" class="palace-container" style="display: none;">
+                    <div style="position: absolute; top: 16px; left: 20px; z-index: 20;">
+                        <button id="btn-start-walk" class="btn-header" style="background: rgba(16, 185, 129, 0.2); border-color: #10B981; color: #6EE7B7;">
+                            <span>🚶</span> Start Loci Journey Walk
+                        </button>
+                    </div>
+
+                    <div id="palace-stage" class="palace-stage">
+                        <div id="palace-world" class="palace-world"></div>
+                    </div>
+
+                    <!-- Floating Walk Mode HUD -->
+                    <div id="walk-hud" class="walk-mode-hud" style="display: none;">
+                        <div class="walk-hud-header">
+                            <span id="walk-step-number" style="font-size: 11px; color: var(--accent-emerald); font-weight: 700;">LOCUS 1 OF 3</span>
+                            <button onclick="document.getElementById('walk-hud').style.display='none'" class="btn-icon-sm" title="Exit Walk Mode">✕</button>
+                        </div>
+                        <div id="walk-step-title" class="walk-step-title">Grand Marble Colonnade</div>
+                        <div id="walk-mnemonic-text" class="walk-mnemonic-text">Visualize three statues holding elected ballots.</div>
+                        <div class="walk-controls-row">
+                            <button class="btn-header" onclick="window.medhaApp?.palaceCanvas?.prevWalkStep(window.medhaApp.store.loci, window.medhaApp.store.palacePhotos)">← Previous</button>
+                            <button class="btn-header" onclick="window.medhaApp?.palaceCanvas?.nextWalkStep(window.medhaApp.store.loci, window.medhaApp.store.palacePhotos)">Next Locus →</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right Column Panels -->
+            <aside id="inspector-panel" class="side-panel hidden">
+                <div class="panel-header">
+                    <span>Document Inspector</span>
+                </div>
+                <div style="padding: 16px; font-size: 13px; color: var(--text-secondary);">
+                    <div style="margin-bottom: 12px; font-weight: 600; color: var(--text-primary);">Backlinks & References</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">No inbound links to this document.</div>
+                </div>
+            </aside>
+
+            <aside id="ai-panel" class="side-panel hidden">
+                <div class="panel-header">
+                    <span>AI Cognitive Assistant</span>
+                </div>
+                <div style="padding: 16px; font-size: 13px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 12px;">
+                    <div>2-Step Auto-Note Formation Pipeline</div>
+                    <input type="text" id="ai-topic-input" class="tree-search-input" placeholder="Topic name (e.g. Quantum Computing)" />
+                    <button class="btn-header" style="background: var(--accent-purple); color: white; justify-content: center;" onclick="
+                        const topic = document.getElementById('ai-topic-input').value;
+                        if (topic && window.medhaApp) window.medhaApp.autoNote.executeStep1Skeleton({ topic });
+                    ">🪄 Generate Skeletal Notes</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

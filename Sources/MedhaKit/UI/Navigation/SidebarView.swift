@@ -22,85 +22,105 @@ public struct SidebarView: View {
                     store.isDocumentTreeVisible = true
                     store.loadDocuments()
                 }) {
-                    HStack(spacing: 8) {
+                    let isSelected = store.activeMainView == .editor && store.selectedNotebookId == nil
+                    HStack(spacing: 9) {
                         Image(systemName: "doc.text")
-                            .foregroundColor(store.activeMainView == .editor && store.selectedNotebookId == nil ? .accentColor : .secondary)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundColor(MedhaTheme.Colors.notesAccent)
                             .frame(width: 18)
                         Text("Notes & Folders")
-                            .font(.system(size: 13, weight: store.activeMainView == .editor && store.selectedNotebookId == nil ? .semibold : .regular))
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                         Spacer()
                     }
-                    .contentShape(Rectangle())
+                    .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.notesAccent)
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(store.activeMainView == .editor && store.selectedNotebookId == nil ? Color.accentColor.opacity(0.15) : Color.clear)
+                .listRowBackground(Color.clear)
 
                 Button(action: {
                     store.activeMainView = .graph
                 }) {
-                    HStack(spacing: 8) {
+                    let isSelected = store.activeMainView == .graph
+                    HStack(spacing: 9) {
                         Image(systemName: "point.3.connected.trianglepath.dotted")
-                            .foregroundColor(store.activeMainView == .graph ? .accentColor : .secondary)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundColor(MedhaTheme.Colors.graphAccent)
                             .frame(width: 18)
                         Text("Knowledge Graph")
-                            .font(.system(size: 13, weight: store.activeMainView == .graph ? .semibold : .regular))
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                         Spacer()
                     }
-                    .contentShape(Rectangle())
+                    .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.graphAccent)
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(store.activeMainView == .graph ? Color.accentColor.opacity(0.15) : Color.clear)
+                .listRowBackground(Color.clear)
 
                 Button(action: {
                     store.activeMainView = .flashcards
                 }) {
-                    HStack(spacing: 8) {
+                    let isSelected = store.activeMainView == .flashcards
+                    HStack(spacing: 9) {
                         Image(systemName: "rectangle.on.rectangle.angled")
-                            .foregroundColor(store.activeMainView == .flashcards ? .accentColor : .secondary)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundColor(MedhaTheme.Colors.flashcardsAccent)
                             .frame(width: 18)
                         Text("Flashcards (FSRS)")
-                            .font(.system(size: 13, weight: store.activeMainView == .flashcards ? .semibold : .regular))
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                         Spacer()
 
                         let due = store.dueFlashcards.count
                         if due > 0 {
                             Text("\(due)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.red)
-                                .cornerRadius(8)
+                                .font(MedhaTheme.Typography.monoCounter)
+                                .foregroundColor(MedhaTheme.Colors.danger)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(MedhaTheme.Colors.danger.opacity(0.14))
+                                .clipShape(Capsule(style: .continuous))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(MedhaTheme.Colors.danger.opacity(0.25), lineWidth: 1)
+                                )
                         }
                     }
-                    .contentShape(Rectangle())
+                    .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.flashcardsAccent)
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(store.activeMainView == .flashcards ? Color.accentColor.opacity(0.15) : Color.clear)
+                .listRowBackground(Color.clear)
 
                 Button(action: {
                     store.activeMainView = .palace
                 }) {
-                    HStack(spacing: 8) {
+                    let isSelected = store.activeMainView == .palace
+                    HStack(spacing: 9) {
                         Image(systemName: "building.columns.fill")
-                            .foregroundColor(store.activeMainView == .palace ? .accentColor : .secondary)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundColor(MedhaTheme.Colors.palaceAccent)
                             .frame(width: 18)
                         Text("Memory Palace (2D)")
-                            .font(.system(size: 13, weight: store.activeMainView == .palace ? .semibold : .regular))
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                         Spacer()
 
                         Text("\(store.loci.count)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            .cornerRadius(8)
+                            .font(MedhaTheme.Typography.monoCounter)
+                            .foregroundColor(MedhaTheme.Colors.textTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MedhaTheme.Colors.bgSurface)
+                            .clipShape(Capsule(style: .continuous))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                            )
                     }
-                    .contentShape(Rectangle())
+                    .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.palaceAccent)
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(store.activeMainView == .palace ? Color.accentColor.opacity(0.15) : Color.clear)
+                .listRowBackground(Color.clear)
             }
 
             // Notebooks Section
@@ -111,29 +131,36 @@ public struct SidebarView: View {
                         store.isDocumentTreeVisible = true
                         store.selectNotebook(id: nb.id)
                     }) {
-                        HStack(spacing: 8) {
+                        let isSelected = store.activeMainView == .editor && store.selectedNotebookId == nb.id
+                        HStack(spacing: 9) {
                             Image(systemName: nb.icon ?? "book.closed.fill")
-                                .foregroundColor(store.activeMainView == .editor && store.selectedNotebookId == nb.id ? .accentColor : .secondary)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundColor(isSelected ? MedhaTheme.Colors.accent : MedhaTheme.Colors.textTertiary)
                                 .frame(width: 18)
                             Text(nb.name)
-                                .font(.system(size: 13, weight: store.activeMainView == .editor && store.selectedNotebookId == nb.id ? .semibold : .regular))
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                                .foregroundColor(isSelected ? MedhaTheme.Colors.textPrimary : MedhaTheme.Colors.textSecondary)
                                 .lineLimit(1)
                             Spacer()
 
                             // Document count badge
                             let docCount = store.documents.filter({ $0.notebookId == nb.id }).count
                             Text("\(docCount)")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                                .cornerRadius(8)
+                                .font(MedhaTheme.Typography.monoCounter)
+                                .foregroundColor(MedhaTheme.Colors.textTertiary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(MedhaTheme.Colors.bgSurface)
+                                .clipShape(Capsule(style: .continuous))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
+                                )
                         }
-                        .contentShape(Rectangle())
+                        .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.accent)
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(store.activeMainView == .editor && store.selectedNotebookId == nb.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .listRowBackground(Color.clear)
                     .contextMenu {
                         Button("New Document") {
                             store.createDocument(notebookId: nb.id)
@@ -147,17 +174,19 @@ public struct SidebarView: View {
             } header: {
                 HStack {
                     Text("NOTEBOOKS")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                     Spacer()
                     Button(action: { isCreatingNotebook = true }) {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(MedhaTheme.Colors.textSecondary)
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: $isCreatingNotebook) {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("New Notebook")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(MedhaTheme.Typography.headline)
                             TextField("Notebook name", text: $newNotebookName)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12))
@@ -184,18 +213,22 @@ public struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Circle()
-                    .fill(Color.green)
-                    .frame(width: 7, height: 7)
+                    .fill(MedhaTheme.Colors.success)
+                    .frame(width: 6.5, height: 6.5)
                 Text("SQLite WAL • FTS5 Active")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .font(MedhaTheme.Typography.micro)
+                    .foregroundColor(MedhaTheme.Colors.textTertiary)
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(.ultraThinMaterial)
+            .overlay(
+                Divider().opacity(0.4),
+                alignment: .top
+            )
         }
     }
 }

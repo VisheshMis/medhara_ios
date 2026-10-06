@@ -565,27 +565,30 @@ public struct MemoryPalaceView: View {
             }
         }) {
             HStack(spacing: 8) {
-                // Pin Index Circle
+                // Pin Index Circle in Palace Accent
                 ZStack {
                     Circle()
-                        .fill(isWalkActive ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+                        .fill(isWalkActive ? MedhaTheme.Colors.palaceAccent : MedhaTheme.Colors.palaceAccent.opacity(0.15))
+                        .frame(width: 22, height: 22)
+                    Circle()
+                        .stroke(MedhaTheme.Colors.palaceAccent.opacity(0.3), lineWidth: 1)
                         .frame(width: 22, height: 22)
                     Text("\(index + 1)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(isWalkActive ? .white : .primary)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(isWalkActive ? .white : MedhaTheme.Colors.palaceAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(locus.title)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundColor(MedhaTheme.Colors.textPrimary)
                             .lineLimit(1)
 
                         if let pName = photoName {
                             Text("(\(pName))")
                                 .font(.system(size: 9))
-                                .foregroundColor(.secondary)
+                                .foregroundColor(MedhaTheme.Colors.textTertiary)
                                 .lineLimit(1)
                         }
                     }
@@ -593,7 +596,7 @@ public struct MemoryPalaceView: View {
                     if let mnemonic = locus.mnemonic, !mnemonic.isEmpty {
                         Text(mnemonic)
                             .font(.system(size: 10).italic())
-                            .foregroundColor(.secondary)
+                            .foregroundColor(MedhaTheme.Colors.textSecondary)
                             .lineLimit(1)
                     }
 

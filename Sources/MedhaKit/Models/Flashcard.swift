@@ -109,6 +109,58 @@ extension Deck: FetchableRecord, PersistableRecord {
     }
 }
 
+public enum FlashcardType: Int, Codable, CaseIterable, Sendable {
+    case standard = 0
+    case imageOcclusion = 1
+
+    public var displayName: String {
+        switch self {
+        case .standard: return "Standard"
+        case .imageOcclusion: return "Image Occlusion"
+        }
+    }
+}
+
+public enum OcclusionMode: Int, Codable, CaseIterable, Sendable {
+    case hideOneRevealOne = 0
+    case hideAllRevealOne = 1
+
+    public var displayName: String {
+        switch self {
+        case .hideOneRevealOne: return "Hide One, Reveal One"
+        case .hideAllRevealOne: return "Hide All, Reveal One"
+        }
+    }
+}
+
+public struct ImageOcclusionMask: Identifiable, Codable, Equatable, Sendable {
+    public var id: String
+    public var x: Double          // Normalized coordinate (0.0 ... 1.0)
+    public var y: Double          // Normalized coordinate (0.0 ... 1.0)
+    public var width: Double      // Normalized width (0.0 ... 1.0)
+    public var height: Double     // Normalized height (0.0 ... 1.0)
+    public var label: String?     // Text answer under or on the mask
+    public var orderIndex: Int
+
+    public init(
+        id: String = "mask-\(UUID().uuidString.lowercased())",
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        label: String? = nil,
+        orderIndex: Int = 0
+    ) {
+        self.id = id
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.label = label
+        self.orderIndex = orderIndex
+    }
+}
+
 public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
     public var id: String
     public var docId: String              // Preserves document/folder hierarchy
@@ -118,6 +170,13 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
     public var back: String               // Answer / Explanation
     public var sourceBlockId: String?     // Linked atomic block
     public var hint: String?
+
+    // Image Occlusion extensions
+    public var cardType: FlashcardType?
+    public var imagePath: String?
+    public var occlusionMasksData: String?
+    public var activeMaskId: String?
+    public var occlusionMode: OcclusionMode?
 
     // FSRS parameters
     public var fsrsState: FSRSState
@@ -133,8 +192,23 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
     public var createdAt: Date
     public var updatedAt: Date
 
+    public var effectiveCardType: FlashcardType {
+        cardType ?? .standard
+    }
+
+    public var effectiveOcclusionMode: OcclusionMode {
+        occlusionMode ?? .hideAllRevealOne
+    }
+
     public var isEffectivelySuspended: Bool {
         isSuspended ?? false
+    }
+
+    public var parsedMasks: [ImageOcclusionMask] {
+        guard let dataStr = occlusionMasksData, let data = dataStr.data(using: .utf8) else {
+            return []
+        }
+        return (try? JSONDecoder().decode([ImageOcclusionMask].self, from: data)) ?? []
     }
 
     public init(
@@ -146,6 +220,11 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
         back: String,
         sourceBlockId: String? = nil,
         hint: String? = nil,
+        cardType: FlashcardType? = .standard,
+        imagePath: String? = nil,
+        occlusionMasksData: String? = nil,
+        activeMaskId: String? = nil,
+        occlusionMode: OcclusionMode? = .hideAllRevealOne,
         fsrsState: FSRSState = .newCard,
         stability: Double = 0.0,
         difficulty: Double = 0.0,
@@ -167,6 +246,11 @@ public struct Flashcard: Identifiable, Codable, Equatable, Sendable {
         self.back = back
         self.sourceBlockId = sourceBlockId
         self.hint = hint
+        self.cardType = cardType
+        self.imagePath = imagePath
+        self.occlusionMasksData = occlusionMasksData
+        self.activeMaskId = activeMaskId
+        self.occlusionMode = occlusionMode
         self.fsrsState = fsrsState
         self.stability = stability
         self.difficulty = difficulty
@@ -203,6 +287,11 @@ extension Flashcard: FetchableRecord, PersistableRecord {
         public static let back = Column(CodingKeys.back)
         public static let sourceBlockId = Column(CodingKeys.sourceBlockId)
         public static let hint = Column(CodingKeys.hint)
+        public static let cardType = Column(CodingKeys.cardType)
+        public static let imagePath = Column(CodingKeys.imagePath)
+        public static let occlusionMasksData = Column(CodingKeys.occlusionMasksData)
+        public static let activeMaskId = Column(CodingKeys.activeMaskId)
+        public static let occlusionMode = Column(CodingKeys.occlusionMode)
         public static let fsrsState = Column(CodingKeys.fsrsState)
         public static let stability = Column(CodingKeys.stability)
         public static let difficulty = Column(CodingKeys.difficulty)
