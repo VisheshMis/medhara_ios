@@ -184,7 +184,7 @@ Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Polish
 
 ---
 
-### Stage 7: Vector Ink Engine (Windows Ink / Stylus & Catmull-Rom)
+### Stage 7: Vector Ink Engine (Windows Ink / Stylus & Catmull-Rom) ✅ (Completed)
 - **Objective**: Port [InkGeometry.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Services/InkGeometry.swift) to HTML5 Canvas with high-precision pointer events.
 - **Scope**:
   - Support W3C PointerEvents Level 3 with dynamic pressure (Surface Pen, Wacom, mouse fallback).
@@ -203,7 +203,7 @@ Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Polish
 
 ---
 
-### Stage 8: 2D Spatial Memory Palace & Walk Mode
+### Stage 8: 2D Spatial Memory Palace & Walk Mode ✅ (Completed)
 - **Objective**: Port the Method of Loci spatial memory system from [MemoryPalace.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Models/MemoryPalace.swift).
 - **Scope**:
   - Infinite 2D pannable and zoomable photo stage (smooth matrix transform).

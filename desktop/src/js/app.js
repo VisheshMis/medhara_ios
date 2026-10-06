@@ -518,9 +518,111 @@ class MedhaDesktopApp {
         }
 
         document.getElementById('btn-start-walk')?.addEventListener('click', () => {
-            this.palaceCanvas.startWalkMode(this.store.loci, this.store.palacePhotos);
-            document.getElementById('walk-hud').style.display = 'flex';
+            this.startPalaceWalk();
         });
+
+        document.getElementById('btn-exit-walk')?.addEventListener('click', () => {
+            this.exitPalaceWalk();
+        });
+
+        document.getElementById('btn-walk-prev')?.addEventListener('click', () => {
+            this.palaceCanvas?.prevWalkStep(this.store.loci, this.store.palacePhotos);
+            this.updateWalkHUD();
+        });
+
+        document.getElementById('btn-walk-next')?.addEventListener('click', () => {
+            this.palaceCanvas?.nextWalkStep(this.store.loci, this.store.palacePhotos);
+            this.updateWalkHUD();
+        });
+
+        document.getElementById('btn-walk-reveal')?.addEventListener('click', () => {
+            this.revealWalkAnswer();
+        });
+    }
+
+    startPalaceWalk() {
+        if (!this.palaceCanvas || !this.store.loci || this.store.loci.length === 0) return;
+        this.palaceCanvas.startWalkMode(this.store.loci, this.store.palacePhotos);
+        document.getElementById('walk-hud').style.display = 'flex';
+        this.updateWalkHUD();
+    }
+
+    exitPalaceWalk() {
+        if (this.palaceCanvas) this.palaceCanvas.exitWalkMode();
+        const hud = document.getElementById('walk-hud');
+        if (hud) hud.style.display = 'none';
+    }
+
+    updateWalkHUD() {
+        if (!this.palaceCanvas || !this.store.loci) return;
+        const loci = this.store.loci;
+        const idx = this.palaceCanvas.currentStepIndex;
+        if (idx < 0 || idx >= loci.length) return;
+
+        const locus = loci[idx];
+        const stepNum = document.getElementById('walk-step-number');
+        const titleEl = document.getElementById('walk-step-title');
+        const mnemonicEl = document.getElementById('walk-mnemonic-text');
+        const answerEl = document.getElementById('walk-card-answer');
+        const revealBtn = document.getElementById('btn-walk-reveal');
+        const ratingRow = document.getElementById('walk-rating-controls');
+
+        if (stepNum) stepNum.textContent = `LOCUS ${idx + 1} OF ${loci.length}`;
+        if (titleEl) titleEl.textContent = locus.title || `Locus ${idx + 1}`;
+        if (mnemonicEl) mnemonicEl.textContent = locus.prompt || locus.description || 'Focus on the spatial association anchored at this station.';
+
+        // Associated Flashcard Lookup
+        this.activeWalkCard = null;
+        if (locus.flashcardId) {
+            this.activeWalkCard = this.store.flashcards.find(f => f.id === locus.flashcardId) || null;
+        }
+
+        if (answerEl) {
+            answerEl.style.display = 'none';
+            answerEl.textContent = this.activeWalkCard ? this.activeWalkCard.answer : (locus.answer || locus.detailText || 'Recall verified.');
+        }
+
+        if (revealBtn) revealBtn.style.display = 'flex';
+        if (ratingRow) ratingRow.style.display = 'none';
+    }
+
+    revealWalkAnswer() {
+        const answerEl = document.getElementById('walk-card-answer');
+        const revealBtn = document.getElementById('btn-walk-reveal');
+        const ratingRow = document.getElementById('walk-rating-controls');
+
+        if (answerEl) answerEl.style.display = 'block';
+        if (revealBtn) revealBtn.style.display = 'none';
+        if (ratingRow) ratingRow.style.display = 'flex';
+    }
+
+    async rateWalkLocus(ratingNum) {
+        if (this.activeWalkCard) {
+            const api = window.medhaAPI || window.electronAPI;
+            if (api && typeof api.submitReview === 'function') {
+                await api.submitReview(this.activeWalkCard.id, ratingNum);
+            } else {
+                const res = fsrs.review(this.activeWalkCard, ratingNum);
+                this.store.execute(`
+                    UPDATE flashcard
+                    SET fsrsState = ?, stability = ?, difficulty = ?, elapsedDays = ?, scheduledDays = ?, reps = ?, lapses = ?, lastReview = ?, due = ?, updatedAt = ?
+                    WHERE id = ?
+                `, [
+                    res.card.fsrsState, res.card.stability, res.card.difficulty, res.card.elapsedDays,
+                    res.card.scheduledDays, res.card.reps, res.card.lapses, res.card.lastReview,
+                    res.card.due, res.card.updatedAt, this.activeWalkCard.id
+                ]);
+            }
+        }
+
+        // Advance to next locus step
+        const hasNext = this.palaceCanvas?.nextWalkStep(this.store.loci, this.store.palacePhotos);
+        if (hasNext) {
+            this.updateWalkHUD();
+        } else {
+            alert('🎉 Journey Complete! All memory palace loci stations reviewed.');
+            this.exitPalaceWalk();
+        }
     }
 
     // --- Anki Importer Trigger ---

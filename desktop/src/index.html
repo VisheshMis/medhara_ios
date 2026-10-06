@@ -225,13 +225,36 @@
                     <div id="walk-hud" class="walk-mode-hud" style="display: none;">
                         <div class="walk-hud-header">
                             <span id="walk-step-number" style="font-size: 11px; color: var(--accent-emerald); font-weight: 700;">LOCUS 1 OF 3</span>
-                            <button onclick="document.getElementById('walk-hud').style.display='none'" class="btn-icon-sm" title="Exit Walk Mode">✕</button>
+                            <button id="btn-exit-walk" class="btn-icon-sm" title="Exit Walk Mode">✕</button>
                         </div>
                         <div id="walk-step-title" class="walk-step-title">Grand Marble Colonnade</div>
                         <div id="walk-mnemonic-text" class="walk-mnemonic-text">Visualize three statues holding elected ballots.</div>
-                        <div class="walk-controls-row">
-                            <button class="btn-header" onclick="window.medhaApp?.palaceCanvas?.prevWalkStep(window.medhaApp.store.loci, window.medhaApp.store.palacePhotos)">← Previous</button>
-                            <button class="btn-header" onclick="window.medhaApp?.palaceCanvas?.nextWalkStep(window.medhaApp.store.loci, window.medhaApp.store.palacePhotos)">Next Locus →</button>
+
+                        <!-- Active Recall & Reveal Block -->
+                        <div id="walk-recall-container" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                            <div id="walk-card-answer" style="display: none; font-size: 13px; color: #93C5FD; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); padding: 8px 12px; border-radius: var(--radius-sm); line-height: 1.4;"></div>
+                            <button id="btn-walk-reveal" class="btn-header" style="justify-content: center; background: rgba(255, 255, 255, 0.08);">Show Answer (Space)</button>
+                        </div>
+
+                        <!-- FSRS Rating Buttons -->
+                        <div id="walk-rating-controls" class="rating-controls-row" style="display: none; width: 100%; justify-content: center; gap: 8px;">
+                            <button class="btn-rating again" onclick="window.medhaApp?.rateWalkLocus(1)" style="flex: 1; padding: 6px 10px;">
+                                <span>Again</span>
+                            </button>
+                            <button class="btn-rating hard" onclick="window.medhaApp?.rateWalkLocus(2)" style="flex: 1; padding: 6px 10px;">
+                                <span>Hard</span>
+                            </button>
+                            <button class="btn-rating good" onclick="window.medhaApp?.rateWalkLocus(3)" style="flex: 1; padding: 6px 10px;">
+                                <span>Good</span>
+                            </button>
+                            <button class="btn-rating easy" onclick="window.medhaApp?.rateWalkLocus(4)" style="flex: 1; padding: 6px 10px;">
+                                <span>Easy</span>
+                            </button>
+                        </div>
+
+                        <div class="walk-controls-row" style="width: 100%; justify-content: space-between;">
+                            <button id="btn-walk-prev" class="btn-header">← Previous Locus</button>
+                            <button id="btn-walk-next" class="btn-header">Next Locus →</button>
                         </div>
                     </div>
                 </div>
