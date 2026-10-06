@@ -222,7 +222,7 @@ Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Polish
 
 ---
 
-### Stage 9: Force-Directed Knowledge Graph (Alpha Cooling Simulation)
+### Stage 9: Force-Directed Knowledge Graph (Alpha Cooling Simulation) ✅ (Completed)
 - **Objective**: Port [ForceSimulation.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Services/ForceSimulation.swift) to high-performance Canvas 2D / WebGL.
 - **Scope**:
   - Graph physics simulation:

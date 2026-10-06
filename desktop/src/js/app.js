@@ -465,7 +465,7 @@ class MedhaDesktopApp {
                 }
             });
         }
-        this.graphEngine.updateData(this.store.documents);
+        this.graphEngine.updateData(this.store.documents, this.store.docLinks || []);
 
         document.querySelectorAll('.graph-layer-btn').forEach(btn => {
             btn.addEventListener('click', () => {

@@ -16,6 +16,7 @@ class BlockStore {
 
         this.blocks = [];
         this.focusedBlockId = null;
+        this.docLinks = [];
 
         // Flashcards & Decks
         this.flashcards = [];
@@ -83,6 +84,7 @@ class BlockStore {
         }
 
         this.decks = await this.query('SELECT * FROM deck ORDER BY isNotesDefault DESC, name ASC');
+        this.docLinks = await this.query('SELECT * FROM doc_link');
         this.memoryPalaces = await this.query('SELECT * FROM memory_palace ORDER BY sortOrder ASC');
         if (this.memoryPalaces.length > 0) {
             this.selectedPalaceId = this.memoryPalaces[0].id;

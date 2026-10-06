@@ -17,6 +17,7 @@
     "test:editor": "node tests/editor.test.js",
     "test:ink": "node tests/ink.test.js",
     "test:palace": "node tests/palace.test.js",
+    "test:graph": "node tests/graph.test.js",
     "test:smoke": "npm run build:renderer && node tests/smoke.js",
     "dist:win": "npm run build:renderer && electron-builder --win nsis portable --x64"
   },

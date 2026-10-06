@@ -68,20 +68,27 @@ class KnowledgeGraphEngine {
 
     initCanvas() {
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        if (typeof window !== 'undefined') {
+            window.addEventListener('resize', () => this.resize());
+        }
     }
 
     resize() {
-        const dpr = window.devicePixelRatio || 1;
-        this.width = this.canvas.parentElement.clientWidth || 800;
-        this.height = this.canvas.parentElement.clientHeight || 600;
+        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        const parent = this.canvas.parentElement;
+        this.width = (parent && parent.clientWidth) ? parent.clientWidth : 800;
+        this.height = (parent && parent.clientHeight) ? parent.clientHeight : 600;
         this.canvas.width = this.width * dpr;
         this.canvas.height = this.height * dpr;
-        this.ctx.scale(dpr, dpr);
+        if (this.ctx && typeof this.ctx.scale === 'function') {
+            this.ctx.scale(dpr, dpr);
+        }
         this.restartSimulation();
     }
 
     bindEvents() {
+        if (!this.canvas || typeof this.canvas.addEventListener !== 'function') return;
+
         this.canvas.addEventListener('mousedown', (e) => {
             const pt = this.screenToWorld(e.offsetX, e.offsetY);
             const node = this.findNodeAt(pt.x, pt.y);
@@ -97,30 +104,32 @@ class KnowledgeGraphEngine {
             }
         });
 
-        window.addEventListener('mousemove', (e) => {
-            if (this.draggedNode) {
-                const rect = this.canvas.getBoundingClientRect();
-                const pt = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-                this.draggedNode.x = pt.x;
-                this.draggedNode.y = pt.y;
-                this.restartSimulation();
-            } else if (this.isPanning) {
-                this.cameraX = e.clientX - this.panStart.x;
-                this.cameraY = e.clientY - this.panStart.y;
-                this.render();
-            }
-        });
+        if (typeof window !== 'undefined') {
+            window.addEventListener('mousemove', (e) => {
+                if (this.draggedNode) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const pt = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                    this.draggedNode.x = pt.x;
+                    this.draggedNode.y = pt.y;
+                    this.restartSimulation();
+                } else if (this.isPanning) {
+                    this.cameraX = e.clientX - this.panStart.x;
+                    this.cameraY = e.clientY - this.panStart.y;
+                    this.render();
+                }
+            });
 
-        window.addEventListener('mouseup', () => {
-            if (this.draggedNode) {
-                this.draggedNode.isPinned = false;
-                this.draggedNode = null;
-            }
-            if (this.isPanning) {
-                this.isPanning = false;
-                this.canvas.classList.remove('grabbing');
-            }
-        });
+            window.addEventListener('mouseup', () => {
+                if (this.draggedNode) {
+                    this.draggedNode.isPinned = false;
+                    this.draggedNode = null;
+                }
+                if (this.isPanning) {
+                    this.isPanning = false;
+                    this.canvas.classList.remove('grabbing');
+                }
+            });
+        }
 
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -298,7 +307,10 @@ class KnowledgeGraphEngine {
         this.render();
 
         if (!this.isAtRest) {
-            requestAnimationFrame(() => this.tick());
+            const raf = typeof requestAnimationFrame !== 'undefined'
+                ? requestAnimationFrame
+                : (cb) => setTimeout(cb, 16);
+            raf(() => this.tick());
         }
     }
 
