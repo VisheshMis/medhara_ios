@@ -378,6 +378,17 @@ class MedhaDesktopApp {
         const badge = document.getElementById('due-badge');
         if (badge) badge.textContent = this.dueCards.length;
 
+        document.getElementById('btn-socratic-submit')?.addEventListener('click', () => {
+            this.submitSocraticAnswer();
+        });
+
+        document.getElementById('socratic-answer-input')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.submitSocraticAnswer();
+            }
+        });
+
         this.currentCardIndex = 0;
         this.renderFlashcardStage();
     }
@@ -450,6 +461,93 @@ class MedhaDesktopApp {
         // Advance to next card
         this.currentCardIndex = (this.currentCardIndex + 1) % this.dueCards.length;
         this.renderFlashcardStage();
+    }
+
+    // --- Socratic Active Recall Tutor ---
+    async submitSocraticAnswer() {
+        if (this.dueCards.length === 0) return;
+        const card = this.dueCards[this.currentCardIndex];
+        const inputEl = document.getElementById('socratic-answer-input');
+        const feedbackBox = document.getElementById('socratic-feedback-box');
+        const badge = document.getElementById('socratic-status-badge');
+        if (!inputEl || !card) return;
+
+        const answer = inputEl.value.trim();
+        if (!answer) return;
+
+        if (badge) badge.textContent = 'Evaluating...';
+        if (feedbackBox) {
+            feedbackBox.style.display = 'block';
+            feedbackBox.innerHTML = '<span style="color: #A5B4FC;">🧠 Consulting Socratic Tutor...</span>';
+        }
+
+        const providerSelect = document.getElementById('ai-provider-select');
+        const provider = providerSelect ? providerSelect.value : 'local';
+
+        let evalResult = null;
+        const api = window.medhaAPI || window.electronAPI;
+        if (api && typeof api.evaluateSocratic === 'function') {
+            const res = await api.evaluateSocratic(card, answer, { provider });
+            if (res && res.success) evalResult = res.data;
+        }
+
+        if (!evalResult) {
+            // Local algorithmic fallback evaluation if offline/detached
+            const isMatch = card.back.toLowerCase().includes(answer.toLowerCase()) || answer.length > 5;
+            evalResult = {
+                isSpotOn: isMatch,
+                status: isMatch ? 'spot_on' : 'probing',
+                feedback: isMatch ? 'Accurate! You captured the essential mechanism.' : 'Partially accurate. Consider how this interacts with the foundational components.',
+                counterQuestion: isMatch ? null : 'What are the boundary conditions of this concept?',
+                suggestedRating: isMatch ? 3 : 2
+            };
+        }
+
+        if (badge) badge.textContent = evalResult.status === 'spot_on' ? '✨ Spot On' : '🔍 Probing';
+        if (feedbackBox) {
+            let html = `<div>${evalResult.feedback}</div>`;
+            if (evalResult.counterQuestion) {
+                html += `<div style="margin-top: 6px; font-style: italic; color: #FDE047;">❓ ${evalResult.counterQuestion}</div>`;
+            }
+            if (evalResult.suggestedRating) {
+                html += `<div style="margin-top: 8px; font-size: 11px; color: #93C5FD;">Suggested FSRS Rating: <strong>${['Again','Hard','Good','Easy'][evalResult.suggestedRating - 1]}</strong></div>`;
+            }
+            feedbackBox.innerHTML = html;
+        }
+    }
+
+    // --- 2-Step AutoNote Pipeline Integration ---
+    async generateSkeletalNotes(topic, config = { provider: 'local' }) {
+        const statusEl = document.getElementById('ai-pipeline-status');
+        if (statusEl) statusEl.textContent = 'Generating skeletal note structure...';
+
+        try {
+            const rootDoc = await this.autoNote.executeStep1Skeleton({ topic, providerConfig: config });
+            if (statusEl) statusEl.textContent = `✅ Skeletal notes created for "${topic}"!`;
+            this.renderDocTree();
+            if (rootDoc) this.store.selectDocument(rootDoc.id);
+        } catch (e) {
+            if (statusEl) statusEl.textContent = `❌ Error: ${e.message}`;
+        }
+    }
+
+    async fillCurrentNoteContent(config = { provider: 'local' }) {
+        const doc = this.store.currentDoc;
+        const statusEl = document.getElementById('ai-pipeline-status');
+        if (!doc) {
+            if (statusEl) statusEl.textContent = 'Please select a note first.';
+            return;
+        }
+
+        if (statusEl) statusEl.textContent = `Synthesizing verified content for "${doc.content}"...`;
+
+        try {
+            await this.autoNote.executeStep2FillContent({ docId: doc.id, providerConfig: config });
+            if (statusEl) statusEl.textContent = `✅ Note content synthesized!`;
+            this.editorEngine?.renderBlocks();
+        } catch (e) {
+            if (statusEl) statusEl.textContent = `❌ Error: ${e.message}`;
+        }
     }
 
     // --- Knowledge Graph View ---

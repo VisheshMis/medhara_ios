@@ -197,6 +197,19 @@
                             <span id="chip-easy" class="interval-chip">12.5d</span>
                         </button>
                     </div>
+
+                    <!-- Socratic Active Recall Tutor Mode -->
+                    <div id="socratic-container" style="width: 100%; max-width: 620px; margin-top: 18px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; font-weight: 600; color: var(--accent-purple);">🤖 Socratic AI Tutor Evaluation</span>
+                            <span id="socratic-status-badge" style="font-size: 11px; color: var(--text-muted);">Ready</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="socratic-answer-input" class="tree-search-input" placeholder="Type your answer to test conceptual depth..." style="flex: 1;" />
+                            <button id="btn-socratic-submit" class="btn-header" style="background: rgba(139, 92, 246, 0.2); border-color: var(--accent-purple); color: #C4B5FD;">Evaluate</button>
+                        </div>
+                        <div id="socratic-feedback-box" style="display: none; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; line-height: 1.4; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.25); color: #E0E7FF;"></div>
+                    </div>
                 </div>
 
                 <!-- 4. Knowledge Graph View -->
@@ -276,12 +289,28 @@
                     <span>AI Cognitive Assistant</span>
                 </div>
                 <div style="padding: 16px; font-size: 13px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 12px;">
-                    <div>2-Step Auto-Note Formation Pipeline</div>
+                    <div style="font-weight: 600; color: var(--text-primary);">Provider Configuration</div>
+                    <select id="ai-provider-select" class="tree-search-input" style="background: rgba(255,255,255,0.06); color: white; border: 1px solid var(--border-color);">
+                        <option value="local">Local AI (Ollama / Self-Hosted)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="groq">Groq (Ultra-Fast)</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+
+                    <div style="font-weight: 600; color: var(--text-primary); margin-top: 8px;">2-Step Auto-Note Pipeline</div>
                     <input type="text" id="ai-topic-input" class="tree-search-input" placeholder="Topic name (e.g. Quantum Computing)" />
-                    <button class="btn-header" style="background: var(--accent-purple); color: white; justify-content: center;" onclick="
+                    <button id="btn-generate-skeleton" class="btn-header" style="background: var(--accent-purple); color: white; justify-content: center;" onclick="
                         const topic = document.getElementById('ai-topic-input').value;
-                        if (topic && window.medhaApp) window.medhaApp.autoNote.executeStep1Skeleton({ topic });
-                    ">🪄 Generate Skeletal Notes</button>
+                        const provider = document.getElementById('ai-provider-select').value;
+                        if (topic && window.medhaApp) window.medhaApp.generateSkeletalNotes(topic, { provider });
+                    ">🪄 Step 1: Generate Skeletal Notes</button>
+
+                    <button id="btn-fill-content" class="btn-header" style="background: rgba(139, 92, 246, 0.2); border-color: var(--accent-purple); color: #C4B5FD; justify-content: center;" onclick="
+                        const provider = document.getElementById('ai-provider-select').value;
+                        if (window.medhaApp) window.medhaApp.fillCurrentNoteContent({ provider });
+                    ">📝 Step 2: Synthesize Verified Content</button>
+
+                    <div id="ai-pipeline-status" style="font-size: 12px; color: var(--text-muted); line-height: 1.4; padding: 8px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.03);">Ready for note synthesis.</div>
                 </div>
             </aside>
         </div>

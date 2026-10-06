@@ -83,24 +83,40 @@ class AIService {
         throw new Error(`Unsupported AI provider: ${provider}`);
     }
 
-    // Socratic answer evaluation
-    static async evaluateSocraticAnswer({ card, studentAnswer, providerConfig }) {
-        const systemPrompt = `You are an expert Socratic tutor evaluating a student's answer.
-Card Front: "${card.front}"
-Target Answer: "${card.back}"
-Hint: "${card.hint || 'None'}"
+    // Socratic answer evaluation (100% parity with AISocraticService.swift)
+    static async evaluateSocraticAnswer({ card, studentAnswer, providerConfig, dialogueHistory = [] }) {
+        const historyText = dialogueHistory.length > 0
+            ? dialogueHistory.map(h => `Round ${h.roundNumber || 1}: Student answered "${h.userAnswer}", Feedback: "${h.feedback}"`).join('\n')
+            : 'None';
 
-Evaluate the student's typed response with constructive, rigorous feedback.
-Assess factual accuracy, completeness, and conceptual grasp.
-Output JSON format:
+        const systemPrompt = `You are an encouraging, expert pedagogical Socratic Tutor inside the Medha PKM & Spaced Repetition platform.
+Your mission is to guide the student to deep conceptual understanding through active recall.
+
+Card Front (Question): "${card.front || card.question || ''}"
+Target Expected Answer: "${card.back || card.targetAnswer || card.answer || ''}"
+Hint: "${card.hint || 'None'}"
+Prior Dialogue History:
+${historyText}
+
+Evaluation Rules:
+- If the student's answer accurately captures core principles and concepts:
+  * Set isSpotOn = true, status = "spot_on", counterQuestion = null, suggestedRating = 3 or 4.
+- If partially correct, vague, missing a critical piece, or reveals misconception:
+  * Set isSpotOn = false, status = "probing", formulate ONE clear Socratic counterQuestion, suggestedRating = 2.
+- If no idea or blank:
+  * Set isSpotOn = false, status = "probing", gentle hint in counterQuestion, suggestedRating = 1.
+
+You MUST respond in strict, valid JSON conforming to this schema:
 {
-  "feedback": "...",
-  "suggestedRating": 1|2|3|4, // 1: Again, 2: Hard, 3: Good, 4: Easy
-  "isCorrect": true|false
+  "isSpotOn": boolean,
+  "status": "spot_on" | "probing",
+  "feedback": "concise constructive feedback string",
+  "counterQuestion": "string or null",
+  "suggestedRating": 1 | 2 | 3 | 4
 }
 JSON only.`;
 
-        const userPrompt = `Student's answer: "${studentAnswer}"`;
+        const userPrompt = `Student's current written response: "${studentAnswer}"`;
         const raw = await this.callProvider({
             ...providerConfig,
             systemPrompt,
@@ -108,12 +124,25 @@ JSON only.`;
         });
 
         try {
-            return JSON.parse(this.sanitizeReasoning(raw));
-        } catch (e) {
+            const parsed = JSON.parse(this.sanitizeReasoning(raw));
             return {
+                isSpotOn: Boolean(parsed.isSpotOn),
+                status: parsed.status || (parsed.isSpotOn ? 'spot_on' : 'probing'),
+                feedback: parsed.feedback || '',
+                counterQuestion: parsed.counterQuestion || null,
+                suggestedRating: parsed.suggestedRating || (parsed.isSpotOn ? 3 : 2),
+                isCorrect: Boolean(parsed.isSpotOn)
+            };
+        } catch (e) {
+            const lower = (raw || '').toLowerCase();
+            const looksSpotOn = lower.includes('spot-on') || lower.includes('correct') || lower.includes('great job');
+            return {
+                isSpotOn: looksSpotOn,
+                status: looksSpotOn ? 'spot_on' : 'probing',
                 feedback: raw,
-                suggestedRating: 3,
-                isCorrect: true
+                counterQuestion: looksSpotOn ? null : 'Could you elaborate on the core mechanism?',
+                suggestedRating: looksSpotOn ? 3 : 2,
+                isCorrect: looksSpotOn
             };
         }
     }

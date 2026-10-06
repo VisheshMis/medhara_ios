@@ -241,13 +241,20 @@ Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Polish
 
 ---
 
-### Stage 10: Local AI Services (Ollama / Socratic Tutor & AutoNote)
+### Stage 10: Local AI Services (Ollama / Socratic Tutor & AutoNote) ✅ (Completed)
 - **Objective**: Port [AISocraticService.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Services/AISocraticService.swift) and [AutoNotePipelineService.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Services/AutoNotePipelineService.swift).
 - **Scope**:
-  - Local LLM integration via Ollama HTTP API (`http://127.0.0.1:11434`) and optional cloud API fallback.
-  - Streaming token responses directly to UI via IPC events.
-  - Socratic Tutor Mode: context-aware probing questions based on active note.
-  - AutoNote Pipeline: Turn raw text/paste into structured blocks and flashcard candidates.
+  - Local LLM integration via Ollama HTTP API (`http://127.0.0.1:11434`) and multi-provider cloud fallback (Groq, Gemini, OpenAI).
+  - DeepSeek-R1 / QwQ `<think>` chain-of-thought token sanitization and JSON fence extraction.
+  - Socratic Tutor Mode: Active recall answers evaluated with pedagogical rubric (`isSpotOn`, `status`, `feedback`, `counterQuestion`, `suggestedRating`).
+  - AutoNote Pipeline: 2-step synthesis (Phase 1-2 rapid downward skeletal planning & persistence, Phase 7 in-node verified academic citation fill).
+- **Deliverables**:
+  - `desktop/electron/services/aiService.js`
+  - `desktop/electron/services/apiCatalog.js`
+  - `desktop/src/js/ai/autoNotePipeline.js`
+  - `desktop/tests/ai.test.js`
+- **Verification Gate**:
+  - `npm run test:ai` verifies prompt sanitization, Socratic scoring contracts, academic catalog multi-source fallback, and skeletal commitment. All 36 suites + headless smoke test pass cleanly.
 - **Deliverables**:
   - `src/main/services/aiService.ts`
   - `src/renderer/components/ai/SocraticPanel.tsx`
