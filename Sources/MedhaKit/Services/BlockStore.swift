@@ -184,15 +184,25 @@ public final class BlockStore: ObservableObject {
         isNotesAIAssistantPresented.toggle()
         if isNotesAIAssistantPresented {
             isInspectorPresented = false
+            isFocusStatsPresented = false
         }
     }
 
     public func toggleInspector() {
-        if isInspectorPresented && !isNotesAIAssistantPresented {
+        if isInspectorPresented && !isNotesAIAssistantPresented && !isFocusStatsPresented {
             isInspectorPresented = false
         } else {
             isInspectorPresented = true
             isNotesAIAssistantPresented = false
+            isFocusStatsPresented = false
+        }
+    }
+
+    public func toggleFocusStats() {
+        isFocusStatsPresented.toggle()
+        if isFocusStatsPresented {
+            isNotesAIAssistantPresented = false
+            isInspectorPresented = false
         }
     }
 

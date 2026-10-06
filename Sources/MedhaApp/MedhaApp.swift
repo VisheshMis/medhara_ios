@@ -174,8 +174,8 @@ struct MedhaApp: App {
 
                 Divider()
 
-                Button("Study Statistics...") {
-                    store.isFocusStatsPresented.toggle()
+                Button("Focus & Study Statistics") {
+                    store.toggleFocusStats()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
             }

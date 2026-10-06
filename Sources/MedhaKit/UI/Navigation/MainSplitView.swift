@@ -37,6 +37,10 @@ public struct MainSplitView: View {
                                 Divider()
                                 NotesAIAssistantView(store: store)
                                     .transition(.move(edge: .trailing).combined(with: .opacity))
+                            } else if store.isFocusStatsPresented {
+                                Divider()
+                                FocusStatsPanel(store: store)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
                             } else if store.isInspectorPresented {
                                 Divider()
                                 InspectorView(store: store)
@@ -83,7 +87,9 @@ public struct MainSplitView: View {
                     TopLeftTimerView(
                         timerManager: store.timerManager,
                         onOpenStats: {
-                            store.isFocusStatsPresented = true
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                store.toggleFocusStats()
+                            }
                         }
                     )
                 }
@@ -167,9 +173,6 @@ public struct MainSplitView: View {
                     store.pendingNewInkParentDocId = nil
                 }
             )
-        }
-        .sheet(isPresented: $store.isFocusStatsPresented) {
-            FocusStatsSheet(store: store)
         }
         .animation(.easeInOut(duration: 0.15), value: store.isCommandPalettePresented)
         .animation(.easeInOut(duration: 0.15), value: store.isBlockPickerPresented)

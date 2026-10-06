@@ -246,16 +246,23 @@ Medha connects to **8+ major academic repositories without requiring user API ke
 ### 12.1 Apple Watch-Inspired Pomodoro Focus Clock
 - **Top-Left Status Bar & Sidebar Widget**: Integrated focus clock visible throughout all editor and canvas modes (`TopLeftTimerView`).
 - **Circular Progress Ring**: Fluid circular countdown arc rendered with `MedhaTheme` linear gradient with live pulse animations while running.
-- **Configurable Duration Presets**:
-  - `10m`: Rapid sprint / Micro-focus (default).
-  - `15m`: Quick revision.
-  - `25m`: Standard Pomodoro technique.
-  - `45m`: Deep work session.
-  - `60m`: Lecture / Exam simulation block.
+- **Configurable Duration Presets & Custom Options**:
+  - `Study Duration`:
+    - `10m`: Rapid sprint / Micro-focus (default).
+    - `15m`: Quick revision.
+    - `25m`: Standard Pomodoro technique.
+    - `45m`: Deep work session.
+    - `60m`: Lecture / Exam simulation block.
+  - `Relax / Break Duration`:
+    - `30s`: Micro-Break eye rest.
+    - `5m`: Standard Pomodoro rest.
+    - `10m`: Extended rest interval.
+    - `15m`: Long rejuvenation break.
+  - `Custom Study & Relax Options`: Steppers and direct configuration within the Right Sidecar Panel (`FocusStatsPanel`) allowing arbitrary study and break minutes/seconds.
 - **Cycle Flow & Audio Cues**:
-  1. `Focus Session` (active study tracking).
+  1. `Focus Session` (active study tracking with custom duration).
   2. `Audio Beep & Pause` (2s double-tone chime, muted via button).
-  3. `Micro-Break` (30s restorative eye rest).
+  3. `Micro-Break / Rest` (custom relax time).
   4. `Cycle Reset` (10s transition to next interval).
 
 ### 12.2 Persistent Study Statistics Engine (`FocusStatsService` & GRDB `focus_session`)
@@ -265,12 +272,13 @@ Medha connects to **8+ major academic repositories without requiring user API ke
   - **This Week Total**: 7-day breakdown (Mon–Sun) with interactive bar distribution chart, daily average focus time, and today's highlighted bar.
   - **This Month Total**: Cumulative monthly study hours, active study days count, and daily average per active day.
 
-### 12.3 Medha Activity Rings & Statistics Sheet (`FocusStatsSheet` & `⌘⇧T`)
+### 12.3 Medha Activity Rings & Right Sidecar Panel (`FocusStatsPanel` & `⌘⇧T`)
 - **Concentric Activity Rings View (`MedhaActivityRingsView`)**:
   - **Outer Ring**: Daily Study Goal — *Royal Violet / Indigo Gradient* (`#7C6CFF` → `#4C9AFF`).
   - **Middle Ring**: Weekly Focus Progress — *Vibrant Notes Blue* (`#3B82F6`).
   - **Inner Ring**: Consistency & Session Count — *Emerald Retention Green* (`#10B981`).
-- **Modal Statistics Dashboard**: Accessible via the Timer Pill's Stats button or global hotkey `⌘⇧T`.
+- **Integrated Right Sidecar Panel**: Opens seamlessly docked on the right side of the main workspace rather than as an intrusive modal, fully coordinating with the AI Assistant and Inspector panels.
+- **Inline Custom Steppers**: Instant customization of Study Time and Relax Time with live feedback and presets.
 - **Recent Study Session Logs**: Real-time chronological audit trail of completed and active sessions with timestamps and durations.
 
 

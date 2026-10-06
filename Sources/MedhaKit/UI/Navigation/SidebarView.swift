@@ -12,7 +12,9 @@ public struct SidebarView: View {
                 TopLeftTimerView(
                     timerManager: store.timerManager,
                     onOpenStats: {
-                        store.isFocusStatsPresented = true
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            store.toggleFocusStats()
+                        }
                     }
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))

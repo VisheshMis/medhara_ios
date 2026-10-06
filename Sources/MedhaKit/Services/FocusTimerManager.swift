@@ -41,6 +41,7 @@ public final class FocusTimerManager: ObservableObject {
     @Published public var currentPhase: FocusTimerPhase = .focus
     @Published public var remainingSeconds: Int = FocusTimerPhase.focus.defaultDuration
     @Published public var customFocusDuration: Int = FocusTimerPhase.focus.defaultDuration
+    @Published public var customBreakDuration: Int = FocusTimerPhase.microBreak.defaultDuration
     @Published public var isRunning: Bool = false
     @Published public var isMuted: Bool = false
     @Published public var cycleCount: Int = 0
@@ -56,6 +57,7 @@ public final class FocusTimerManager: ObservableObject {
         self.statsService = statsService
         self.remainingSeconds = currentPhase.defaultDuration
         self.customFocusDuration = currentPhase.defaultDuration
+        self.customBreakDuration = FocusTimerPhase.microBreak.defaultDuration
     }
 
     public var progressRatio: Double {
@@ -69,7 +71,7 @@ public final class FocusTimerManager: ObservableObject {
         switch currentPhase {
         case .focus: return customFocusDuration
         case .beepAndPause: return FocusTimerPhase.beepAndPause.defaultDuration
-        case .microBreak: return FocusTimerPhase.microBreak.defaultDuration
+        case .microBreak: return customBreakDuration
         case .resetInterval: return FocusTimerPhase.resetInterval.defaultDuration
         }
     }
@@ -80,12 +82,60 @@ public final class FocusTimerManager: ObservableObject {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
+    public var currentBadgeLabel: String {
+        switch currentPhase {
+        case .focus:
+            let mins = customFocusDuration / 60
+            let secs = customFocusDuration % 60
+            if secs == 0 {
+                return "FOCUS \(mins)m"
+            } else {
+                return "FOCUS \(mins)m\(secs)s"
+            }
+        case .beepAndPause:
+            return "PAUSE 2s"
+        case .microBreak:
+            let mins = customBreakDuration / 60
+            let secs = customBreakDuration % 60
+            if mins > 0 && secs == 0 {
+                return "REST \(mins)m"
+            } else if mins > 0 {
+                return "REST \(mins)m\(secs)s"
+            } else {
+                return "REST \(secs)s"
+            }
+        case .resetInterval:
+            return "CYCLE 10s"
+        }
+    }
+
     public func setFocusDuration(minutes: Int) {
         let newSeconds = max(60, minutes * 60)
         customFocusDuration = newSeconds
         if currentPhase == .focus && !isRunning {
             remainingSeconds = newSeconds
         }
+    }
+
+    public func setBreakDuration(minutes: Int) {
+        let newSeconds = max(10, minutes * 60)
+        customBreakDuration = newSeconds
+        if currentPhase == .microBreak && !isRunning {
+            remainingSeconds = newSeconds
+        }
+    }
+
+    public func setBreakDuration(seconds: Int) {
+        let newSeconds = max(5, seconds)
+        customBreakDuration = newSeconds
+        if currentPhase == .microBreak && !isRunning {
+            remainingSeconds = newSeconds
+        }
+    }
+
+    public func setCustomDurations(focusMinutes: Int, breakMinutes: Int) {
+        setFocusDuration(minutes: focusMinutes)
+        setBreakDuration(minutes: breakMinutes)
     }
 
     public func togglePlayPause() {
@@ -173,9 +223,9 @@ public final class FocusTimerManager: ObservableObject {
             remainingSeconds = FocusTimerPhase.beepAndPause.defaultDuration
 
         case .beepAndPause:
-            // 2s pause finished: count down 30s
+            // 2s pause finished: count down break/relax duration
             currentPhase = .microBreak
-            remainingSeconds = FocusTimerPhase.microBreak.defaultDuration
+            remainingSeconds = customBreakDuration
 
         case .microBreak:
             // 30s finished: count down 10s

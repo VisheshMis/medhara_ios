@@ -2842,12 +2842,35 @@ struct TestRunner {
         assert(statsService.monthStats.totalSeconds >= 1200, "Failed: Month's totalSeconds must include session")
         assert(statsService.monthStats.activeDaysCount >= 1, "Failed: Month activeDaysCount must be >= 1")
 
-        // 41.6: Daily Target Setting
+        // 41.6: Custom Study & Relax Durations
+        focusTimer.setCustomDurations(focusMinutes: 50, breakMinutes: 10)
+        assert(focusTimer.customFocusDuration == 3000, "Failed: 50m focus duration should be 3000s")
+        assert(focusTimer.customBreakDuration == 600, "Failed: 10m break duration should be 600s")
+        assert(focusTimer.currentBadgeLabel == "FOCUS 50m", "Failed: Dynamic badge should show FOCUS 50m")
+
+        focusTimer.setBreakDuration(seconds: 45)
+        assert(focusTimer.customBreakDuration == 45, "Failed: 45s break duration")
+        focusTimer.setCustomDurations(focusMinutes: 25, breakMinutes: 5)
+
+        // 41.7: Right Panel Mutual Exclusivity and Toggles
+        store.isInspectorPresented = true
+        store.isNotesAIAssistantPresented = false
+        store.isFocusStatsPresented = false
+
+        store.toggleFocusStats()
+        assert(store.isFocusStatsPresented == true, "Failed: Focus stats panel should be open")
+        assert(store.isInspectorPresented == false, "Failed: Inspector should be closed when focus stats opens")
+        assert(store.isNotesAIAssistantPresented == false, "Failed: AI Assistant should be closed when focus stats opens")
+
+        store.toggleFocusStats()
+        assert(store.isFocusStatsPresented == false, "Failed: Focus stats panel should close on second toggle")
+
+        // 41.8: Daily Target Setting
         statsService.setDailyTargetMinutes(90)
         assert(statsService.dailyTargetMinutes == 90, "Failed: setDailyTargetMinutes")
         assert(statsService.todayStats.targetMinutes == 90, "Failed: todayStats targetMinutes")
 
-        // 41.7: Existing Timer Cycle State Machine Integrity
+        // 41.9: Existing Timer Cycle State Machine Integrity
         focusTimer.reset()
         focusTimer.remainingSeconds = 1
         focusTimer.tick()

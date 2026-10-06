@@ -59,9 +59,9 @@ public struct TopLeftTimerView: View {
                         .font(MedhaTheme.Typography.roundedTimer)
                         .foregroundColor(MedhaTheme.Colors.textPrimary)
 
-                    // Clickable Preset Badge (10m, 15m, 25m, 45m, 60m)
+                    // Clickable Preset & Custom Options Menu
                     Menu {
-                        Section("Preset Durations") {
+                        Section("Study Duration") {
                             Button("10 Minutes (Default)") {
                                 timerManager.setFocusDuration(minutes: 10)
                             }
@@ -78,8 +78,29 @@ public struct TopLeftTimerView: View {
                                 timerManager.setFocusDuration(minutes: 60)
                             }
                         }
+
+                        Section("Relax / Break Duration") {
+                            Button("30 Seconds (Micro-Break)") {
+                                timerManager.setBreakDuration(seconds: 30)
+                            }
+                            Button("5 Minutes (Standard Rest)") {
+                                timerManager.setBreakDuration(minutes: 5)
+                            }
+                            Button("10 Minutes (Long Rest)") {
+                                timerManager.setBreakDuration(minutes: 10)
+                            }
+                            Button("15 Minutes") {
+                                timerManager.setBreakDuration(minutes: 15)
+                            }
+                        }
+
+                        Section("Custom Timing") {
+                            Button("Configure Custom Study & Relax...") {
+                                onOpenStats?()
+                            }
+                        }
                     } label: {
-                        Text(timerManager.currentPhase.badgeLabel)
+                        Text(timerManager.currentBadgeLabel)
                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
                             .foregroundColor(phaseColor)
                             .padding(.horizontal, 4)
@@ -89,7 +110,7 @@ public struct TopLeftTimerView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-                    .help("Change focus duration")
+                    .help("Change study or relax duration")
                 }
 
                 if timerManager.cycleCount > 0 {
