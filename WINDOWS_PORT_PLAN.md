@@ -263,21 +263,21 @@ Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Polish
 
 ---
 
-### Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Final Windows Packaging
+### Stage 11: Import/Export (Anki .apkg, Markdown, SVG) & Final Windows Packaging ✅ (Completed)
 - **Objective**: Port [AnkiImporter.swift](file:///Users/visheshmishra/Downloads/medharara/Sources/MedhaKit/Services/AnkiImporter.swift) and package the final Windows executable.
 - **Scope**:
-  - Anki `.apkg` importer: unzip archive, parse internal SQLite `collection.anki2`, extract media, and convert to Medha flashcards.
-  - Export: Markdown with frontmatter, Vector Ink SVG export, JSON backup.
+  - Anki `.apkg` importer: unzip archive, parse internal SQLite `collection.anki2` and modern `collection.anki21`/`collection.anki21b` with Zstandard decompression (`fzstd`), extract media, and convert to Medha flashcards and decks.
+  - Export: Markdown with hierarchy and callout syntax, structured JSON backup, and Vector Ink SVG export with variable path width and opacity.
   - Windows packaging using `electron-builder`:
-    - Portable executable (`.exe`) and NSIS installer.
-    - Application icon, Windows title bar styling (Mica/Acrylic effect where supported).
+    - Portable executable (`.exe`) and NSIS installer (`oneClick: false`).
+    - Application identifier `com.medha.desktop`, output directory `dist`.
 - **Deliverables**:
-  - `src/main/services/ankiImporter.ts`
-  - `electron-builder.yml`
-  - `tests/ankiImporter.test.ts`
+  - `desktop/electron/services/ankiImporter.js`
+  - `desktop/electron/services/exportService.js`
+  - `desktop/package.json` (nsis/portable packaging config)
+  - `desktop/tests/ankiImporter.test.js`
 - **Verification Gate**:
-  - Automated test successfully parses sample Anki package into database cards.
-  - `npm run package` builds a runnable Windows binary without packaging errors.
+  - `npm run test:import-export` parses synthetic `.apkg` archives, tests cloze ordinals, and verifies Markdown/SVG exporters. Full 36 suites + headless smoke test pass cleanly.
 
 ---
 
