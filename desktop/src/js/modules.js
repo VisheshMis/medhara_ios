@@ -11,6 +11,7 @@ import { AutoNotePipeline } from './ai/autoNotePipeline.js';
 import { FocusTimerManager } from './timer/focusTimer.js';
 import { ExportService } from './exportService.js';
 import { LinkParser } from './editor/linkParser.js';
+import { InkGeometry } from './ink/inkGeometry.js';
 
 export {
     BlockStore,
@@ -18,6 +19,7 @@ export {
     Rating,
     BlockEditorEngine,
     InkCanvas,
+    InkGeometry,
     PalaceCanvas,
     KnowledgeGraphEngine,
     AutoNotePipeline,

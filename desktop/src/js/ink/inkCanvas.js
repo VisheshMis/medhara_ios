@@ -213,6 +213,10 @@ class InkCanvas {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, this.width, this.height);
 
+        if (this.templateType === 'blank') {
+            return;
+        }
+
         ctx.save();
         if (this.templateType === 'lined') {
             ctx.strokeStyle = '#E2E8F0';
@@ -238,7 +242,7 @@ class InkCanvas {
                 ctx.lineTo(this.width, y);
                 ctx.stroke();
             }
-        } else if (this.templateType === 'dotGrid') {
+        } else if (this.templateType === 'dotGrid' || this.templateType === 'dotMatrix') {
             ctx.fillStyle = '#CBD5E1';
             for (let x = 20; x < this.width; x += 20) {
                 for (let y = 20; y < this.height; y += 20) {

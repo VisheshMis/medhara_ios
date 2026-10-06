@@ -53,6 +53,37 @@ export interface Block {
   updatedAt: string;
 }
 
+export interface InkPoint {
+  x: number;
+  y: number;
+  pressure: number;
+  timeOffset: number;
+}
+
+export type InkToolType = 'ballpoint' | 'fountain' | 'highlighter' | 'eraser' | 'lasso';
+
+export interface InkStroke {
+  id: string;
+  tool: InkToolType;
+  colorHex: string;
+  baseWidth: number;
+  opacity: number;
+  points: InkPoint[];
+}
+
+export interface InkDocumentPage {
+  id: string;
+  docId: string;
+  pageIndex: number;
+  templateType: 'blank' | 'lined' | 'grid' | 'dotGrid' | 'dotMatrix';
+  strokesData: string;
+  textProjection?: string;
+  pdfPath?: string | null;
+  pdfPageIndex?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DocLink {
   id: string;
   sourceDocId: string;
