@@ -250,4 +250,27 @@ public enum InkGeometry {
         if len == 0 { return CGPoint(x: 1, y: 0) }
         return CGPoint(x: v.x / len, y: v.y / len)
     }
+
+    /// Computes the combined bounding box enclosing all strokes
+    public static func combinedBoundingBox(for strokes: [InkStroke]) -> CGRect? {
+        guard !strokes.isEmpty else { return nil }
+        var minX = Double.greatestFiniteMagnitude
+        var minY = Double.greatestFiniteMagnitude
+        var maxX = -Double.greatestFiniteMagnitude
+        var maxY = -Double.greatestFiniteMagnitude
+        var hasValidStroke = false
+
+        for stroke in strokes {
+            guard !stroke.points.isEmpty else { continue }
+            let b = stroke.boundingRect
+            minX = min(minX, b.minX)
+            minY = min(minY, b.minY)
+            maxX = max(maxX, b.maxX)
+            maxY = max(maxY, b.maxY)
+            hasValidStroke = true
+        }
+
+        guard hasValidStroke else { return nil }
+        return CGRect(x: minX, y: minY, width: max(1.0, maxX - minX), height: max(1.0, maxY - minY))
+    }
 }

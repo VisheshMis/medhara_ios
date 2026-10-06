@@ -171,6 +171,13 @@ struct MedhaApp: App {
                     store.activeMainView = (store.activeMainView == .graph ? .editor : .graph)
                 }
                 .keyboardShortcut("g", modifiers: .command)
+
+                Divider()
+
+                Button("Study Statistics...") {
+                    store.isFocusStatsPresented.toggle()
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
             }
 
             CommandMenu("View") {

@@ -180,6 +180,20 @@ class BlockEditorEngine {
                             if (prevRow) prevRow.focus();
                         }, 10);
                     }
+                } else if (e.key === 'ArrowUp') {
+                    if (i > 0) {
+                        e.preventDefault();
+                        const prevBlock = this.store.blocks[i - 1];
+                        const prevRow = this.container.querySelector(`.block-row[data-id="${prevBlock.id}"] .block-content-area`);
+                        if (prevRow) prevRow.focus();
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    if (i < this.store.blocks.length - 1) {
+                        e.preventDefault();
+                        const nextBlock = this.store.blocks[i + 1];
+                        const nextRow = this.container.querySelector(`.block-row[data-id="${nextBlock.id}"] .block-content-area`);
+                        if (nextRow) nextRow.focus();
+                    }
                 } else if (e.key === '/') {
                     const rect = content.getBoundingClientRect();
                     this.showSlashMenu(rect.left, rect.bottom, block.id);

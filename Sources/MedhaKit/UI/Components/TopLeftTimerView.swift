@@ -2,15 +2,17 @@ import SwiftUI
 
 public struct TopLeftTimerView: View {
     @ObservedObject public var timerManager: FocusTimerManager
+    public var onOpenStats: (() -> Void)? = nil
     @State private var isHovered: Bool = false
 
-    public init(timerManager: FocusTimerManager) {
+    public init(timerManager: FocusTimerManager, onOpenStats: (() -> Void)? = nil) {
         self.timerManager = timerManager
+        self.onOpenStats = onOpenStats
     }
 
     private var phaseColor: Color {
         switch timerManager.currentPhase {
-        case .focus: return MedhaTheme.Colors.notesAccent
+        case .focus: return MedhaTheme.Colors.accentStart
         case .beepAndPause: return MedhaTheme.Colors.danger
         case .microBreak: return MedhaTheme.Colors.success
         case .resetInterval: return MedhaTheme.Colors.warning
@@ -19,15 +21,30 @@ public struct TopLeftTimerView: View {
 
     public var body: some View {
         HStack(spacing: 7) {
-            // Animated Status Pulse / Icon with progress ring
+            // Animated Status Pulse / Icon with Circular Countdown Progress Arc
             ZStack {
+                // Background track
                 Circle()
-                    .stroke(phaseColor.opacity(0.2), lineWidth: 1.5)
-                    .frame(width: 20, height: 20)
+                    .stroke(phaseColor.opacity(0.2), lineWidth: 2)
+                    .frame(width: 22, height: 22)
+
+                // Circular countdown progress ring
+                Circle()
+                    .trim(from: 0, to: CGFloat(timerManager.progressRatio))
+                    .stroke(
+                        LinearGradient(
+                            colors: [phaseColor, phaseColor.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 22, height: 22)
 
                 Circle()
                     .fill(phaseColor.opacity(timerManager.isRunning ? 0.2 : 0.08))
-                    .frame(width: 20, height: 20)
+                    .frame(width: 18, height: 18)
 
                 Image(systemName: timerManager.currentPhase.icon)
                     .font(.system(size: 9, weight: .bold))
@@ -35,20 +52,44 @@ public struct TopLeftTimerView: View {
                     .symbolRenderingMode(.hierarchical)
             }
 
-            // Monospace Digital Timer & Badge
+            // Monospace Digital Timer & Duration Selector Menu
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(timerManager.formattedTime)
                         .font(MedhaTheme.Typography.roundedTimer)
                         .foregroundColor(MedhaTheme.Colors.textPrimary)
 
-                    Text(timerManager.currentPhase.badgeLabel)
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        .foregroundColor(phaseColor)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(phaseColor.opacity(0.12))
-                        .clipShape(Capsule(style: .continuous))
+                    // Clickable Preset Badge (10m, 15m, 25m, 45m, 60m)
+                    Menu {
+                        Section("Preset Durations") {
+                            Button("10 Minutes (Default)") {
+                                timerManager.setFocusDuration(minutes: 10)
+                            }
+                            Button("15 Minutes") {
+                                timerManager.setFocusDuration(minutes: 15)
+                            }
+                            Button("25 Minutes (Classic Pomodoro)") {
+                                timerManager.setFocusDuration(minutes: 25)
+                            }
+                            Button("45 Minutes (Deep Work)") {
+                                timerManager.setFocusDuration(minutes: 45)
+                            }
+                            Button("60 Minutes (Lecture)") {
+                                timerManager.setFocusDuration(minutes: 60)
+                            }
+                        }
+                    } label: {
+                        Text(timerManager.currentPhase.badgeLabel)
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .foregroundColor(phaseColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(phaseColor.opacity(0.12))
+                            .clipShape(Capsule(style: .continuous))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Change focus duration")
                 }
 
                 if timerManager.cycleCount > 0 {
@@ -58,8 +99,8 @@ public struct TopLeftTimerView: View {
                 }
             }
 
-            // Quick Playback Controls
-            HStack(spacing: 2) {
+            // Controls & Statistics Button
+            HStack(spacing: 3) {
                 Button(action: {
                     timerManager.togglePlayPause()
                 }) {
@@ -70,7 +111,7 @@ public struct TopLeftTimerView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(timerManager.isRunning ? "Pause (Space)" : "Start 10m Focus Timer")
+                .help(timerManager.isRunning ? "Pause" : "Start Focus Timer")
 
                 Button(action: {
                     timerManager.skipToNextPhase()
@@ -94,7 +135,7 @@ public struct TopLeftTimerView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Reset to 10:00")
+                .help("Reset Session")
 
                 Button(action: {
                     timerManager.toggleMute()
@@ -107,6 +148,25 @@ public struct TopLeftTimerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(timerManager.isMuted ? "Unmute Beeps" : "Mute Beeps")
+
+                if let openStats = onOpenStats {
+                    Divider()
+                        .frame(height: 12)
+                        .background(MedhaTheme.Colors.borderHairline)
+                        .padding(.horizontal, 1)
+
+                    Button(action: {
+                        openStats()
+                    }) {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundColor(MedhaTheme.Colors.accentStart)
+                            .frame(width: 16, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Study Statistics & Activity Rings (⌘⇧T)")
+                }
             }
             .padding(.leading, 1)
         }

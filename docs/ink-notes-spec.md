@@ -20,7 +20,7 @@
 
 1. **Vision & Scope (v1):** Primary use cases are study notes, math derivations, conceptual diagrams, and meeting scribbles. Vector freehand drawing + basic sketches. Shape snapping, floating text boxes, and PDF markup are cleanly deferred to v2+.
 2. **Input Devices:** Supported on macOS right now: Trackpad & Mouse (velocity-simulated dynamic pressure) + USB/Bluetooth graphic tablets (Wacom/Huion via standard `NSEvent` tablet pressure & tilt) + iPad Sidecar/Universal Control. Input events are abstracted so touchscreen/stylus on Android/Windows will connect directly.
-3. **Canvas Model:** Vertical continuous paged canvas (standard page width e.g., A4/US Letter aspect ratio, vertical scrolling with auto-added pages as drawing extends downward) with 4 background templates: Blank, Lined/Ruled, Grid, and Dot Grid. Clean export to standard multi-page PDF.
+3. **Canvas Model & Multi-Mode Layouts:** Supports 3 dedicated canvas modes: (1) **A4 Pages** (`.a4Pages`): discrete standard A4 aspect cards stacked vertically with multi-page management; (2) **Infinite Long Sheet** (`.infiniteVertical`): fixed 794pt width, continuous seamless vertical downward growth as strokes extend; (3) **Open Space 2D Infinite** (`.infinite2D`): unbounded freeform 2D plane with infinite tiling templates in all directions. All modes support 4 background templates: Blank, Lined/Ruled, Grid, and Dot Grid.
 4. **Ink Engine Architecture:** Custom platform-neutral Vector Stroke Engine (pure Swift geometry: Catmull-Rom spline smoothing, variable-width polygon outline generation). Rendered via Core Graphics/Metal/SwiftUI Canvas on macOS; 100% portable to Android Canvas/Skia and Windows Direct2D.
 5. **Stroke Data Format:** Normalized JSON payload per page with `schemaVersion: 1`, storing strokes with `[x, y, pressure, timeOffset]`, tool type, color hex, and base width. Cleanly versioned, easily parsed, and cross-platform.
 6. **Tool Suite & Undo:** Ballpoint Pen (pressure-sensitive), Fountain/Calligraphy Pen (velocity/angle width), Highlighter (semi-transparent multiply blend mode rendered behind ink), Stroke Eraser (deletes entire stroke on collision), and Lasso Selection (select, move, delete strokes). 50-step undo/redo depth.
@@ -29,11 +29,11 @@
 9. **Storage & Autosave:** Dedicated SQLite table `ink_document_page` (keyed by `docId` and `pageIndex`). 500ms debounced autosave on stroke completion + in-memory dirty buffer for zero data loss on unexpected termination.
 10. **Search & OCR:** Excluded from v1. Notes are indexed and searched by title; OCR handwriting-to-text is planned for a dedicated future phase.
 11. **AI Pipeline:** Ink notes are excluded from the Auto-Generate Note Pipeline until handwriting OCR is available.
-12. **Performance & Rendering:** Two-layer render architecture: (1) active live-stroke layer (sub-8ms latency, 120fps direct draw) + (2) off-screen static page bitmap cache (re-rasterized only on stroke commit/erase/zoom change). Viewport culling for off-screen pages. Target: smooth handling of 10,000+ strokes per note.
-13. **UX Controls & Dark Mode:** Floating top/dock canvas toolbar with tool selectors, 5 color presets + color picker, 1–24px stroke width slider, page template selector, zoom controls (50%–200%), and keyboard shortcuts (`P`, `H`, `E`, `L`, `Cmd+Z`, `Cmd+Shift+Z`). Full dark mode support.
-14. **Export & Import:** Vector paginated PDF export (printable, vector-sharp) and high-res PNG export. Native `.medharaink` JSON bundle export/import.
+12. **Performance & Rendering:** Direct CoreGraphics vector outline rendering with floating-point coordinate precision, ensuring crisp subpixel antialiasing at all zoom scales from 10% to 1000%.
+13. **Flexible Zoom & Pan Navigation:** Smooth trackpad pinch-to-zoom (`magnify(with:)`) anchored on mouse cursor, two-finger pan, Cmd+Scroll wheel zoom, Spacebar hold for Hand Tool (`openHand` / `closedHand` drag), quick presets (100% ⌘0, Fit Width ⌘9, Fit All Content), zoom range 10%–1000%, and keyboard shortcuts (`P`, `F`, `H`, `E`, `L`, `Cmd+Z`, `Cmd+Shift+Z`). Full dark mode support.
+14. **Export & Import:** Vector paginated PDF export (multi-page for A4, auto-sliced for Infinite Long, framed bounding box for 2D Infinite) and high-res PNG export. Native `.medharaink` JSON bundle export/import.
 15. **Testing & Quality Assurance:** Automated geometry/spline tests, serialization round-trip tests, 5,000-stroke synthetic performance stress tests in `MedhaTestRunner`, plus manual tablet/pen feel verification.
-16. **Portability Assurance:** Pure platform-neutral data structs (`InkStroke`, `InkPoint`, `InkPage`, `InkTool`) in core `MedhaKit`, separated from AppKit/macOS rendering view components.
+16. **Portability Assurance:** Pure platform-neutral data structs (`InkStroke`, `InkPoint`, `InkPage`, `InkTool`, `InkCanvasMode`) in core `MedhaKit`, separated from AppKit/macOS rendering view components.
 
 ---
 

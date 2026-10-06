@@ -79,6 +79,7 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
     public var createdAt: Date
     public var updatedAt: Date
     public var notebookId: String?   // Optional notebook ID (for root docs)
+    public var canvasMode: InkCanvasMode? // Optional canvas mode for .inkDoc (defaults to .a4Pages)
 
     public init(
         id: String = Block.generateId(),
@@ -91,7 +92,8 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
         refTargetId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        notebookId: String? = nil
+        notebookId: String? = nil,
+        canvasMode: InkCanvasMode? = nil
     ) {
         self.id = id
         self.rootDocId = rootDocId
@@ -104,6 +106,7 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.notebookId = notebookId
+        self.canvasMode = canvasMode
     }
 
     public static func generateId() -> String {
@@ -120,6 +123,10 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
 
     public var isHeading: Bool {
         type == .heading1 || type == .heading2 || type == .heading3
+    }
+
+    public var resolvedCanvasMode: InkCanvasMode {
+        canvasMode ?? .a4Pages
     }
 }
 
@@ -139,5 +146,6 @@ extension Block {
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
         public static let notebookId = Column(CodingKeys.notebookId)
+        public static let canvasMode = Column(CodingKeys.canvasMode)
     }
 }

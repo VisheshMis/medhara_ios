@@ -1,14 +1,21 @@
 // Medha Windows Desktop — Main Application Orchestrator
 // Connects UI, engines, and shortcuts with 100% feature parity to macOS Medha
 
-const { BlockStore } = require('./store');
-const { fsrs, Rating } = require('./flashcards/fsrs');
-const { BlockEditorEngine } = require('./editor/blockEngine');
-const { InkCanvas } = require('./ink/inkCanvas');
-const { PalaceCanvas } = require('./palace/palaceCanvas');
-const { KnowledgeGraphEngine } = require('./graph/graphPhysics');
-const { AutoNotePipeline } = require('./ai/autoNotePipeline');
-const { FocusTimerManager } = require('./timer/focusTimer');
+let BlockStore, fsrs, Rating, BlockEditorEngine, InkCanvas, PalaceCanvas, KnowledgeGraphEngine, AutoNotePipeline, FocusTimerManager, ExportService;
+
+if (typeof require !== 'undefined') {
+    ({ BlockStore } = require('./store'));
+    ({ fsrs, Rating } = require('./flashcards/fsrs'));
+    ({ BlockEditorEngine } = require('./editor/blockEngine'));
+    ({ InkCanvas } = require('./ink/inkCanvas'));
+    ({ PalaceCanvas } = require('./palace/palaceCanvas'));
+    ({ KnowledgeGraphEngine } = require('./graph/graphPhysics'));
+    ({ AutoNotePipeline } = require('./ai/autoNotePipeline'));
+    ({ FocusTimerManager } = require('./timer/focusTimer'));
+    ({ ExportService } = require('./exportService'));
+} else if (typeof window !== 'undefined' && window.__MedhaModules) {
+    ({ BlockStore, fsrs, Rating, BlockEditorEngine, InkCanvas, PalaceCanvas, KnowledgeGraphEngine, AutoNotePipeline, FocusTimerManager, ExportService } = window.__MedhaModules);
+}
 
 class MedhaDesktopApp {
     constructor() {
@@ -42,6 +49,7 @@ class MedhaDesktopApp {
 
         this.initUI();
         this.bindNavigationTabs();
+        this.initCommandPalette();
 
         this.store.subscribe((event) => {
             if (event === 'load' || event === 'tree_changed') {
@@ -359,7 +367,14 @@ class MedhaDesktopApp {
 
     // --- Flashcards & FSRS-4.5 View ---
     async initFlashcardsView() {
-        this.dueCards = await this.store.query('SELECT * FROM flashcard WHERE isSuspended = 0 ORDER BY due ASC');
+        const api = window.medhaAPI || window.electronAPI;
+        if (api && typeof api.getDueCards === 'function') {
+            const res = await api.getDueCards();
+            this.dueCards = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+        } else {
+            this.dueCards = await this.store.query('SELECT * FROM flashcard WHERE isSuspended = 0 ORDER BY due ASC');
+        }
+
         const badge = document.getElementById('due-badge');
         if (badge) badge.textContent = this.dueCards.length;
 
@@ -389,10 +404,16 @@ class MedhaDesktopApp {
         if (cardHint) cardHint.textContent = card.hint ? `💡 ${card.hint}` : '';
 
         // Live Interval Chips Preview
-        document.getElementById('chip-again').textContent = fsrs.formatInterval(0);
-        document.getElementById('chip-hard').textContent = fsrs.formatInterval(fsrs.intervalDays(fsrs.nextRecallStability(card.difficulty, card.stability, 0.9, Rating.Hard)));
-        document.getElementById('chip-good').textContent = fsrs.formatInterval(fsrs.intervalDays(fsrs.nextRecallStability(card.difficulty, card.stability, 0.9, Rating.Good)));
-        document.getElementById('chip-easy').textContent = fsrs.formatInterval(fsrs.intervalDays(fsrs.nextRecallStability(card.difficulty, card.stability, 0.9, Rating.Easy)));
+        const preview = fsrs.previewIntervals(card);
+        const chipAgain = document.getElementById('chip-again');
+        const chipHard = document.getElementById('chip-hard');
+        const chipGood = document.getElementById('chip-good');
+        const chipEasy = document.getElementById('chip-easy');
+
+        if (chipAgain) chipAgain.textContent = fsrs.formatInterval(0); // 10m immediate
+        if (chipHard) chipHard.textContent = fsrs.formatInterval(preview[Rating.Hard]);
+        if (chipGood) chipGood.textContent = fsrs.formatInterval(preview[Rating.Good]);
+        if (chipEasy) chipEasy.textContent = fsrs.formatInterval(preview[Rating.Easy]);
 
         document.getElementById('rating-controls').style.display = 'flex';
     }
@@ -402,21 +423,31 @@ class MedhaDesktopApp {
         document.getElementById('flip-card-inner')?.classList.toggle('flipped', this.isCardFlipped);
     }
 
-    rateCurrentCard(ratingNum) {
+    async rateCurrentCard(ratingNum) {
         if (this.dueCards.length === 0) return;
         const card = this.dueCards[this.currentCardIndex];
-        const res = fsrs.review(card, ratingNum);
+        const api = window.medhaAPI || window.electronAPI;
 
-        this.store.execute(`
-            UPDATE flashcard
-            SET fsrsState = ?, stability = ?, difficulty = ?, elapsedDays = ?, scheduledDays = ?, reps = ?, lapses = ?, lastReview = ?, due = ?, updatedAt = ?
-            WHERE id = ?
-        `, [
-            res.card.fsrsState, res.card.stability, res.card.difficulty, res.card.elapsedDays,
-            res.card.scheduledDays, res.card.reps, res.card.lapses, res.card.lastReview,
-            res.card.due, res.card.updatedAt, card.id
-        ]);
+        if (api && typeof api.submitReview === 'function') {
+            const res = await api.submitReview(card.id, ratingNum);
+            if (res && res.data) {
+                this.dueCards[this.currentCardIndex] = res.data;
+            }
+        } else {
+            const res = fsrs.review(card, ratingNum);
+            this.store.execute(`
+                UPDATE flashcard
+                SET fsrsState = ?, stability = ?, difficulty = ?, elapsedDays = ?, scheduledDays = ?, reps = ?, lapses = ?, lastReview = ?, due = ?, updatedAt = ?
+                WHERE id = ?
+            `, [
+                res.card.fsrsState, res.card.stability, res.card.difficulty, res.card.elapsedDays,
+                res.card.scheduledDays, res.card.reps, res.card.lapses, res.card.lastReview,
+                res.card.due, res.card.updatedAt, card.id
+            ]);
+            this.dueCards[this.currentCardIndex] = res.card;
+        }
 
+        // Advance to next card
         this.currentCardIndex = (this.currentCardIndex + 1) % this.dueCards.length;
         this.renderFlashcardStage();
     }
@@ -511,9 +542,10 @@ class MedhaDesktopApp {
     async exportCurrentNote() {
         const doc = this.store.currentDoc;
         if (!doc) return;
-        const md = require('./services/exportService').ExportService.exportToMarkdown(doc, this.store.blocks);
-        if (window.electronAPI) {
-            await window.electronAPI.saveExportFileDialog(`${doc.content || 'Note'}.md`, md, 'md');
+        const md = ExportService ? ExportService.exportToMarkdown(doc, this.store.blocks) : '';
+        const api = window.medhaAPI || window.electronAPI;
+        if (api) {
+            await api.saveExportFileDialog(`${doc.content || 'Note'}.md`, md, 'md');
         }
     }
 
@@ -532,22 +564,182 @@ class MedhaDesktopApp {
         document.getElementById('ai-panel')?.classList.toggle('hidden', !this.isAIAssistantVisible);
     }
 
+    initCommandPalette() {
+        const overlay = document.getElementById('command-palette-overlay');
+        const input = document.getElementById('palette-search-input');
+        const resultsList = document.getElementById('palette-results-list');
+        if (!overlay || !input || !resultsList) return;
+
+        this.paletteSelectedIndex = -1;
+        this.paletteResults = [];
+
+        // Close on backdrop click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeCommandPalette();
+        });
+
+        // Search as you type
+        input.addEventListener('input', async (e) => {
+            const query = e.target.value.trim();
+            await this.performPaletteSearch(query);
+        });
+
+        // Keyboard navigation within input
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.closeCommandPalette();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this.movePaletteSelection(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this.movePaletteSelection(-1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this.paletteSelectedIndex >= 0 && this.paletteResults[this.paletteSelectedIndex]) {
+                    this.selectPaletteResult(this.paletteResults[this.paletteSelectedIndex]);
+                } else if (this.paletteResults.length > 0) {
+                    this.selectPaletteResult(this.paletteResults[0]);
+                }
+            }
+        });
+    }
+
     openCommandPalette() {
-        const q = prompt('Spotlight Search (FTS5):');
-        if (q) {
-            const results = this.store.search(q);
-            if (results.length > 0) {
-                this.store.selectDocument(results[0].rootDocId);
-            } else {
-                alert('No results found.');
+        const overlay = document.getElementById('command-palette-overlay');
+        const input = document.getElementById('palette-search-input');
+        if (!overlay || !input) return;
+
+        overlay.style.display = 'flex';
+        input.value = '';
+        input.focus();
+        this.paletteSelectedIndex = -1;
+        this.paletteResults = [];
+
+        const resultsList = document.getElementById('palette-results-list');
+        if (resultsList) {
+            resultsList.innerHTML = '<div class="palette-empty-state">Type to search notes and knowledge blocks across all notebooks...</div>';
+        }
+    }
+
+    closeCommandPalette() {
+        const overlay = document.getElementById('command-palette-overlay');
+        if (overlay) overlay.style.display = 'none';
+        this.paletteSelectedIndex = -1;
+    }
+
+    async performPaletteSearch(query) {
+        const resultsList = document.getElementById('palette-results-list');
+        if (!resultsList) return;
+
+        if (!query) {
+            this.paletteResults = [];
+            resultsList.innerHTML = '<div class="palette-empty-state">Type to search notes and knowledge blocks across all notebooks...</div>';
+            return;
+        }
+
+        let hits = [];
+        const api = window.medhaAPI || window.electronAPI;
+        if (api && typeof api.dbSearchFTS === 'function') {
+            const res = await api.dbSearchFTS(query);
+            if (res && res.success && Array.isArray(res.data)) {
+                hits = res.data;
             }
         }
+
+        if (hits.length === 0 && this.store) {
+            hits = this.store.search(query);
+        }
+
+        this.paletteResults = hits;
+        this.paletteSelectedIndex = hits.length > 0 ? 0 : -1;
+        this.renderPaletteResults();
+    }
+
+    renderPaletteResults() {
+        const resultsList = document.getElementById('palette-results-list');
+        if (!resultsList) return;
+
+        if (this.paletteResults.length === 0) {
+            resultsList.innerHTML = '<div class="palette-empty-state">No matching notes or blocks found.</div>';
+            return;
+        }
+
+        resultsList.innerHTML = '';
+        this.paletteResults.forEach((item, index) => {
+            const row = document.createElement('div');
+            row.className = `palette-result-item ${index === this.paletteSelectedIndex ? 'selected' : ''}`;
+            row.dataset.index = index;
+
+            const icon = item.type === 'doc' ? '📄' : (item.type === 'heading1' || item.type === 'heading2' ? '📌' : '💬');
+            const targetDoc = this.store.documents.find(d => d.id === item.rootDocId);
+            const docTitle = targetDoc ? targetDoc.content : (item.rootDocId || 'Note');
+
+            row.innerHTML = `
+                <span class="palette-item-icon">${icon}</span>
+                <div class="palette-item-body">
+                    <div class="palette-item-title">
+                        <span>${docTitle}</span>
+                        <span class="palette-item-type">${item.type || item.blockType || 'block'}</span>
+                    </div>
+                    <div class="palette-item-snippet">${item.snippet || item.content || ''}</div>
+                </div>
+            `;
+
+            row.addEventListener('click', () => {
+                this.selectPaletteResult(item);
+            });
+
+            resultsList.appendChild(row);
+        });
+
+        this.scrollSelectedPaletteItemIntoView();
+    }
+
+    movePaletteSelection(delta) {
+        if (this.paletteResults.length === 0) return;
+        const total = this.paletteResults.length;
+        this.paletteSelectedIndex = (this.paletteSelectedIndex + delta + total) % total;
+
+        const items = document.querySelectorAll('.palette-result-item');
+        items.forEach((item, idx) => {
+            item.classList.toggle('selected', idx === this.paletteSelectedIndex);
+        });
+
+        this.scrollSelectedPaletteItemIntoView();
+    }
+
+    scrollSelectedPaletteItemIntoView() {
+        const selected = document.querySelector('.palette-result-item.selected');
+        if (selected) {
+            selected.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    selectPaletteResult(item) {
+        if (!item) return;
+        const targetDocId = item.rootDocId || item.id;
+        this.closeCommandPalette();
+        this.switchView('editor');
+        this.store.selectDocument(targetDocId);
     }
 }
 
 // Bootstrap on DOM load
-window.addEventListener('DOMContentLoaded', () => {
-    const app = new MedhaDesktopApp();
-    app.init();
-    window.medhaApp = app;
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const app = new MedhaDesktopApp();
+        await app.init();
+        window.medhaApp = app;
+
+        // Signal to Electron main process that renderer is ready without errors
+        const api = window.medhaAPI || window.electronAPI;
+        if (api && typeof api.signalReady === 'function') {
+            api.signalReady();
+        }
+        console.log('[Medha] Renderer app successfully initialized.');
+    } catch (err) {
+        console.error('[Medha] Fatal initialization error in renderer:', err);
+    }
 });

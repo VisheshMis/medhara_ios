@@ -45,6 +45,39 @@ class DatabaseManager {
         return this.db;
     }
 
+    query(sql, params = []) {
+        const stmt = this.db.prepare(sql);
+        return params.length > 0 ? stmt.all(...params) : stmt.all();
+    }
+
+    queryOne(sql, params = []) {
+        const stmt = this.db.prepare(sql);
+        return params.length > 0 ? stmt.get(...params) : stmt.get();
+    }
+
+    run(sql, params = []) {
+        const stmt = this.db.prepare(sql);
+        return params.length > 0 ? stmt.run(...params) : stmt.run();
+    }
+
+    searchFTS(query, limit = 25) {
+        const clean = (query || '').trim().replace(/['"]/g, '');
+        if (!clean) return [];
+
+        const stmt = this.db.prepare(`
+            SELECT b.id, b.rootDocId, b.content, b.type, snippet(block_fts, 2, '<b>', '</b>', '...', 24) AS snippet
+            FROM block_fts f
+            JOIN block b ON b.id = f.id
+            WHERE block_fts MATCH ?
+            LIMIT ?
+        `);
+        return stmt.all(`${clean}*`, limit);
+    }
+
+    inTransaction(fn) {
+        return this.db.transaction(fn)();
+    }
+
     close() {
         if (this.db) {
             this.db.close();

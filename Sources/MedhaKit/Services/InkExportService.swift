@@ -130,6 +130,247 @@ public enum InkExportService {
         return bitmapRep.representation(using: .png, properties: [:])
     }
 
+    /// Exports an ink document to a crisp Vector PDF according to its canvas mode
+    public static func exportDocumentToVectorPDF(
+        title: String,
+        pages: [InkDocumentPage],
+        canvasMode: InkCanvasMode,
+        pageWidth: CGFloat = 794.0,
+        pageHeight: CGFloat = 1123.0
+    ) -> Data? {
+        switch canvasMode {
+        case .a4Pages:
+            return exportToVectorPDF(title: title, pages: pages, pageWidth: pageWidth, pageHeight: pageHeight)
+
+        case .infiniteVertical:
+            return exportInfiniteVerticalToPDF(title: title, pages: pages, pageWidth: pageWidth, pageHeight: pageHeight)
+
+        case .infinite2D:
+            return exportInfinite2DToPDF(title: title, pages: pages, minWidth: pageWidth, minHeight: pageHeight)
+        }
+    }
+
+    /// Exports an ink document to high-resolution PNG bitmap according to its canvas mode
+    public static func exportDocumentToPNG(
+        pages: [InkDocumentPage],
+        canvasMode: InkCanvasMode,
+        pageWidth: CGFloat = 794.0,
+        pageHeight: CGFloat = 1123.0,
+        scale: CGFloat = 2.0
+    ) -> Data? {
+        switch canvasMode {
+        case .a4Pages:
+            guard let first = pages.first else { return nil }
+            return exportToPNG(page: first, pageWidth: pageWidth, pageHeight: pageHeight, scale: scale)
+
+        case .infiniteVertical:
+            return exportInfiniteVerticalToPNG(pages: pages, pageWidth: pageWidth, pageHeight: pageHeight, scale: scale)
+
+        case .infinite2D:
+            return exportInfinite2DToPNG(pages: pages, minWidth: pageWidth, minHeight: pageHeight, scale: scale)
+        }
+    }
+
+    // MARK: - Infinite Vertical Export
+    private static func exportInfiniteVerticalToPDF(
+        title: String,
+        pages: [InkDocumentPage],
+        pageWidth: CGFloat,
+        pageHeight: CGFloat
+    ) -> Data? {
+        let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
+        let template = pages.first?.templateType ?? .lined
+
+        var maxY: Double = Double(pageHeight)
+        for stroke in allStrokes {
+            for pt in stroke.points {
+                if pt.y > maxY { maxY = pt.y }
+            }
+        }
+        let totalHeight = max(pageHeight, ceil(CGFloat(maxY + 40.0) / pageHeight) * pageHeight)
+        let sliceCount = max(1, Int(round(totalHeight / pageHeight)))
+
+        let pdfData = NSMutableData()
+        var pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData),
+              let pdfContext = CGContext(consumer: consumer, mediaBox: &pageRect, nil) else {
+            return nil
+        }
+
+        for sliceIndex in 0..<sliceCount {
+            var box = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+            pdfContext.beginPage(mediaBox: &box)
+
+            pdfContext.saveGState()
+            pdfContext.translateBy(x: 0, y: pageHeight)
+            pdfContext.scaleBy(x: 1.0, y: -1.0)
+
+            // Draw template background for this slice
+            drawTemplate(template: template, width: pageWidth, height: pageHeight, in: pdfContext)
+
+            // Clip & translate to slice viewport
+            let sliceOffsetY = CGFloat(sliceIndex) * pageHeight
+            pdfContext.clip(to: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+            pdfContext.translateBy(x: 0, y: -sliceOffsetY)
+
+            // Render strokes
+            for stroke in allStrokes where stroke.tool == .highlighter {
+                renderStrokeToCGContext(stroke, in: pdfContext)
+            }
+            for stroke in allStrokes where stroke.tool != .highlighter {
+                renderStrokeToCGContext(stroke, in: pdfContext)
+            }
+
+            pdfContext.restoreGState()
+
+            drawPageNumber(pageNumber: sliceIndex + 1, totalPages: sliceCount, in: pdfContext, width: pageWidth)
+            pdfContext.endPage()
+        }
+
+        pdfContext.closePDF()
+        return pdfData as Data
+    }
+
+    private static func exportInfiniteVerticalToPNG(
+        pages: [InkDocumentPage],
+        pageWidth: CGFloat,
+        pageHeight: CGFloat,
+        scale: CGFloat
+    ) -> Data? {
+        let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
+        let template = pages.first?.templateType ?? .lined
+
+        var maxY: Double = Double(pageHeight)
+        for stroke in allStrokes {
+            for pt in stroke.points {
+                if pt.y > maxY { maxY = pt.y }
+            }
+        }
+        let totalHeight = max(pageHeight, CGFloat(maxY + 60.0))
+
+        let scaledWidth = Int(pageWidth * scale)
+        let scaledHeight = Int(totalHeight * scale)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let context = CGContext(
+            data: nil,
+            width: scaledWidth,
+            height: scaledHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: scaledWidth * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.scaleBy(x: scale, y: scale)
+        drawTemplate(template: template, width: pageWidth, height: totalHeight, in: context)
+
+        for stroke in allStrokes where stroke.tool == .highlighter {
+            renderStrokeToCGContext(stroke, in: context)
+        }
+        for stroke in allStrokes where stroke.tool != .highlighter {
+            renderStrokeToCGContext(stroke, in: context)
+        }
+
+        guard let cgImage = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
+    }
+
+    // MARK: - Infinite 2D Export
+    private static func exportInfinite2DToPDF(
+        title: String,
+        pages: [InkDocumentPage],
+        minWidth: CGFloat,
+        minHeight: CGFloat
+    ) -> Data? {
+        let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
+        let template = pages.first?.templateType ?? .dotGrid
+
+        let boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes) ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
+        let paddedRect = boundingBox.insetBy(dx: -48.0, dy: -48.0)
+        let exportWidth = max(minWidth, paddedRect.width)
+        let exportHeight = max(minHeight, paddedRect.height)
+
+        let pdfData = NSMutableData()
+        var pageRect = CGRect(x: 0, y: 0, width: exportWidth, height: exportHeight)
+
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData),
+              let pdfContext = CGContext(consumer: consumer, mediaBox: &pageRect, nil) else {
+            return nil
+        }
+
+        var box = CGRect(x: 0, y: 0, width: exportWidth, height: exportHeight)
+        pdfContext.beginPage(mediaBox: &box)
+
+        pdfContext.saveGState()
+        pdfContext.translateBy(x: 0, y: exportHeight)
+        pdfContext.scaleBy(x: 1.0, y: -1.0)
+
+        // Draw template across the framed bounding area
+        drawTemplate(template: template, width: exportWidth, height: exportHeight, in: pdfContext)
+
+        // Translate world coordinates so strokes align inside the padded area
+        pdfContext.translateBy(x: -paddedRect.minX, y: -paddedRect.minY)
+
+        for stroke in allStrokes where stroke.tool == .highlighter {
+            renderStrokeToCGContext(stroke, in: pdfContext)
+        }
+        for stroke in allStrokes where stroke.tool != .highlighter {
+            renderStrokeToCGContext(stroke, in: pdfContext)
+        }
+
+        pdfContext.restoreGState()
+        pdfContext.endPage()
+        pdfContext.closePDF()
+
+        return pdfData as Data
+    }
+
+    private static func exportInfinite2DToPNG(
+        pages: [InkDocumentPage],
+        minWidth: CGFloat,
+        minHeight: CGFloat,
+        scale: CGFloat
+    ) -> Data? {
+        let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
+        let template = pages.first?.templateType ?? .dotGrid
+
+        let boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes) ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
+        let paddedRect = boundingBox.insetBy(dx: -48.0, dy: -48.0)
+        let exportWidth = max(minWidth, paddedRect.width)
+        let exportHeight = max(minHeight, paddedRect.height)
+
+        let scaledWidth = Int(exportWidth * scale)
+        let scaledHeight = Int(exportHeight * scale)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let context = CGContext(
+            data: nil,
+            width: scaledWidth,
+            height: scaledHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: scaledWidth * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.scaleBy(x: scale, y: scale)
+        drawTemplate(template: template, width: exportWidth, height: exportHeight, in: context)
+
+        context.translateBy(x: -paddedRect.minX, y: -paddedRect.minY)
+
+        for stroke in allStrokes where stroke.tool == .highlighter {
+            renderStrokeToCGContext(stroke, in: context)
+        }
+        for stroke in allStrokes where stroke.tool != .highlighter {
+            renderStrokeToCGContext(stroke, in: context)
+        }
+
+        guard let cgImage = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
+    }
+
     // MARK: - Private Drawing Helpers
     private static func drawTemplate(
         template: InkTemplateType,

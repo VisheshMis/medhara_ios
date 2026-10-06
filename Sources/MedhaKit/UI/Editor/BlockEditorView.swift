@@ -17,6 +17,7 @@ public struct BlockEditorView: View {
             if let doc = store.currentDoc {
                 if doc.isInkDocument {
                     InkNoteEditorView(store: store, doc: doc)
+                        .clipped()
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {

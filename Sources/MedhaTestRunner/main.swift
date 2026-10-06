@@ -2431,8 +2431,11 @@ struct TestRunner {
             assert(!children.isEmpty, "Failed: commitTreeToStore must create child documents under root document")
 
             // 34.11: Skeletal Marker & 2-Step Hierarchy Verification
-            if let firstChild = children.first {
-                store.selectDocument(id: firstChild.id)
+            if let skeletalChild = children.first(where: { child in
+                let node = pipelineService.tree.nodes.values.first(where: { $0.title.lowercased() == child.content.lowercased() })
+                return node?.markdown_content == nil || node?.markdown_content?.isEmpty == true
+            }) ?? children.first {
+                store.selectDocument(id: skeletalChild.id)
                 store.reloadBlocks()
                 assert(store.blocks.contains(where: { $0.content.contains("Skeletal Note") }), "Failed: Skeletal child documents must contain skeletal marker block")
             }
@@ -2682,7 +2685,178 @@ struct TestRunner {
         assert(occlusionReviewResult!.card.stability > 0, "Failed: stability must increase")
         print("✅ testImageOcclusionFlashcards passed")
 
-        print("\n🎉 ALL 39 TEST SUITES PASSED SUCCESSFULLY!")
+        // MARK: - Suite 40: Multi-Mode Ink Canvas & Flexible Zoom Navigation
+        print("\n--- Running Suite 40: Multi-Mode Ink Canvas & Flexible Zoom Navigation ---")
+        // 1. Verify InkCanvasMode metadata
+        assert(InkCanvasMode.allCases.count == 3, "Failed: Must have 3 canvas modes")
+        assert(InkCanvasMode.a4Pages.displayName == "A4 Pages", "Failed: a4Pages displayName")
+        assert(InkCanvasMode.infiniteVertical.displayName == "Infinite Long Sheet", "Failed: infiniteVertical displayName")
+        assert(InkCanvasMode.infinite2D.displayName == "Open Space 2D Infinite", "Failed: infinite2D displayName")
+
+        // 2. Create notes in each mode and verify persistence
+        let a4Doc = store.createInkDocument(title: "A4 Biology Notes", templateType: .lined, canvasMode: .a4Pages)
+        assert(a4Doc.resolvedCanvasMode == .a4Pages, "Failed: a4Doc must resolve to .a4Pages")
+
+        let vertDoc = store.createInkDocument(title: "Infinite Calculus Scroll", templateType: .grid, canvasMode: .infiniteVertical)
+        assert(vertDoc.resolvedCanvasMode == .infiniteVertical, "Failed: vertDoc must resolve to .infiniteVertical")
+
+        let spaceDoc = store.createInkDocument(title: "Infinite 2D Architecture Map", templateType: .dotGrid, canvasMode: .infinite2D)
+        assert(spaceDoc.resolvedCanvasMode == .infinite2D, "Failed: spaceDoc must resolve to .infinite2D")
+
+        // 3. Database persistence reload check
+        let reloadedModeStore = BlockStore(dbManager: db)
+        let fetchedA4 = reloadedModeStore.documents.first(where: { $0.id == a4Doc.id })
+        let fetchedVert = reloadedModeStore.documents.first(where: { $0.id == vertDoc.id })
+        let fetchedSpace = reloadedModeStore.documents.first(where: { $0.id == spaceDoc.id })
+
+        assert(fetchedA4?.resolvedCanvasMode == .a4Pages, "Failed: reloaded a4Doc must have .a4Pages mode")
+        assert(fetchedVert?.resolvedCanvasMode == .infiniteVertical, "Failed: reloaded vertDoc must have .infiniteVertical mode")
+        assert(fetchedSpace?.resolvedCanvasMode == .infinite2D, "Failed: reloaded spaceDoc must have .infinite2D mode")
+
+        // 4. Backward compatibility check: raw block with nil canvasMode defaults to .a4Pages
+        let legacyBlock = Block(rootDocId: "test-legacy", type: .inkDoc, content: "Legacy Note", canvasMode: nil)
+        assert(legacyBlock.resolvedCanvasMode == .a4Pages, "Failed: Legacy block without canvasMode must default to .a4Pages")
+
+        // 5. Multi-mode Vector PDF and PNG Export
+        let testStroke1 = InkStroke(
+            tool: .ballpoint,
+            colorHex: "#1E293B",
+            baseWidth: 2.5,
+            opacity: 1.0,
+            points: [
+                InkPoint(x: 100, y: 150, pressure: 0.5),
+                InkPoint(x: 200, y: 300, pressure: 0.7),
+                InkPoint(x: 350, y: 450, pressure: 0.6)
+            ]
+        )
+        let testStrokeVert = InkStroke(
+            tool: .fountain,
+            colorHex: "#3B82F6",
+            baseWidth: 3.0,
+            opacity: 1.0,
+            points: [
+                InkPoint(x: 120, y: 1400, pressure: 0.5), // extends beyond standard 1123pt page
+                InkPoint(x: 250, y: 1600, pressure: 0.8)
+            ]
+        )
+        let testStroke2D = InkStroke(
+            tool: .highlighter,
+            colorHex: "#F59E0B",
+            baseWidth: 15.0,
+            opacity: 0.6,
+            points: [
+                InkPoint(x: -200, y: -150, pressure: 0.5), // negative coordinates in 2D space
+                InkPoint(x: 400, y: 600, pressure: 0.5)
+            ]
+        )
+
+        // Save strokes to the respective documents
+        store.selectDocument(id: vertDoc.id)
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [testStroke1, testStrokeVert])
+
+        store.selectDocument(id: spaceDoc.id)
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [testStroke2D])
+
+        // Verify PDF Export for all 3 modes
+        let a4PDF = InkExportService.exportDocumentToVectorPDF(title: "A4 Note", pages: store.inkPages, canvasMode: .a4Pages)
+        assert(a4PDF != nil && a4PDF!.count > 100, "Failed: a4PDF export must produce valid non-empty PDF data")
+
+        store.selectDocument(id: vertDoc.id)
+        let vertPDF = InkExportService.exportDocumentToVectorPDF(title: "Vertical Note", pages: store.inkPages, canvasMode: .infiniteVertical)
+        assert(vertPDF != nil && vertPDF!.count > 100, "Failed: vertPDF export must produce valid multi-slice PDF data")
+
+        store.selectDocument(id: spaceDoc.id)
+        let spacePDF = InkExportService.exportDocumentToVectorPDF(title: "2D Space Note", pages: store.inkPages, canvasMode: .infinite2D)
+        assert(spacePDF != nil && spacePDF!.count > 100, "Failed: spacePDF export must produce valid bounded PDF data")
+
+        // Verify PNG Export for all 3 modes
+        let a4PNG = InkExportService.exportDocumentToPNG(pages: store.inkPages, canvasMode: .a4Pages)
+        assert(a4PNG != nil && a4PNG!.count > 100, "Failed: a4PNG export must produce non-empty image data")
+
+        store.selectDocument(id: vertDoc.id)
+        let vertPNG = InkExportService.exportDocumentToPNG(pages: store.inkPages, canvasMode: .infiniteVertical)
+        assert(vertPNG != nil && vertPNG!.count > 100, "Failed: vertPNG export must produce non-empty image data")
+
+        store.selectDocument(id: spaceDoc.id)
+        let spacePNG = InkExportService.exportDocumentToPNG(pages: store.inkPages, canvasMode: .infinite2D)
+        assert(spacePNG != nil && spacePNG!.count > 100, "Failed: spacePNG export must produce non-empty image data")
+
+        // 6. Viewport coordinate transformations and bounding box
+        let bbox = InkGeometry.combinedBoundingBox(for: [testStroke2D])
+        assert(bbox != nil, "Failed: combinedBoundingBox must compute valid bounding box for 2D strokes")
+        assert(bbox!.minX <= -200, "Failed: bbox must encompass negative coordinates")
+        assert(bbox!.maxX >= 400, "Failed: bbox must encompass positive coordinates")
+
+        // Viewport pan & zoom round-trip math
+        let zoom: CGFloat = 2.5
+        let pan = CGPoint(x: 150, y: 80)
+        let screenPt = CGPoint(x: 400, y: 330)
+        let canvasPt = CGPoint(x: (screenPt.x - pan.x) / zoom, y: (screenPt.y - pan.y) / zoom)
+        let projectedBack = CGPoint(x: canvasPt.x * zoom + pan.x, y: canvasPt.y * zoom + pan.y)
+        assert(abs(projectedBack.x - screenPt.x) < 0.001, "Failed: Viewport coordinate round-trip X")
+        assert(abs(projectedBack.y - screenPt.y) < 0.001, "Failed: Viewport coordinate round-trip Y")
+
+        print("✅ testInkCanvasModesAndFlexibleZoomNavigation passed")
+
+        // MARK: - Suite 41: Apple Watch-Style Pomodoro Focus Timer & Study Stats Engine
+        print("\n--- Running Suite 41: Apple Watch-Style Pomodoro Focus Timer & Study Stats Engine ---")
+        let focusTimer = store.timerManager
+        let statsService = store.focusStatsService
+
+        // 41.1: Verify Presets & Duration configuration
+        focusTimer.reset()
+        assert(focusTimer.remainingSeconds == 600, "Failed: Default remainingSeconds should be 600s")
+        assert(focusTimer.progressRatio == 0.0, "Failed: Fresh timer progressRatio should be 0.0")
+
+        focusTimer.setFocusDuration(minutes: 25)
+        assert(focusTimer.customFocusDuration == 1500, "Failed: 25m preset should set 1500s")
+        assert(focusTimer.remainingSeconds == 1500, "Failed: Unstarted timer should update remainingSeconds to 1500s")
+        assert(focusTimer.formattedTime == "25:00", "Failed: 25m formatted time should be 25:00")
+
+        // 41.2: Progress ratio calculation
+        focusTimer.remainingSeconds = 750
+        assert(abs(focusTimer.progressRatio - 0.5) < 0.01, "Failed: Progress ratio should be 50% at 750/1500s")
+
+        // 41.3: Reset back to 10m for compatibility
+        focusTimer.setFocusDuration(minutes: 10)
+        focusTimer.reset()
+        assert(focusTimer.remainingSeconds == 600, "Failed: Reset should return to custom duration")
+
+        // 41.4: Database persistence via FocusStatsService
+        let testSession = statsService.recordFocusChunk(
+            seconds: 1200, // 20 minutes
+            sessionPlanned: 1500,
+            docId: "b-doc-welcome",
+            isCompleted: true
+        )
+        assert(testSession != nil, "Failed: recordFocusChunk should successfully persist to SQLite")
+        assert(testSession?.focusedSeconds == 1200, "Failed: Recorded seconds must match")
+        assert(testSession?.isCompleted == true, "Failed: isCompleted flag must persist")
+
+        // 41.5: Verify Aggregated Today, Week, and Month Metrics
+        statsService.refreshAll()
+        assert(statsService.todayStats.totalSeconds >= 1200, "Failed: Today's totalSeconds must be at least 1200s")
+        assert(statsService.todayStats.sessionCount >= 1, "Failed: Today's sessionCount must be at least 1")
+        assert(statsService.weekStats.totalSeconds >= 1200, "Failed: Week's totalSeconds must include today's session")
+        assert(statsService.weekStats.dailyBuckets.count == 7, "Failed: Week daily buckets must have exactly 7 days")
+        assert(statsService.monthStats.totalSeconds >= 1200, "Failed: Month's totalSeconds must include session")
+        assert(statsService.monthStats.activeDaysCount >= 1, "Failed: Month activeDaysCount must be >= 1")
+
+        // 41.6: Daily Target Setting
+        statsService.setDailyTargetMinutes(90)
+        assert(statsService.dailyTargetMinutes == 90, "Failed: setDailyTargetMinutes")
+        assert(statsService.todayStats.targetMinutes == 90, "Failed: todayStats targetMinutes")
+
+        // 41.7: Existing Timer Cycle State Machine Integrity
+        focusTimer.reset()
+        focusTimer.remainingSeconds = 1
+        focusTimer.tick()
+        assert(focusTimer.currentPhase == .beepAndPause, "Failed: Phase must transition to beepAndPause")
+        focusTimer.reset()
+
+        print("✅ testFocusTimerStatsAndSessionPersistence passed")
+
+        print("\n🎉 ALL 41 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

@@ -7,6 +7,7 @@ const { AnkiImporter } = require('./services/ankiImporter');
 const { APICatalog } = require('./services/apiCatalog');
 const { AIService } = require('./services/aiService');
 const { ExportService } = require('./services/exportService');
+const { fsrs } = require('../src/js/flashcards/fsrs');
 
 let mainWindow = null;
 let dbManager = null;
@@ -109,19 +110,67 @@ function setupIPC() {
 
     ipcMain.handle('db-search-fts', (event, { query }) => {
         try {
-            const clean = query.trim().replace(/['"]/g, '');
-            if (!clean) return { success: true, data: [] };
-
-            const stmt = db.prepare(`
-                SELECT b.id, b.rootDocId, b.content, b.type, snippet(block_fts, 2, '<b>', '</b>', '...', 24) AS snippet
-                FROM block_fts f
-                JOIN block b ON b.id = f.id
-                WHERE block_fts MATCH ?
-                LIMIT 25
-            `);
-            const results = stmt.all(`${clean}*`);
+            const results = dbManager.searchFTS(query, 25);
             return { success: true, data: results };
         } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // Spaced repetition & Flashcards
+    ipcMain.handle('get-due-cards', (event, { deckId } = {}) => {
+        try {
+            const now = new Date().toISOString();
+            let sql = `SELECT * FROM flashcard WHERE (due <= ? OR fsrsState = 0) AND isSuspended = 0`;
+            const params = [now];
+            if (deckId) {
+                sql += ` AND deckId = ?`;
+                params.push(deckId);
+            }
+            sql += ` ORDER BY due ASC LIMIT 50`;
+            const cards = dbManager.query(sql, params);
+            return { success: true, data: cards };
+        } catch (e) {
+            console.error('get-due-cards error:', e);
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('submit-review', (event, { cardId, rating }) => {
+        try {
+            const card = dbManager.queryOne(`SELECT * FROM flashcard WHERE id = ?`, [cardId]);
+            if (!card) {
+                return { success: false, error: `Card with id ${cardId} not found` };
+            }
+
+            const reviewDate = new Date();
+            const res = fsrs.review(card, rating, reviewDate);
+
+            dbManager.inTransaction(() => {
+                dbManager.run(`
+                    UPDATE flashcard
+                    SET fsrsState = ?, stability = ?, difficulty = ?, elapsedDays = ?, scheduledDays = ?,
+                        reps = ?, lapses = ?, lastReview = ?, due = ?, updatedAt = ?
+                    WHERE id = ?
+                `, [
+                    res.card.fsrsState, res.card.stability, res.card.difficulty, res.card.elapsedDays,
+                    res.card.scheduledDays, res.card.reps, res.card.lapses, res.card.lastReview,
+                    res.card.due, res.card.updatedAt, card.id
+                ]);
+
+                // Record review log
+                const logId = 'rl-' + Math.random().toString(36).substring(2, 9);
+                dbManager.run(`
+                    INSERT INTO review_log (id, cardId, rating, state, elapsedDays, scheduledDays, reviewTime)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    logId, card.id, rating, String(res.newState), res.card.elapsedDays, res.card.scheduledDays, reviewDate.toISOString()
+                ]);
+            });
+
+            return { success: true, data: res.card };
+        } catch (e) {
+            console.error('submit-review error:', e);
             return { success: false, error: e.message };
         }
     });
@@ -220,6 +269,24 @@ function setupIPC() {
             return { success: true, data: res };
         } catch (e) {
             return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('get-app-paths', () => {
+        return {
+            userData: app.getPath('userData'),
+            documents: app.getPath('documents')
+        };
+    });
+
+    ipcMain.on('renderer-ready', () => {
+        console.log('[IPC] Renderer signaled ready.');
+        if (process.env.MEDHA_TEST_SMOKE === '1') {
+            console.log('[SMOKE TEST] Renderer ready signal received. Exiting successfully.');
+            setTimeout(() => {
+                app.quit();
+                process.exit(0);
+            }, 300);
         }
     });
 }

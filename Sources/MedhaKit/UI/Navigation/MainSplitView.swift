@@ -10,47 +10,87 @@ public struct MainSplitView: View {
 
     public var body: some View {
         ZStack {
-            NavigationSplitView {
-                SidebarView(store: store)
-                    .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
-            } detail: {
-                switch store.activeMainView {
-                case .editor:
-                    HStack(spacing: 0) {
-                        if store.isDocumentTreeVisible {
-                            DocumentTreeView(store: store)
-                                .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
-                                .transition(.move(edge: .leading).combined(with: .opacity))
-                            Divider()
-                        }
+            if store.isInkFocusMode && (store.currentDoc?.isInkDocument ?? false) {
+                // Dedicated Full Screen Focus Mode: canvas + writing tools only
+                BlockEditorView(store: store)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            } else {
+                NavigationSplitView {
+                    SidebarView(store: store)
+                        .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 270)
+                } detail: {
+                    switch store.activeMainView {
+                    case .editor:
+                        HStack(spacing: 0) {
+                            if store.isDocumentTreeVisible {
+                                DocumentTreeView(store: store)
+                                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
+                                    .transition(.move(edge: .leading).combined(with: .opacity))
+                                Divider()
+                            }
 
-                        BlockEditorView(store: store)
-                            .frame(minWidth: 420, maxWidth: .infinity)
+                            BlockEditorView(store: store)
+                                .frame(minWidth: 420, maxWidth: .infinity)
 
-                        if store.isNotesAIAssistantPresented {
-                            Divider()
-                            NotesAIAssistantView(store: store)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                        } else if store.isInspectorPresented {
-                            Divider()
-                            InspectorView(store: store)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                            if store.isNotesAIAssistantPresented {
+                                Divider()
+                                NotesAIAssistantView(store: store)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                            } else if store.isInspectorPresented {
+                                Divider()
+                                InspectorView(store: store)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                            }
                         }
+                    case .graph:
+                        GlobalGraphView(store: store)
+                    case .flashcards:
+                        FlashcardManagerView(store: store)
+                    case .palace:
+                        MemoryPalaceView(store: store)
                     }
-                case .graph:
-                    GlobalGraphView(store: store)
-                case .flashcards:
-                    FlashcardManagerView(store: store)
-                case .palace:
-                    MemoryPalaceView(store: store)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    TopLeftTimerView(timerManager: store.timerManager)
-                }
 
-                ToolbarItemGroup(placement: .primaryAction) {
+            // Command Palette Modal Overlay (⌘K)
+            if store.isCommandPalettePresented {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        store.isCommandPalettePresented = false
+                    }
+
+                CommandPaletteView(store: store, isPresented: $store.isCommandPalettePresented)
+                    .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+
+            // Block Reference Picker Modal Overlay
+            if store.isBlockPickerPresented {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        store.isBlockPickerPresented = false
+                    }
+
+                BlockPickerView(store: store, isPresented: $store.isBlockPickerPresented)
+                    .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if !(store.isInkFocusMode && (store.currentDoc?.isInkDocument ?? false)) {
+                    TopLeftTimerView(
+                        timerManager: store.timerManager,
+                        onOpenStats: {
+                            store.isFocusStatsPresented = true
+                        }
+                    )
+                }
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !(store.isInkFocusMode && (store.currentDoc?.isInkDocument ?? false)) {
                     if store.activeMainView == .editor {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -115,30 +155,21 @@ public struct MainSplitView: View {
                     }
                 }
             }
-
-            // Command Palette Modal Overlay (⌘K)
-            if store.isCommandPalettePresented {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        store.isCommandPalettePresented = false
-                    }
-
-                CommandPaletteView(store: store, isPresented: $store.isCommandPalettePresented)
-                    .transition(.scale(scale: 0.95).combined(with: .opacity))
-            }
-
-            // Block Reference Picker Modal Overlay
-            if store.isBlockPickerPresented {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        store.isBlockPickerPresented = false
-                    }
-
-                BlockPickerView(store: store, isPresented: $store.isBlockPickerPresented)
-                    .transition(.scale(scale: 0.95).combined(with: .opacity))
-            }
+        }
+        .sheet(isPresented: $store.isNewInkDocumentSheetPresented) {
+            NewInkNoteSheet(
+                store: store,
+                notebookId: store.pendingNewInkNotebookId,
+                parentDocId: store.pendingNewInkParentDocId,
+                onDismiss: {
+                    store.isNewInkDocumentSheetPresented = false
+                    store.pendingNewInkNotebookId = nil
+                    store.pendingNewInkParentDocId = nil
+                }
+            )
+        }
+        .sheet(isPresented: $store.isFocusStatsPresented) {
+            FocusStatsSheet(store: store)
         }
         .animation(.easeInOut(duration: 0.15), value: store.isCommandPalettePresented)
         .animation(.easeInOut(duration: 0.15), value: store.isBlockPickerPresented)

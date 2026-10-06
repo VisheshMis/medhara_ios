@@ -64,9 +64,11 @@ public enum MainViewDestination: String, CaseIterable, Identifiable, Sendable {
 public final class BlockStore: ObservableObject {
     public let dbManager: DatabaseManager
     public let searchService: SearchService
-    public let timerManager = FocusTimerManager()
+    public let focusStatsService: FocusStatsService
+    public let timerManager: FocusTimerManager
 
     @Published public var activeMainView: MainViewDestination = .editor
+    @Published public var isFocusStatsPresented: Bool = false
 
     @Published public var notebooks: [Notebook] = []
     @Published public var selectedNotebookId: String?
@@ -86,6 +88,10 @@ public final class BlockStore: ObservableObject {
     @Published public var activeInkColorHex: String = "#3B82F6" // Default modern blue ink
     @Published public var activeInkWidth: Double = 2.5
     @Published public var activeInkTemplate: InkTemplateType = .lined
+    @Published public var isNewInkDocumentSheetPresented: Bool = false
+    @Published public var pendingNewInkNotebookId: String? = nil
+    @Published public var pendingNewInkParentDocId: String? = nil
+    @Published public var isInkFocusMode: Bool = false
 
     // Undo / Redo Stacks for Active Ink Document (Strokes history)
     public var inkUndoStack: [[InkStroke]] = []
@@ -198,6 +204,9 @@ public final class BlockStore: ObservableObject {
     public init(dbManager: DatabaseManager = .shared) {
         self.dbManager = dbManager
         self.searchService = SearchService(dbWriter: dbManager.dbWriter)
+        let stats = FocusStatsService(dbWriter: dbManager.dbWriter)
+        self.focusStatsService = stats
+        self.timerManager = FocusTimerManager(statsService: stats)
         refreshAll()
     }
 
@@ -493,12 +502,19 @@ public final class BlockStore: ObservableObject {
         return doc
     }
 
+    public func promptCreateInkDocument(notebookId: String? = nil, parentDocId: String? = nil) {
+        self.pendingNewInkNotebookId = notebookId
+        self.pendingNewInkParentDocId = parentDocId
+        self.isNewInkDocumentSheetPresented = true
+    }
+
     @discardableResult
     public func createInkDocument(
         title: String = "Untitled Handwritten Note",
         notebookId: String? = nil,
         parentDocId: String? = nil,
-        templateType: InkTemplateType = .lined
+        templateType: InkTemplateType = .lined,
+        canvasMode: InkCanvasMode = .a4Pages
     ) -> Block {
         let now = Date()
         let parentDoc = parentDocId != nil ? (documents.first(where: { $0.id == parentDocId }) ?? getBlock(id: parentDocId!)) : nil
@@ -518,7 +534,8 @@ public final class BlockStore: ObservableObject {
             sortOrder: documents.count,
             createdAt: now,
             updatedAt: now,
-            notebookId: targetNbId
+            notebookId: targetNbId,
+            canvasMode: canvasMode
         )
 
         let initialPage = InkDocumentPage(
@@ -1001,6 +1018,7 @@ public final class BlockStore: ObservableObject {
 
     public func selectDocument(id: String?) {
         selectedDocId = id
+        timerManager.currentDocId = id
         focusedBlockId = nil
         guard let id = id else {
             currentDoc = nil

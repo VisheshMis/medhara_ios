@@ -8,6 +8,8 @@ public struct InkNoteEditorView: View {
     // Per-page strokes dictionary: [pageIndex: [InkStroke]]
     @State private var pagesStrokes: [Int: [InkStroke]] = [:]
     @State private var zoomScale: CGFloat = 1.0
+    @State private var isHandToolActive: Bool = false
+    @State private var viewportNSView: InkCanvasViewportNSView? = nil
 
     // PDF Import Trimming State
     @State private var isShowingPDFImportSheet: Bool = false
@@ -46,12 +48,13 @@ public struct InkNoteEditorView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Note Header
-            VStack(alignment: .leading, spacing: 8) {
-                ancestryBreadcrumbsView
+            // Note Header - Hidden completely in Full Screen Focus Mode
+            if !store.isInkFocusMode {
+                VStack(alignment: .leading, spacing: 8) {
+                    ancestryBreadcrumbsView
 
-                // Title bar with Ink Note badge, import/export, & page info
-                HStack(alignment: .center, spacing: 10) {
+                    // Title bar with Ink Note badge, mode badge, zoom, import/export
+                    HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "pencil.tip")
                         .font(.system(size: 20))
                         .foregroundColor(.orange)
@@ -60,32 +63,72 @@ public struct InkNoteEditorView: View {
                         get: { doc.content },
                         set: { store.renameDocument(docId: doc.id, newTitle: $0) }
                     ))
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .textFieldStyle(.plain)
+
+                    // Canvas Mode Badge
+                    HStack(spacing: 5) {
+                        Image(systemName: doc.resolvedCanvasMode.systemIcon)
+                            .font(.system(size: 10))
+                        Text(doc.resolvedCanvasMode.badgeLabel)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.12))
+                    .foregroundColor(.orange)
+                    .cornerRadius(6)
 
                     Spacer()
 
-                    // Zoom Controls
+                    // Zoom Controls & Hand Tool
                     HStack(spacing: 4) {
-                        Button(action: { zoomScale = max(0.5, zoomScale - 0.1) }) {
+                        // Hand Tool Toggle
+                        Button(action: { isHandToolActive.toggle() }) {
+                            Image(systemName: isHandToolActive ? "hand.raised.fill" : "hand.raised")
+                                .font(.system(size: 11))
+                                .foregroundColor(isHandToolActive ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Hand Tool (Spacebar + Drag to Pan)")
+
+                        Divider()
+                            .frame(height: 12)
+
+                        // Zoom Out
+                        Button(action: { viewportNSView?.zoomOut() }) {
                             Image(systemName: "minus.magnifyingglass")
                                 .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
-                        .help("Zoom Out")
+                        .help("Zoom Out (⌘-)")
 
-                        Text("\(Int(round(zoomScale * 100)))%")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .frame(width: 38)
-                            .onTapGesture { zoomScale = 1.0 }
-                            .help("Click to reset to 100%")
+                        // Zoom Percentage Dropdown Menu
+                        Menu {
+                            Button("100% Actual Size (⌘0)") { viewportNSView?.zoomToActualSize() }
+                            Button("Fit to Width (⌘9)") { viewportNSView?.zoomToFitWidth() }
+                            Button("Fit to All Content") { viewportNSView?.zoomToFitContent() }
+                            Divider()
+                            ForEach([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0], id: \.self) { preset in
+                                Button("\(Int(round(preset * 100)))%") {
+                                    viewportNSView?.zoomTo(scale: CGFloat(preset))
+                                }
+                            }
+                        } label: {
+                            Text("\(Int(round(zoomScale * 100)))%")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .frame(width: 40)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .help("Zoom Presets")
 
-                        Button(action: { zoomScale = min(2.0, zoomScale + 0.1) }) {
+                        // Zoom In
+                        Button(action: { viewportNSView?.zoomIn() }) {
                             Image(systemName: "plus.magnifyingglass")
                                 .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
-                        .help("Zoom In")
+                        .help("Zoom In (⌘+)")
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -114,7 +157,7 @@ public struct InkNoteEditorView: View {
                             Label("Export as Vector PDF...", systemImage: "doc.richtext")
                         }
                         Button(action: exportPNG) {
-                            Label("Export Current Page as PNG...", systemImage: "photo")
+                            Label("Export as PNG Image...", systemImage: "photo")
                         }
                     } label: {
                         HStack(spacing: 4) {
@@ -128,13 +171,31 @@ public struct InkNoteEditorView: View {
                         .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(6)
                     }
+                    // Focus Mode (Zen Mode) Button
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            store.isInkFocusMode.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 11))
+                            Text("Focus")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
                     .buttonStyle(.plain)
+                    .help("Full Screen Focus Mode (Esc to Exit)")
 
-                    // Page Count Badge
+                    // Page Count Badge or Continuous Badge
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.on.doc")
+                        Image(systemName: doc.resolvedCanvasMode == .a4Pages ? "doc.on.doc" : "infinity")
                             .font(.system(size: 11))
-                        Text("\(max(1, store.inkPages.count)) Page\(store.inkPages.count > 1 ? "s" : "")")
+                        Text(pageStatusLabel)
                             .font(.system(size: 11, weight: .medium))
                     }
                     .padding(.horizontal, 8)
@@ -149,63 +210,45 @@ public struct InkNoteEditorView: View {
             .padding(.bottom, 12)
 
             Divider()
+            }
 
-            // Main Interactive Multi-Page Canvas Area
+            // Main Interactive Multi-Page / Infinite Canvas Viewport
             ZStack(alignment: .top) {
-                // Background desk area
-                Color(NSColor.windowBackgroundColor)
-                    .ignoresSafeArea()
-
-                // Continuous Vertical Scrollable Pages
-                ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                    VStack(spacing: 36) {
-                        ForEach(Array(store.inkPages.enumerated()), id: \.element.id) { index, page in
-                            pageCard(index: index, page: page)
+                InkCanvasViewportRepresentable(
+                    docId: doc.id,
+                    canvasMode: doc.resolvedCanvasMode,
+                    templateType: store.activeInkTemplate,
+                    pdfPath: store.inkPages.first?.pdfPath,
+                    pdfPageIndex: store.inkPages.first?.pdfPageIndex,
+                    pagesStrokes: pagesStrokes,
+                    totalPagesCount: max(1, store.inkPages.count),
+                    activeTool: store.activeInkTool,
+                    activeColorHex: store.activeInkColorHex,
+                    activeWidth: store.activeInkWidth,
+                    zoomScale: $zoomScale,
+                    isHandToolActive: $isHandToolActive,
+                    viewportRef: $viewportNSView,
+                    onStrokesChanged: { pageIndex, strokes in
+                        recordStrokeHistory(pageIndex: pageIndex, newStrokes: strokes)
+                    },
+                    onAddPage: {
+                        store.addInkPage()
+                    },
+                    onDeletePage: { pageIndex in
+                        store.deleteInkPage(pageIndex: pageIndex)
+                    },
+                    onPerformUndo: performUndo,
+                    onPerformRedo: performRedo,
+                    onExitFocusMode: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            store.isInkFocusMode = false
                         }
-
-                        // Bottom Actions: Add Page or Import PDF
-                        HStack(spacing: 16) {
-                            Button(action: {
-                                store.addInkPage()
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 13))
-                                    Text("Add Next Blank Page")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 9)
-                                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button(action: promptImportPDF) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "doc.badge.plus")
-                                        .font(.system(size: 13))
-                                    Text("Import PDF Pages")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 9)
-                                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.bottom, 48)
                     }
-                    .scaleEffect(zoomScale)
-                    .padding(.vertical, 32)
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: .infinity)
-                }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
 
-                // Floating Dynamic Ink Toolbar
+                // Floating Dynamic Ink Toolbar - Writing tools only in focus mode!
                 InkToolbarView(
                     store: store,
                     onUndo: performUndo,
@@ -213,9 +256,38 @@ public struct InkNoteEditorView: View {
                     canUndo: !store.inkUndoStack.isEmpty,
                     canRedo: !store.inkRedoStack.isEmpty
                 )
-                .padding(.top, 16)
+                .padding(.top, store.isInkFocusMode ? 20 : 16)
+
+                // Exit Focus Mode button floating at top trailing corner in Focus Mode
+                if store.isInkFocusMode {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                store.isInkFocusMode = false
+                            }
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("Exit Focus (Esc)")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 20)
+                        .padding(.trailing, 24)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .sheet(isPresented: $isShowingPDFImportSheet) {
             if let url = pendingImportPDFURL {
@@ -243,84 +315,15 @@ public struct InkNoteEditorView: View {
         }
     }
 
-    // MARK: - Individual Page Card View
-    private func pageCard(index: Int, page: InkDocumentPage) -> some View {
-        VStack(alignment: .center, spacing: 8) {
-            // Page Header with Page Number, PDF Info badge, Template, and Delete
-            HStack(spacing: 8) {
-                Text("Page \(index + 1)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
-
-                if page.pdfPath != nil {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.text.fill")
-                            .font(.system(size: 9))
-                        Text("PDF Page \(page.pdfPageIndex ?? 1)")
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.12))
-                    .foregroundColor(.accentColor)
-                    .cornerRadius(4)
-                }
-
-                Spacer()
-
-                // Per-page Template Selector
-                Menu {
-                    ForEach(InkTemplateType.allCases, id: \.rawValue) { tmpl in
-                        Button(action: {
-                            store.setInkTemplate(template: tmpl, forPageIndex: page.pageIndex)
-                        }) {
-                            Label(tmpl.displayName, systemImage: tmpl.systemIcon)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: page.templateType.systemIcon)
-                            .font(.system(size: 10))
-                        Text(page.templateType.displayName)
-                            .font(.system(size: 10))
-                    }
-                    .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-
-                if store.inkPages.count > 1 {
-                    Button(action: {
-                        store.deleteInkPage(pageIndex: page.pageIndex)
-                    }) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.7))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete Page")
-                }
-            }
-            .frame(width: 794)
-
-            // Sheet Paper Canvas (with PDF background under vector ink)
-            InkCanvasRepresentable(
-                docId: doc.id,
-                pageIndex: page.pageIndex,
-                templateType: page.templateType,
-                pdfPath: page.pdfPath,
-                pdfPageIndex: page.pdfPageIndex,
-                strokes: pagesStrokes[page.pageIndex] ?? [],
-                activeTool: store.activeInkTool,
-                activeColorHex: store.activeInkColorHex,
-                activeWidth: store.activeInkWidth,
-                onStrokesChanged: { newStrokes in
-                    recordStrokeHistory(pageIndex: page.pageIndex, newStrokes: newStrokes)
-                }
-            )
-            .frame(width: 794, height: 1123) // Standard A4 Aspect Ratio
-            .background(Color.white)
-            .cornerRadius(4)
-            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+    private var pageStatusLabel: String {
+        switch doc.resolvedCanvasMode {
+        case .a4Pages:
+            let count = max(1, store.inkPages.count)
+            return "\(count) Page\(count > 1 ? "s" : "")"
+        case .infiniteVertical:
+            return "Infinite Vertical"
+        case .infinite2D:
+            return "Infinite 2D"
         }
     }
 
@@ -389,7 +392,11 @@ public struct InkNoteEditorView: View {
 
     // MARK: - Export Logic
     private func exportPDF() {
-        guard let pdfData = InkExportService.exportToVectorPDF(title: doc.content, pages: store.inkPages) else {
+        guard let pdfData = InkExportService.exportDocumentToVectorPDF(
+            title: doc.content,
+            pages: store.inkPages,
+            canvasMode: doc.resolvedCanvasMode
+        ) else {
             return
         }
         let savePanel = NSSavePanel()
@@ -405,14 +412,16 @@ public struct InkNoteEditorView: View {
     }
 
     private func exportPNG() {
-        guard let firstPage = store.inkPages.first,
-              let pngData = InkExportService.exportToPNG(page: firstPage) else {
+        guard let pngData = InkExportService.exportDocumentToPNG(
+            pages: store.inkPages,
+            canvasMode: doc.resolvedCanvasMode
+        ) else {
             return
         }
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.png]
         let cleanName = doc.content.isEmpty ? "Untitled Note" : doc.content
-        savePanel.nameFieldStringValue = "\(cleanName)-Page1.png"
+        savePanel.nameFieldStringValue = "\(cleanName).png"
 
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {

@@ -285,5 +285,26 @@ public enum DatabaseMigrations {
             try db.execute(sql: "ALTER TABLE flashcard ADD COLUMN occlusionMode INTEGER DEFAULT 1;")
             try db.create(index: "idx_flashcard_cardType", on: "flashcard", columns: ["cardType"])
         }
+
+        migrator.registerMigration("v11_ink_canvas_mode") { db in
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN canvasMode TEXT DEFAULT 'a4Pages';")
+        }
+
+        migrator.registerMigration("v12_focus_sessions") { db in
+            try db.create(table: "focus_session") { t in
+                t.column("id", .text).primaryKey()
+                t.column("durationSeconds", .integer).notNull().defaults(to: 0)
+                t.column("focusedSeconds", .integer).notNull().defaults(to: 0)
+                t.column("phase", .text).notNull().defaults(to: "focus")
+                t.column("docId", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("completedAt", .datetime)
+                t.column("isCompleted", .boolean).notNull().defaults(to: false)
+            }
+
+            try db.create(index: "idx_focus_session_createdAt", on: "focus_session", columns: ["createdAt"])
+            try db.create(index: "idx_focus_session_completedAt", on: "focus_session", columns: ["completedAt"])
+        }
     }
 }
+

@@ -264,6 +264,31 @@
         </div>
     </div>
 
+    <!-- Spotlight Search / Command Palette Overlay (FTS5) -->
+    <div id="command-palette-overlay" class="command-palette-overlay" style="display: none;">
+        <div class="command-palette-card">
+            <div class="palette-input-row">
+                <span class="palette-search-icon">🔍</span>
+                <input type="text" id="palette-search-input" class="palette-input" placeholder="Search notes, blocks, or type a command... (Esc to close)" />
+                <span class="palette-badge">FTS5</span>
+            </div>
+            <div id="palette-results-list" class="palette-results-list">
+                <div class="palette-empty-state">Type to search notes and knowledge blocks across all notebooks...</div>
+            </div>
+            <div class="palette-footer">
+                <span><kbd>↑</kbd> <kbd>↓</kbd> to navigate</span>
+                <span><kbd>Enter</kbd> to select</span>
+                <span><kbd>Esc</kbd> to dismiss</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/bundle.js"></script>
+    <script>
+        if (window.__MedhaModulesBundle) {
+            window.__MedhaModules = window.__MedhaModulesBundle;
+        }
+    </script>
     <script src="js/app.js"></script>
 </body>
 </html>

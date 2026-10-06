@@ -108,6 +108,7 @@ class BlockStore {
     async selectDocument(docId) {
         this.selectedDocId = docId;
         this.currentDoc = this.documents.find(d => d.id === docId) || null;
+        this.blocks = [];
         if (this.currentDoc) {
             if (this.currentDoc.type === 'inkDoc') {
                 await this.loadInkPages(docId);
@@ -176,6 +177,7 @@ class BlockStore {
         ]);
 
         this.blocks.push(newBlock);
+        this.syncBlockDocLinks(newBlock);
         this.notify('block_created', newBlock);
         return newBlock;
     }
@@ -186,8 +188,50 @@ class BlockStore {
             block.content = content;
             block.updatedAt = new Date().toISOString();
             this.execute('UPDATE block SET content = ?, updatedAt = ? WHERE id = ?', [content, block.updatedAt, id]);
+            this.syncBlockDocLinks(block);
             this.notify('block_updated', block);
         }
+    }
+
+    syncBlockDocLinks(block) {
+        if (!block || !block.rootDocId) return;
+        // Delete existing links originated from this block
+        this.execute('DELETE FROM doc_link WHERE sourceBlockId = ?', [block.id]);
+
+        const wikiLinkRegex = /\[\[(.*?)\]\]/g;
+        let match;
+        const now = new Date().toISOString();
+
+        while ((match = wikiLinkRegex.exec(block.content || '')) !== null) {
+            const targetTitle = match[1].trim();
+            if (targetTitle.length > 0) {
+                const targetDoc = this.documents.find(d => d.content && d.content.toLowerCase() === targetTitle.toLowerCase());
+                const targetDocId = targetDoc ? targetDoc.id : null;
+                const linkId = `link-${Math.random().toString(36).substring(2, 9)}`;
+
+                this.execute(`
+                    INSERT INTO doc_link (id, sourceDocId, sourceBlockId, targetTitle, targetDocId, createdAt)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `, [linkId, block.rootDocId, block.id, targetTitle, targetDocId, now]);
+            }
+        }
+    }
+
+    getBacklinks(docId) {
+        const targetDoc = this.documents.find(d => d.id === docId);
+        if (!targetDoc) return [];
+
+        if (this.db && typeof this.db.prepare === 'function') {
+            return this.db.prepare(`
+                SELECT dl.id, dl.sourceDocId, dl.sourceBlockId, dl.targetTitle, dl.createdAt,
+                       b.content AS blockContent, doc.content AS sourceDocTitle
+                FROM doc_link dl
+                JOIN block b ON b.id = dl.sourceBlockId
+                JOIN block doc ON doc.id = dl.sourceDocId
+                WHERE dl.targetDocId = ? OR dl.targetTitle = ?
+            `).all(docId, targetDoc.content);
+        }
+        return [];
     }
 
     convertBlockType(id, toType) {

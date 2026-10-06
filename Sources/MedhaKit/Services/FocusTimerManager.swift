@@ -40,20 +40,52 @@ public enum FocusTimerPhase: String, CaseIterable, Sendable {
 public final class FocusTimerManager: ObservableObject {
     @Published public var currentPhase: FocusTimerPhase = .focus
     @Published public var remainingSeconds: Int = FocusTimerPhase.focus.defaultDuration
+    @Published public var customFocusDuration: Int = FocusTimerPhase.focus.defaultDuration
     @Published public var isRunning: Bool = false
     @Published public var isMuted: Bool = false
     @Published public var cycleCount: Int = 0
 
+    // Accumulated focus tracking
+    public var currentDocId: String? = nil
+    private var accumulatedFocusSecondsInSession: Int = 0
+    private var uncommittedFocusSeconds: Int = 0
     private var cancellableTimer: AnyCancellable?
+    public weak var statsService: FocusStatsService?
 
-    public init() {
+    public init(statsService: FocusStatsService? = nil) {
+        self.statsService = statsService
         self.remainingSeconds = currentPhase.defaultDuration
+        self.customFocusDuration = currentPhase.defaultDuration
+    }
+
+    public var progressRatio: Double {
+        let total = totalDurationForCurrentPhase
+        guard total > 0 else { return 0.0 }
+        let elapsed = max(0, total - remainingSeconds)
+        return min(max(Double(elapsed) / Double(total), 0.0), 1.0)
+    }
+
+    public var totalDurationForCurrentPhase: Int {
+        switch currentPhase {
+        case .focus: return customFocusDuration
+        case .beepAndPause: return FocusTimerPhase.beepAndPause.defaultDuration
+        case .microBreak: return FocusTimerPhase.microBreak.defaultDuration
+        case .resetInterval: return FocusTimerPhase.resetInterval.defaultDuration
+        }
     }
 
     public var formattedTime: String {
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    public func setFocusDuration(minutes: Int) {
+        let newSeconds = max(60, minutes * 60)
+        customFocusDuration = newSeconds
+        if currentPhase == .focus && !isRunning {
+            remainingSeconds = newSeconds
+        }
     }
 
     public func togglePlayPause() {
@@ -79,12 +111,15 @@ public final class FocusTimerManager: ObservableObject {
         isRunning = false
         cancellableTimer?.cancel()
         cancellableTimer = nil
+        flushUncommittedFocus(isCompleted: false)
     }
 
     public func reset() {
         pause()
+        flushUncommittedFocus(isCompleted: false)
+        accumulatedFocusSecondsInSession = 0
         currentPhase = .focus
-        remainingSeconds = FocusTimerPhase.focus.defaultDuration
+        remainingSeconds = customFocusDuration
     }
 
     public func skipToNextPhase() {
@@ -96,6 +131,15 @@ public final class FocusTimerManager: ObservableObject {
     }
 
     public func tick() {
+        if currentPhase == .focus {
+            accumulatedFocusSecondsInSession += 1
+            uncommittedFocusSeconds += 1
+            // Commit incrementally every 10 seconds so stats stay live
+            if uncommittedFocusSeconds >= 10 {
+                flushUncommittedFocus(isCompleted: false)
+            }
+        }
+
         if remainingSeconds > 1 {
             remainingSeconds -= 1
         } else {
@@ -104,9 +148,25 @@ public final class FocusTimerManager: ObservableObject {
         }
     }
 
+    private func flushUncommittedFocus(isCompleted: Bool) {
+        guard uncommittedFocusSeconds > 0 else { return }
+        let secondsToFlush = uncommittedFocusSeconds
+        uncommittedFocusSeconds = 0
+        statsService?.recordFocusChunk(
+            seconds: secondsToFlush,
+            sessionPlanned: customFocusDuration,
+            docId: currentDocId,
+            isCompleted: isCompleted
+        )
+    }
+
     private func handlePhaseCompletion() {
         switch currentPhase {
         case .focus:
+            // Flush remaining uncommitted focus seconds and mark completed
+            flushUncommittedFocus(isCompleted: true)
+            accumulatedFocusSecondsInSession = 0
+
             // Reached 0: beep twice, pause for 2 seconds
             playTwoBeeps()
             currentPhase = .beepAndPause
@@ -123,14 +183,18 @@ public final class FocusTimerManager: ObservableObject {
             remainingSeconds = FocusTimerPhase.resetInterval.defaultDuration
 
         case .resetInterval:
-            // 10s finished: repeat cycle back to 10m
+            // 10s finished: repeat cycle back to focus duration
             cycleCount += 1
             currentPhase = .focus
-            remainingSeconds = FocusTimerPhase.focus.defaultDuration
+            remainingSeconds = customFocusDuration
         }
     }
 
     private func advanceToNextPhase() {
+        if currentPhase == .focus {
+            flushUncommittedFocus(isCompleted: false)
+            accumulatedFocusSecondsInSession = 0
+        }
         handlePhaseCompletion()
     }
 

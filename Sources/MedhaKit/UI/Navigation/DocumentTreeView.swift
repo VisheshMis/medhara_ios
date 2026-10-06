@@ -195,7 +195,7 @@ public struct DocumentTreeView: View {
 
                 // New Root Ink Document Button
                 Button(action: {
-                    store.createInkDocument()
+                    store.promptCreateInkDocument()
                 }) {
                     Image(systemName: "pencil.tip")
                         .font(.system(size: 13, weight: .semibold))
@@ -282,7 +282,7 @@ public struct DocumentTreeView: View {
                                 onSelect: { store.selectDocument(id: node.doc.id) },
                                 onToggleExpand: { store.toggleDocExpansion(id: node.doc.id) },
                                 onNewSubnote: { store.createDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
-                                onNewInkSubnote: { store.createInkDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
+                                onNewInkSubnote: { store.promptCreateInkDocument(notebookId: node.doc.notebookId, parentDocId: node.doc.id) },
                                 onDelete: { store.deleteDocument(docId: node.doc.id) },
                                 onOpenAI: { store.isNotesAIAssistantPresented = true }
                             )

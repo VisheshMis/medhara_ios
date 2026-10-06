@@ -114,6 +114,19 @@ const DatabaseMigrations = {
                 CREATE INDEX IF NOT EXISTS idx_flashcard_due ON flashcard(due);
                 CREATE INDEX IF NOT EXISTS idx_flashcard_fsrsState ON flashcard(fsrsState);
 
+                CREATE TABLE IF NOT EXISTS review_log (
+                    id TEXT PRIMARY KEY,
+                    cardId TEXT NOT NULL,
+                    rating INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    elapsedDays INTEGER NOT NULL DEFAULT 0,
+                    scheduledDays INTEGER NOT NULL DEFAULT 0,
+                    reviewTime DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_review_log_cardId ON review_log(cardId);
+                CREATE INDEX IF NOT EXISTS idx_review_log_reviewTime ON review_log(reviewTime);
+
                 CREATE TABLE IF NOT EXISTS memory_palace (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -189,12 +202,20 @@ const DatabaseMigrations = {
 
                 CREATE INDEX IF NOT EXISTS idx_locus_flashcard_locusId ON locus_flashcard(locusId);
                 CREATE INDEX IF NOT EXISTS idx_locus_flashcard_flashcardId ON locus_flashcard(flashcardId);
+            `);
 
-                ALTER TABLE palace_locus ADD COLUMN photoId TEXT;
-                ALTER TABLE palace_locus ADD COLUMN anchoredInfo TEXT;
-                CREATE INDEX IF NOT EXISTS idx_palace_locus_photoId ON palace_locus(photoId);
+            // Add columns safely if not already present
+            const cols = db.prepare("PRAGMA table_info(palace_locus)").all().map(c => c.name);
+            if (!cols.includes('photoId')) {
+                db.exec("ALTER TABLE palace_locus ADD COLUMN photoId TEXT;");
+            }
+            if (!cols.includes('anchoredInfo')) {
+                db.exec("ALTER TABLE palace_locus ADD COLUMN anchoredInfo TEXT;");
+            }
+            db.exec("CREATE INDEX IF NOT EXISTS idx_palace_locus_photoId ON palace_locus(photoId);");
 
-                INSERT INTO palace_photo (id, palaceId, name, imagePath, imageData, orderIndex, createdAt, updatedAt)
+            db.exec(`
+                INSERT OR IGNORE INTO palace_photo (id, palaceId, name, imagePath, imageData, orderIndex, createdAt, updatedAt)
                 SELECT 'photo-' || id, id, name, imagePath, imageData, 0, createdAt, updatedAt
                 FROM memory_palace;
 
@@ -202,7 +223,7 @@ const DatabaseMigrations = {
                 SET photoId = (SELECT id FROM palace_photo WHERE palace_photo.palaceId = palace_locus.palaceId LIMIT 1)
                 WHERE photoId IS NULL;
 
-                INSERT INTO locus_flashcard (id, locusId, flashcardId, sortOrder, createdAt)
+                INSERT OR IGNORE INTO locus_flashcard (id, locusId, flashcardId, sortOrder, createdAt)
                 SELECT 'lf-' || id, id, flashcardId, 0, datetime('now')
                 FROM palace_locus
                 WHERE flashcardId IS NOT NULL AND flashcardId != '';
@@ -211,12 +232,13 @@ const DatabaseMigrations = {
 
         // v5: Vast Canvas Photos (Spatial coordinates on canvas)
         runMigration('v5_vast_canvas_photos', () => {
-            db.exec(`
-                ALTER TABLE palace_photo ADD COLUMN canvasX REAL DEFAULT 100.0;
-                ALTER TABLE palace_photo ADD COLUMN canvasY REAL DEFAULT 100.0;
-                ALTER TABLE palace_photo ADD COLUMN canvasWidth REAL DEFAULT 420.0;
-                ALTER TABLE palace_photo ADD COLUMN canvasHeight REAL DEFAULT 280.0;
+            const cols = db.prepare("PRAGMA table_info(palace_photo)").all().map(c => c.name);
+            if (!cols.includes('canvasX')) db.exec("ALTER TABLE palace_photo ADD COLUMN canvasX REAL DEFAULT 100.0;");
+            if (!cols.includes('canvasY')) db.exec("ALTER TABLE palace_photo ADD COLUMN canvasY REAL DEFAULT 100.0;");
+            if (!cols.includes('canvasWidth')) db.exec("ALTER TABLE palace_photo ADD COLUMN canvasWidth REAL DEFAULT 420.0;");
+            if (!cols.includes('canvasHeight')) db.exec("ALTER TABLE palace_photo ADD COLUMN canvasHeight REAL DEFAULT 280.0;");
 
+            db.exec(`
                 UPDATE palace_photo
                 SET canvasX = 80.0 + (orderIndex * 500.0),
                     canvasY = 120.0,
@@ -240,10 +262,15 @@ const DatabaseMigrations = {
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_deck_isNotesDefault ON deck(isNotesDefault);
+            `);
 
-                ALTER TABLE flashcard ADD COLUMN deckId TEXT;
-                CREATE INDEX IF NOT EXISTS idx_flashcard_deckId ON flashcard(deckId);
+            const cols = db.prepare("PRAGMA table_info(flashcard)").all().map(c => c.name);
+            if (!cols.includes('deckId')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN deckId TEXT;");
+            }
+            db.exec("CREATE INDEX IF NOT EXISTS idx_flashcard_deckId ON flashcard(deckId);");
 
+            db.exec(`
                 INSERT OR IGNORE INTO deck (id, name, description, colorHex, icon, isNotesDefault, createdAt, updatedAt)
                 VALUES (
                     'deck-notes-default',
@@ -264,10 +291,14 @@ const DatabaseMigrations = {
 
         // v7: Deck Options Presets and Card Flags
         runMigration('v7_deck_options_and_card_flags', () => {
-            db.exec(`
-                ALTER TABLE deck ADD COLUMN presetId TEXT;
-                ALTER TABLE flashcard ADD COLUMN isSuspended BOOLEAN DEFAULT 0;
-            `);
+            const deckCols = db.prepare("PRAGMA table_info(deck)").all().map(c => c.name);
+            if (!deckCols.includes('presetId')) {
+                db.exec("ALTER TABLE deck ADD COLUMN presetId TEXT;");
+            }
+            const cardCols = db.prepare("PRAGMA table_info(flashcard)").all().map(c => c.name);
+            if (!cardCols.includes('isSuspended')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN isSuspended BOOLEAN DEFAULT 0;");
+            }
         });
 
         // v8: Vector Ink Notes
@@ -291,10 +322,42 @@ const DatabaseMigrations = {
 
         // v9: Ink Page PDF Import
         runMigration('v9_ink_page_pdf_import', () => {
-            db.exec(`
-                ALTER TABLE ink_document_page ADD COLUMN pdfPath TEXT;
-                ALTER TABLE ink_document_page ADD COLUMN pdfPageIndex INTEGER;
-            `);
+            const cols = db.prepare("PRAGMA table_info(ink_document_page)").all().map(c => c.name);
+            if (!cols.includes('pdfPath')) {
+                db.exec("ALTER TABLE ink_document_page ADD COLUMN pdfPath TEXT;");
+            }
+            if (!cols.includes('pdfPageIndex')) {
+                db.exec("ALTER TABLE ink_document_page ADD COLUMN pdfPageIndex INTEGER;");
+            }
+        });
+
+        // v10: Image Occlusion Flashcards
+        runMigration('v10_image_occlusion_flashcards', () => {
+            const cols = db.prepare("PRAGMA table_info(flashcard)").all().map(c => c.name);
+            if (!cols.includes('cardType')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN cardType INTEGER DEFAULT 0;");
+            }
+            if (!cols.includes('imagePath')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN imagePath TEXT;");
+            }
+            if (!cols.includes('occlusionMasksData')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN occlusionMasksData TEXT;");
+            }
+            if (!cols.includes('activeMaskId')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN activeMaskId TEXT;");
+            }
+            if (!cols.includes('occlusionMode')) {
+                db.exec("ALTER TABLE flashcard ADD COLUMN occlusionMode INTEGER DEFAULT 1;");
+            }
+            db.exec("CREATE INDEX IF NOT EXISTS idx_flashcard_cardType ON flashcard(cardType);");
+        });
+
+        // v11: Ink Canvas Mode
+        runMigration('v11_ink_canvas_mode', () => {
+            const cols = db.prepare("PRAGMA table_info(block)").all().map(c => c.name);
+            if (!cols.includes('canvasMode')) {
+                db.exec("ALTER TABLE block ADD COLUMN canvasMode TEXT DEFAULT 'a4Pages';");
+            }
         });
     }
 };

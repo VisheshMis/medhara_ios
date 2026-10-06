@@ -9,8 +9,13 @@ public struct SidebarView: View {
         List {
             // Top-Left Recurring Focus Timer Widget
             Section {
-                TopLeftTimerView(timerManager: store.timerManager)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+                TopLeftTimerView(
+                    timerManager: store.timerManager,
+                    onOpenStats: {
+                        store.isFocusStatsPresented = true
+                    }
+                )
+                .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
             }
 
             // Spaced Repetition & Memory Palace Section
@@ -164,6 +169,9 @@ public struct SidebarView: View {
                     .contextMenu {
                         Button("New Document") {
                             store.createDocument(notebookId: nb.id)
+                        }
+                        Button("New Handwritten Note") {
+                            store.promptCreateInkDocument(notebookId: nb.id)
                         }
                         Divider()
                         Button("Delete Notebook", role: .destructive) {

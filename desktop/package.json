@@ -5,9 +5,18 @@
   "description": "Offline-First Cognitive Retention Engine & Spatial PKM for Windows",
   "main": "electron/main.js",
   "scripts": {
-    "start": "electron electron/main.js",
+    "build:renderer": "esbuild src/js/modules.js --bundle --format=iife --global-name=__MedhaModulesBundle --outfile=src/js/bundle.js",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build:renderer && electron electron/main.js",
     "test": "node tests/runner.js",
-    "dist:win": "electron-builder --win nsis portable --x64"
+    "test:db": "node tests/database.test.js",
+    "test:fsrs": "node tests/fsrs.test.js",
+    "test:ipc": "node tests/ipc.test.js",
+    "test:flashcards": "node tests/flashcards.test.js",
+    "test:pkm": "node tests/pkm.test.js",
+    "test:editor": "node tests/editor.test.js",
+    "test:smoke": "npm run build:renderer && node tests/smoke.js",
+    "dist:win": "npm run build:renderer && electron-builder --win nsis portable --x64"
   },
   "keywords": [
     "pkm",
@@ -26,8 +35,11 @@
     "sql.js": "^1.14.2"
   },
   "devDependencies": {
+    "@types/node": "^26.6.4",
     "electron": "^44.5.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
   },
   "build": {
     "appId": "com.medha.desktop",
