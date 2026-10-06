@@ -33,20 +33,22 @@ class PalaceCanvas {
             }
         });
 
-        window.addEventListener('mousemove', (e) => {
-            if (this.isPanning) {
-                this.cameraX = e.clientX - this.panStart.x;
-                this.cameraY = e.clientY - this.panStart.y;
-                this.updateTransform();
-            }
-        });
+        if (typeof window !== 'undefined') {
+            window.addEventListener('mousemove', (e) => {
+                if (this.isPanning) {
+                    this.cameraX = e.clientX - this.panStart.x;
+                    this.cameraY = e.clientY - this.panStart.y;
+                    this.updateTransform();
+                }
+            });
 
-        window.addEventListener('mouseup', () => {
-            if (this.isPanning) {
-                this.isPanning = false;
-                this.stage.classList.remove('panning');
-            }
-        });
+            window.addEventListener('mouseup', () => {
+                if (this.isPanning) {
+                    this.isPanning = false;
+                    this.stage.classList.remove('panning');
+                }
+            });
+        }
 
         this.stage.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -106,13 +108,16 @@ class PalaceCanvas {
             this.cameraY = startY + (targetY - startY) * ease;
             this.scale = startScale + (targetScale - startScale) * ease;
             this.updateTransform();
-
             if (progress < 1.0) {
-                requestAnimationFrame(step);
+                raf(step);
             }
         };
 
-        requestAnimationFrame(step);
+        const raf = typeof requestAnimationFrame !== 'undefined'
+            ? requestAnimationFrame
+            : (cb) => setTimeout(() => cb(performance.now()), 16);
+
+        raf(step);
     }
 
     startWalkMode(loci, photos) {
