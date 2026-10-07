@@ -7,6 +7,8 @@ public struct InkToolbarView: View {
     public let onRedo: () -> Void
     public let canUndo: Bool
     public let canRedo: Bool
+    public var onBringToFront: (() -> Void)? = nil
+    public var onSendToBack: (() -> Void)? = nil
 
     private let presetColors = [
         "#1E293B", // Dark Slate / Black
@@ -31,6 +33,7 @@ public struct InkToolbarView: View {
                 toolButton(tool: .ballpoint, title: "Pen (P)", icon: "pencil.tip")
                 toolButton(tool: .fountain, title: "Fountain (F)", icon: "signature")
                 toolButton(tool: .highlighter, title: "Highlighter (H)", icon: "highlighter")
+                toolButton(tool: .tape, title: "Cloze Tape (T)", icon: "bandage.fill")
                 toolButton(tool: .eraser, title: "Eraser (E)", icon: "eraser")
                 toolButton(tool: .lasso, title: "Lasso Selection (L)", icon: "lasso")
             }
@@ -105,6 +108,63 @@ public struct InkToolbarView: View {
             .buttonStyle(.plain)
             .help("Stroke Width")
 
+            // MARK: - Line Pattern Menu (Solid, Dashed, Dotted)
+            Menu {
+                Button(action: { store.activeStrokePattern = .solid }) {
+                    HStack {
+                        Text("Solid Line")
+                        if store.activeStrokePattern == .solid { Image(systemName: "checkmark") }
+                    }
+                }
+                Button(action: { store.activeStrokePattern = .dashed }) {
+                    HStack {
+                        Text("Dashed Line")
+                        if store.activeStrokePattern == .dashed { Image(systemName: "checkmark") }
+                    }
+                }
+                Button(action: { store.activeStrokePattern = .dotted }) {
+                    HStack {
+                        Text("Dotted Line")
+                        if store.activeStrokePattern == .dotted { Image(systemName: "checkmark") }
+                    }
+                }
+            } label: {
+                Image(systemName: store.activeStrokePattern == .solid ? "line.diagonal" : (store.activeStrokePattern == .dashed ? "line.3.horizontal.dashed" : "ellipsis"))
+                    .font(.system(size: 13))
+                    .padding(6)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Stroke Pattern (Solid, Dashed, Dotted)")
+
+            Divider()
+                .frame(height: 20)
+
+            // MARK: - 2D Interactive Ruler Toggle
+            Button(action: { store.isRulerActive.toggle() }) {
+                Image(systemName: store.isRulerActive ? "ruler.fill" : "ruler")
+                    .font(.system(size: 13))
+                    .padding(6)
+                    .background(store.isRulerActive ? Color.accentColor : Color(NSColor.controlBackgroundColor).opacity(0.8))
+                    .foregroundColor(store.isRulerActive ? .white : .primary)
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("2D Interactive Ruler (Edge Snapping)")
+
+            // MARK: - Shape Recognition Toggle
+            Button(action: { store.isShapeSnappingEnabled.toggle() }) {
+                Image(systemName: store.isShapeSnappingEnabled ? "square.on.circle.fill" : "square.on.circle")
+                    .font(.system(size: 13))
+                    .padding(6)
+                    .background(store.isShapeSnappingEnabled ? Color.accentColor.opacity(0.18) : Color(NSColor.controlBackgroundColor).opacity(0.8))
+                    .foregroundColor(store.isShapeSnappingEnabled ? .accentColor : .secondary)
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Draw-and-Hold Shape Recognition")
+
             Divider()
                 .frame(height: 20)
 
@@ -151,6 +211,33 @@ public struct InkToolbarView: View {
                 .buttonStyle(.plain)
                 .disabled(!canRedo)
                 .help("Redo (⇧⌘Z)")
+            }
+
+            if store.activeInkTool == .lasso {
+                Divider()
+                    .frame(height: 20)
+
+                HStack(spacing: 2) {
+                    Button(action: { onBringToFront?() }) {
+                        Image(systemName: "square.2.layers.3d.top.filled")
+                            .font(.system(size: 12))
+                            .padding(6)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Bring Selection to Front")
+
+                    Button(action: { onSendToBack?() }) {
+                        Image(systemName: "square.2.layers.3d.bottom.filled")
+                            .font(.system(size: 12))
+                            .padding(6)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send Selection to Back")
+                }
             }
 
             Divider()

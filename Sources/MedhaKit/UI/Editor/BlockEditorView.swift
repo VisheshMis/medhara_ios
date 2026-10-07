@@ -201,6 +201,19 @@ public struct BlockEditorView: View {
         return count
     }
 
+    private func docCharCount() -> Int {
+        var count = store.currentDoc?.content.count ?? 0
+        for b in store.blocks {
+            count += b.content.count
+        }
+        return count
+    }
+
+    private func docReadingTimeMinutes() -> Int {
+        let words = docWordCount()
+        return max(1, Int(ceil(Double(words) / 200.0)))
+    }
+
     private func breadcrumbsView(doc: Block) -> some View {
         let ancestry = store.getDocAncestry(for: doc.id)
 
@@ -246,6 +259,13 @@ public struct BlockEditorView: View {
 
             Spacer()
 
+            // TimeKeeper Focus Session Pill
+            TimeKeeperToolbarPill(
+                timerManager: store.timerManager,
+                onOpenStats: { store.isFocusStatsPresented = true },
+                isCompact: true
+            )
+
             // "+ Sub-note" quick button in editor header
             Button(action: {
                 store.createDocument(notebookId: doc.notebookId, parentDocId: doc.id)
@@ -269,9 +289,11 @@ public struct BlockEditorView: View {
             .buttonStyle(.plain)
             .help("Create a sub-note nested under this document")
 
-            // Word count & block count pill
+            // Word count, reading time & block count pill
             HStack(spacing: 6) {
                 Text("\(docWordCount()) words")
+                Text("•")
+                Text("~\(docReadingTimeMinutes())m read")
                 Text("•")
                 Text("\(store.blocks.count) blocks")
             }
@@ -285,6 +307,7 @@ public struct BlockEditorView: View {
                 Capsule(style: .continuous)
                     .stroke(MedhaTheme.Colors.borderHairline, lineWidth: 1)
             )
+            .help("\(docWordCount()) words · \(docCharCount()) characters · Estimated \(docReadingTimeMinutes()) min read")
         }
     }
 

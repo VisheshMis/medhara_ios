@@ -7,6 +7,7 @@ public enum InkToolType: String, Codable, CaseIterable, Sendable {
     case highlighter
     case eraser
     case lasso
+    case tape
 
     public var displayName: String {
         switch self {
@@ -15,6 +16,7 @@ public enum InkToolType: String, Codable, CaseIterable, Sendable {
         case .highlighter: return "Highlighter"
         case .eraser: return "Eraser"
         case .lasso: return "Lasso"
+        case .tape: return "Tape"
         }
     }
 
@@ -25,6 +27,7 @@ public enum InkToolType: String, Codable, CaseIterable, Sendable {
         case .highlighter: return "highlighter"
         case .eraser: return "eraser"
         case .lasso: return "lasso"
+        case .tape: return "bandage.fill"
         }
     }
 
@@ -35,8 +38,16 @@ public enum InkToolType: String, Codable, CaseIterable, Sendable {
         case .highlighter: return 18.0
         case .eraser: return 16.0
         case .lasso: return 1.0
+        case .tape: return 28.0
         }
     }
+}
+
+// MARK: - Stroke Pattern (Solid, Dashed, Dotted)
+public enum StrokePattern: String, Codable, CaseIterable, Sendable {
+    case solid
+    case dashed
+    case dotted
 }
 
 // MARK: - Point in Vector Stroke
@@ -62,6 +73,9 @@ public struct InkStroke: Identifiable, Codable, Equatable, Sendable {
     public var baseWidth: Double
     public var opacity: Double
     public var points: [InkPoint]
+    public var pattern: StrokePattern?
+    public var isTapeRevealed: Bool?
+    public var shapePrimitive: String?
 
     public init(
         id: String = "s-\(UUID().uuidString.lowercased())",
@@ -69,7 +83,10 @@ public struct InkStroke: Identifiable, Codable, Equatable, Sendable {
         colorHex: String = "#1E293B",
         baseWidth: Double = 2.5,
         opacity: Double = 1.0,
-        points: [InkPoint] = []
+        points: [InkPoint] = [],
+        pattern: StrokePattern? = .solid,
+        isTapeRevealed: Bool? = false,
+        shapePrimitive: String? = nil
     ) {
         self.id = id
         self.tool = tool
@@ -77,6 +94,9 @@ public struct InkStroke: Identifiable, Codable, Equatable, Sendable {
         self.baseWidth = baseWidth
         self.opacity = opacity
         self.points = points
+        self.pattern = pattern
+        self.isTapeRevealed = isTapeRevealed
+        self.shapePrimitive = shapePrimitive
     }
 
     // Bounding Box calculation for collision & viewport culling

@@ -202,7 +202,7 @@ public struct DocumentTreeView: View {
                         .foregroundColor(MedhaTheme.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
-                .help("New Handwritten Note")
+                .help("New Handwritten Note (⌃⌘N)")
 
                 // Hide Notes Tab Button
                 Button(action: {

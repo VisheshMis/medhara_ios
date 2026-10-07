@@ -12,6 +12,10 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
     public let activeTool: InkToolType
     public let activeColorHex: String
     public let activeWidth: Double
+    public let activePattern: StrokePattern
+    public let isRulerActive: Bool
+    public let rulerAngle: CGFloat
+    public let isShapeSnappingEnabled: Bool
     @Binding public var zoomScale: CGFloat
     @Binding public var isHandToolActive: Bool
     public let viewportRef: Binding<InkCanvasViewportNSView?>?
@@ -33,6 +37,10 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         activeTool: InkToolType,
         activeColorHex: String,
         activeWidth: Double,
+        activePattern: StrokePattern = .solid,
+        isRulerActive: Bool = false,
+        rulerAngle: CGFloat = 0.0,
+        isShapeSnappingEnabled: Bool = true,
         zoomScale: Binding<CGFloat>,
         isHandToolActive: Binding<Bool>,
         viewportRef: Binding<InkCanvasViewportNSView?>? = nil,
@@ -53,6 +61,10 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         self.activeTool = activeTool
         self.activeColorHex = activeColorHex
         self.activeWidth = activeWidth
+        self.activePattern = activePattern
+        self.isRulerActive = isRulerActive
+        self.rulerAngle = rulerAngle
+        self.isShapeSnappingEnabled = isShapeSnappingEnabled
         self._zoomScale = zoomScale
         self._isHandToolActive = isHandToolActive
         self.viewportRef = viewportRef
@@ -138,6 +150,10 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
     private func updateViewSettings(_ nsView: InkCanvasViewportNSView) {
         nsView.activeTool = activeTool
         nsView.activeWidth = activeWidth
+        nsView.activePattern = activePattern
+        nsView.isRulerActive = isRulerActive
+        nsView.rulerAngle = rulerAngle
+        nsView.isShapeSnappingEnabled = isShapeSnappingEnabled
         if let color = NSColor(hex: activeColorHex) {
             nsView.activeColor = color
         }

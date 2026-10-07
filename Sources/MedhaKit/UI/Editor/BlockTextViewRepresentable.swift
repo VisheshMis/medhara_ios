@@ -282,25 +282,20 @@ public final class CustomNSTextView: NSTextView {
             return
         }
 
-        // Command + / Command - / Command 0 Zoom Shortcuts
-        if event.modifierFlags.contains(.command) {
-            if event.keyCode == 24 || event.charactersIgnoringModifiers == "=" || event.charactersIgnoringModifiers == "+" {
-                if let onZoom = parent.onZoomIn {
-                    onZoom()
-                    return
+        // Command + Shift + C: Cloze Deletion Shortcut {{c1::...}}
+        if event.modifierFlags.contains([.command, .shift]) && event.charactersIgnoringModifiers?.lowercased() == "c" {
+            let range = selectedRange()
+            if range.length > 0 {
+                let nsStr = string as NSString
+                let selectedText = nsStr.substring(with: range)
+                let cloze = "{{c1::\(selectedText)}}"
+                if shouldChangeText(in: range, replacementString: cloze) {
+                    replaceCharacters(in: range, with: cloze)
+                    didChangeText()
+                    let newSelection = NSRange(location: range.location + 6, length: selectedText.count)
+                    setSelectedRange(newSelection)
                 }
-            }
-            if event.keyCode == 27 || event.charactersIgnoringModifiers == "-" {
-                if let onZoom = parent.onZoomOut {
-                    onZoom()
-                    return
-                }
-            }
-            if event.keyCode == 29 || event.charactersIgnoringModifiers == "0" {
-                if let onZoom = parent.onResetZoom {
-                    onZoom()
-                    return
-                }
+                return
             }
         }
 

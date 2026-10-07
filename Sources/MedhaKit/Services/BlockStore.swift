@@ -88,6 +88,10 @@ public final class BlockStore: ObservableObject {
     @Published public var activeInkColorHex: String = "#3B82F6" // Default modern blue ink
     @Published public var activeInkWidth: Double = 2.5
     @Published public var activeInkTemplate: InkTemplateType = .lined
+    @Published public var activeStrokePattern: StrokePattern = .solid
+    @Published public var isRulerActive: Bool = false
+    @Published public var rulerAngle: CGFloat = 0.0
+    @Published public var isShapeSnappingEnabled: Bool = true
     @Published public var isNewInkDocumentSheetPresented: Bool = false
     @Published public var pendingNewInkNotebookId: String? = nil
     @Published public var pendingNewInkParentDocId: String? = nil

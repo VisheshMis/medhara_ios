@@ -2482,7 +2482,7 @@ struct TestRunner {
         assert(!store.documents.contains(where: { $0.id == inkNote.id }), "Failed: deleted ink note must be removed from store")
         assert(!store.documents.contains(where: { $0.id == childText.id }), "Failed: child text note must be cascaded")
         assert(!store.documents.contains(where: { $0.id == childInk.id }), "Failed: child ink note must be cascaded")
-        let orphanPages = try await db.dbWriter.read { db in
+        _ = try await db.dbWriter.read { db in
             try InkDocumentPage.filter(InkDocumentPage.Columns.docId == inkNote.id).fetchAll(db)
         }
         print("✅ testInkNotesModelAndHierarchyIntegration passed")
@@ -2504,8 +2504,41 @@ struct TestRunner {
             colorHex: "#3B82F6",
             baseWidth: 3.0,
             opacity: 1.0,
-            points: pts
+            points: pts,
+            pattern: .dashed
         )
+
+        // 1b. Tier 1 Tape tool stroke and Cloze reveal
+        let tapeStroke = InkStroke(
+            tool: .tape,
+            colorHex: "#FBBF24",
+            baseWidth: 28.0,
+            opacity: 0.96,
+            points: pts,
+            pattern: .solid,
+            isTapeRevealed: false
+        )
+        assert(tapeStroke.tool == .tape, "Failed: stroke tool must be tape")
+        assert(tapeStroke.isTapeRevealed == false, "Failed: tape should initially be unrevealed")
+
+        // 1c. Tier 1 Geometric Primitive Fitting (Draw-and-Hold)
+        var linePts: [InkPoint] = []
+        for i in 0..<20 {
+            linePts.append(InkPoint(x: 10.0 + Double(i) * 10.0, y: 50.0, pressure: 0.5))
+        }
+        let fittedLine = InkGeometry.fitPrimitive(from: linePts)
+        assert(fittedLine != nil, "Failed: straight line points must fit a primitive")
+        if case .line(let p1, let p2) = fittedLine {
+            assert(abs(p1.y - 50.0) < 1.0 && abs(p2.y - 50.0) < 1.0, "Failed: fitted line endpoints must match coordinate baseline")
+        }
+
+        // 1d. Tier 1 Ruler collinear projection snapping
+        let snappedProj = InkGeometry.projectPointOntoLine(
+            point: CGPoint(x: 50, y: 53),
+            lineStart: CGPoint(x: 0, y: 50),
+            lineEnd: CGPoint(x: 200, y: 50)
+        )
+        assert(abs(snappedProj.y - 50.0) < 0.001, "Failed: ruler projection must snap y to 50.0")
 
         // 2. Geometry smoothing & path outline generation
         let smoothed = InkGeometry.smoothPoints(from: pts)
@@ -2513,22 +2546,28 @@ struct TestRunner {
         let outlinePath = InkGeometry.generateOutlinePath(for: sampleStroke)
         assert(!outlinePath.isEmpty, "Failed: outlinePath must generate non-empty closed ribbon polygon")
 
+        let tapeOutline = InkGeometry.generateOutlinePath(for: tapeStroke)
+        assert(!tapeOutline.isEmpty, "Failed: tape outline path must be generated")
+
         // 3. Collision hit-testing
         let hitTestPass = InkGeometry.hitTest(stroke: sampleStroke, point: CGPoint(x: 150, y: 155), eraserRadius: 15.0)
         assert(hitTestPass == true, "Failed: stroke hitTest should detect collision near center")
         let hitTestMiss = InkGeometry.hitTest(stroke: sampleStroke, point: CGPoint(x: 500, y: 500), eraserRadius: 15.0)
         assert(hitTestMiss == false, "Failed: stroke hitTest should not detect distant point")
 
-        // 4. Persistence round-trip into SQLite
+        // 4. Persistence round-trip into SQLite (including pattern and tape)
         store.selectDocument(id: strokeTestDoc.id)
-        store.saveInkPageStrokes(pageIndex: 0, strokes: [sampleStroke])
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [sampleStroke, tapeStroke])
 
         let savedPage = store.inkPages.first
         assert(savedPage != nil, "Failed: savedPage must exist")
         let deserialized = InkPagePayload.deserialize(from: savedPage!.strokesData)
-        assert(deserialized.strokes.count == 1, "Failed: deserialized strokes count must be 1")
+        assert(deserialized.strokes.count == 2, "Failed: deserialized strokes count must be 2")
         assert(deserialized.strokes[0].points.count == pts.count, "Failed: points count must match exactly")
         assert(deserialized.strokes[0].colorHex == "#3B82F6", "Failed: stroke colorHex must round-trip")
+        assert(deserialized.strokes[0].pattern == .dashed, "Failed: dashed pattern must round-trip")
+        assert(deserialized.strokes[1].tool == .tape, "Failed: tape stroke tool must round-trip")
+        assert(deserialized.strokes[1].isTapeRevealed == false, "Failed: tape revealed state must round-trip")
         print("✅ testVectorInkGeometryAndPersistence passed")
 
         // --- Suite 37: Multi-Page Continuous Canvas, Lasso Geometry & Vector Export ---

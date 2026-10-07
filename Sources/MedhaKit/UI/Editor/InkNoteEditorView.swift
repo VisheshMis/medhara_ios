@@ -81,6 +81,13 @@ public struct InkNoteEditorView: View {
 
                     Spacer()
 
+                    // TimeKeeper Focus Session Pill
+                    TimeKeeperToolbarPill(
+                        timerManager: store.timerManager,
+                        onOpenStats: { store.isFocusStatsPresented = true },
+                        isCompact: true
+                    )
+
                     // Zoom Controls & Hand Tool
                     HStack(spacing: 4) {
                         // Hand Tool Toggle
@@ -225,6 +232,10 @@ public struct InkNoteEditorView: View {
                     activeTool: store.activeInkTool,
                     activeColorHex: store.activeInkColorHex,
                     activeWidth: store.activeInkWidth,
+                    activePattern: store.activeStrokePattern,
+                    isRulerActive: store.isRulerActive,
+                    rulerAngle: store.rulerAngle,
+                    isShapeSnappingEnabled: store.isShapeSnappingEnabled,
                     zoomScale: $zoomScale,
                     isHandToolActive: $isHandToolActive,
                     viewportRef: $viewportNSView,
@@ -254,7 +265,13 @@ public struct InkNoteEditorView: View {
                     onUndo: performUndo,
                     onRedo: performRedo,
                     canUndo: !store.inkUndoStack.isEmpty,
-                    canRedo: !store.inkRedoStack.isEmpty
+                    canRedo: !store.inkRedoStack.isEmpty,
+                    onBringToFront: {
+                        viewportNSView?.bringSelectionToFront()
+                    },
+                    onSendToBack: {
+                        viewportNSView?.sendSelectionToBack()
+                    }
                 )
                 .padding(.top, store.isInkFocusMode ? 20 : 16)
 

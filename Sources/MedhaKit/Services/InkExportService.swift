@@ -438,6 +438,83 @@ public enum InkExportService {
                 }
                 y += spacing
             }
+
+        case .cornell:
+            context.setStrokeColor(lineColor)
+            context.setLineWidth(1.0)
+            let lineSpacing: CGFloat = 32.0
+            let startY: CGFloat = 64.0
+            let summaryY = height - 140.0
+            var y = startY
+            while y < summaryY {
+                context.move(to: CGPoint(x: 200, y: y))
+                context.addLine(to: CGPoint(x: width - 36, y: y))
+                y += lineSpacing
+            }
+            context.strokePath()
+
+            let marginColor = NSColor(calibratedRed: 0.85, green: 0.80, blue: 0.90, alpha: 0.8).cgColor
+            context.setStrokeColor(marginColor)
+            context.setLineWidth(1.5)
+            context.move(to: CGPoint(x: 200, y: 0))
+            context.addLine(to: CGPoint(x: 200, y: summaryY))
+            context.move(to: CGPoint(x: 0, y: summaryY))
+            context.addLine(to: CGPoint(x: width, y: summaryY))
+            context.strokePath()
+
+        case .multiColumn:
+            context.setStrokeColor(lineColor)
+            context.setLineWidth(1.0)
+            let midX = width / 2.0
+            let lineSpacing: CGFloat = 32.0
+            var y: CGFloat = 64.0
+            while y < height {
+                context.move(to: CGPoint(x: 36, y: y))
+                context.addLine(to: CGPoint(x: midX - 20, y: y))
+                context.move(to: CGPoint(x: midX + 20, y: y))
+                context.addLine(to: CGPoint(x: width - 36, y: y))
+                y += lineSpacing
+            }
+            context.strokePath()
+
+            context.setStrokeColor(NSColor(calibratedRed: 0.80, green: 0.85, blue: 0.92, alpha: 0.8).cgColor)
+            context.move(to: CGPoint(x: midX, y: 32))
+            context.addLine(to: CGPoint(x: midX, y: height - 32))
+            context.strokePath()
+
+        case .squared:
+            context.setStrokeColor(lineColor)
+            context.setLineWidth(0.5)
+            let gridSize: CGFloat = 14.17
+            var y: CGFloat = gridSize
+            while y < height {
+                context.move(to: CGPoint(x: 0, y: y))
+                context.addLine(to: CGPoint(x: width, y: y))
+                y += gridSize
+            }
+            var x: CGFloat = gridSize
+            while x < width {
+                context.move(to: CGPoint(x: x, y: 0))
+                context.addLine(to: CGPoint(x: x, y: height))
+                x += gridSize
+            }
+            context.strokePath()
+
+        case .staves:
+            context.setStrokeColor(lineColor)
+            context.setLineWidth(0.8)
+            let staffLineSpacing: CGFloat = 8.0
+            let staffGap: CGFloat = 48.0
+            var topY: CGFloat = 80.0
+            while topY + 4 * staffLineSpacing < height - 40.0 {
+                for lineIdx in 0..<5 {
+                    let y = topY + CGFloat(lineIdx) * staffLineSpacing
+                    context.move(to: CGPoint(x: 48, y: y))
+                    context.addLine(to: CGPoint(x: width - 48, y: y))
+                }
+                topY += 4 * staffLineSpacing + staffGap
+            }
+            context.strokePath()
         }
     }
 

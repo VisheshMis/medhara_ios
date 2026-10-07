@@ -83,7 +83,7 @@ public struct NewInkNoteSheet: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(InkTemplateType.allCases, id: \.rawValue) { tmpl in
                         templateOptionButton(tmpl)
                     }

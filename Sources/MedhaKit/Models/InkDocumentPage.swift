@@ -6,6 +6,10 @@ public enum InkTemplateType: String, Codable, CaseIterable, Sendable {
     case lined
     case grid
     case dotGrid
+    case cornell
+    case multiColumn
+    case squared
+    case staves
 
     public var displayName: String {
         switch self {
@@ -13,6 +17,10 @@ public enum InkTemplateType: String, Codable, CaseIterable, Sendable {
         case .lined: return "Lined / Ruled"
         case .grid: return "Grid"
         case .dotGrid: return "Dot Grid"
+        case .cornell: return "Cornell Notes"
+        case .multiColumn: return "2-Column"
+        case .squared: return "Engineering 5mm"
+        case .staves: return "Music Staves"
         }
     }
 
@@ -22,6 +30,10 @@ public enum InkTemplateType: String, Codable, CaseIterable, Sendable {
         case .lined: return "line.3.horizontal"
         case .grid: return "squareshape.split.3x3"
         case .dotGrid: return "circle.grid.3x3"
+        case .cornell: return "newspaper"
+        case .multiColumn: return "square.split.2x1"
+        case .squared: return "squareshape.split.2x2"
+        case .staves: return "music.note.list"
         }
     }
 }

@@ -106,7 +106,7 @@ public enum InkGeometry {
                 halfWidth = max(1.0, (CGFloat(stroke.baseWidth) * 0.5) * (0.2 + 0.9 * pressure))
             case .highlighter:
                 halfWidth = CGFloat(stroke.baseWidth) * 0.5
-            case .eraser, .lasso:
+            case .eraser, .lasso, .tape:
                 halfWidth = CGFloat(stroke.baseWidth) * 0.5
             }
 
@@ -227,7 +227,10 @@ public enum InkGeometry {
             colorHex: stroke.colorHex,
             baseWidth: stroke.baseWidth,
             opacity: stroke.opacity,
-            points: newPoints
+            points: newPoints,
+            pattern: stroke.pattern,
+            isTapeRevealed: stroke.isTapeRevealed,
+            shapePrimitive: stroke.shapePrimitive
         )
     }
 
@@ -272,5 +275,163 @@ public enum InkGeometry {
 
         guard hasValidStroke else { return nil }
         return CGRect(x: minX, y: minY, width: max(1.0, maxX - minX), height: max(1.0, maxY - minY))
+    }
+
+    // MARK: - Tier 1: 2D Ruler Math & Proximity Snapping
+    /// Snaps a 2D point onto a line defined by lineStart and lineEnd
+    public static func projectPointOntoLine(point: CGPoint, lineStart: CGPoint, lineEnd: CGPoint) -> CGPoint {
+        let dx = lineEnd.x - lineStart.x
+        let dy = lineEnd.y - lineStart.y
+        let lenSq = dx * dx + dy * dy
+        guard lenSq > 0.0001 else { return lineStart }
+        let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq
+        return CGPoint(x: lineStart.x + t * dx, y: lineStart.y + t * dy)
+    }
+
+    // MARK: - Tier 1: Draw-and-Hold Shape Recognition
+    public enum FittedShape: Equatable {
+        case line(start: CGPoint, end: CGPoint)
+        case rectangle(CGRect)
+        case circle(center: CGPoint, radius: CGFloat)
+        case ellipse(CGRect)
+        case triangle(p1: CGPoint, p2: CGPoint, p3: CGPoint)
+
+        public var primitiveType: String {
+            switch self {
+            case .line: return "line"
+            case .rectangle: return "rect"
+            case .circle: return "circle"
+            case .ellipse: return "ellipse"
+            case .triangle: return "triangle"
+            }
+        }
+    }
+
+    /// Fits raw stroke points to canonical 2D geometric primitives
+    public static func fitPrimitive(from points: [InkPoint]) -> FittedShape? {
+        guard points.count >= 6 else { return nil }
+
+        let start = CGPoint(x: points.first!.x, y: points.first!.y)
+        let end = CGPoint(x: points.last!.x, y: points.last!.y)
+
+        var totalPerimeter: CGFloat = 0
+        for i in 0..<(points.count - 1) {
+            totalPerimeter += distance(CGPoint(x: points[i].x, y: points[i].y),
+                                       CGPoint(x: points[i+1].x, y: points[i+1].y))
+        }
+        guard totalPerimeter > 10.0 else { return nil }
+
+        let endToEndDist = distance(start, end)
+
+        // 1. Straight Line Check: straight distance / arc distance >= 0.88
+        if (endToEndDist / totalPerimeter) >= 0.88 {
+            return .line(start: start, end: end)
+        }
+
+        // 2. Closed Loop Check: start and end are close together relative to perimeter
+        if (endToEndDist / totalPerimeter) <= 0.28 {
+            var minX = CGFloat.greatestFiniteMagnitude
+            var minY = CGFloat.greatestFiniteMagnitude
+            var maxX = -CGFloat.greatestFiniteMagnitude
+            var maxY = -CGFloat.greatestFiniteMagnitude
+            for pt in points {
+                let x = CGFloat(pt.x)
+                let y = CGFloat(pt.y)
+                if x < minX { minX = x }
+                if y < minY { minY = y }
+                if x > maxX { maxX = x }
+                if y > maxY { maxY = y }
+            }
+            let rect = CGRect(x: minX, y: minY, width: max(10, maxX - minX), height: max(10, maxY - minY))
+            let aspectRatio = rect.width / rect.height
+
+            // Circle check (aspect ratio between 0.8 and 1.25)
+            if aspectRatio >= 0.80 && aspectRatio <= 1.25 {
+                let center = CGPoint(x: rect.midX, y: rect.midY)
+                let radius = (rect.width + rect.height) / 4.0
+                return .circle(center: center, radius: radius)
+            } else if aspectRatio < 0.60 || aspectRatio > 1.66 {
+                // Highly non-square: check if ellipse or rectangle
+                return .rectangle(rect)
+            } else {
+                return .ellipse(rect)
+            }
+        }
+
+        return nil
+    }
+
+    /// Converts a fitted shape into smooth synthetic InkPoints for rendering & storage
+    public static func generatePoints(for shape: FittedShape, basePressure: Double = 0.6) -> [InkPoint] {
+        var pts: [InkPoint] = []
+        switch shape {
+        case .line(let start, let end):
+            let steps = 16
+            for i in 0...steps {
+                let t = Double(i) / Double(steps)
+                let x = Double(start.x) + t * Double(end.x - start.x)
+                let y = Double(start.y) + t * Double(end.y - start.y)
+                pts.append(InkPoint(x: x, y: y, pressure: basePressure, timeOffset: t * 0.2))
+            }
+        case .circle(let center, let radius):
+            let steps = 36
+            for i in 0...steps {
+                let angle = (Double(i) / Double(steps)) * 2.0 * .pi
+                let x = Double(center.x) + Double(radius) * cos(angle)
+                let y = Double(center.y) + Double(radius) * sin(angle)
+                pts.append(InkPoint(x: x, y: y, pressure: basePressure, timeOffset: Double(i) * 0.01))
+            }
+        case .rectangle(let rect):
+            let corners = [
+                CGPoint(x: rect.minX, y: rect.minY),
+                CGPoint(x: rect.maxX, y: rect.minY),
+                CGPoint(x: rect.maxX, y: rect.maxY),
+                CGPoint(x: rect.minX, y: rect.maxY),
+                CGPoint(x: rect.minX, y: rect.minY)
+            ]
+            for c in 0..<4 {
+                let c1 = corners[c]
+                let c2 = corners[c+1]
+                let segSteps = 8
+                for s in 0..<segSteps {
+                    let t = Double(s) / Double(segSteps)
+                    let x = Double(c1.x) + t * Double(c2.x - c1.x)
+                    let y = Double(c1.y) + t * Double(c2.y - c1.y)
+                    pts.append(InkPoint(x: x, y: y, pressure: basePressure, timeOffset: Double(c * segSteps + s) * 0.01))
+                }
+            }
+            if let first = pts.first {
+                pts.append(InkPoint(x: first.x, y: first.y, pressure: basePressure, timeOffset: 0.35))
+            }
+        case .ellipse(let rect):
+            let steps = 36
+            let rx = Double(rect.width) / 2.0
+            let ry = Double(rect.height) / 2.0
+            let cx = Double(rect.midX)
+            let cy = Double(rect.midY)
+            for i in 0...steps {
+                let angle = (Double(i) / Double(steps)) * 2.0 * .pi
+                let x = cx + rx * cos(angle)
+                let y = cy + ry * sin(angle)
+                pts.append(InkPoint(x: x, y: y, pressure: basePressure, timeOffset: Double(i) * 0.01))
+            }
+        case .triangle(let p1, let p2, let p3):
+            let vertices = [p1, p2, p3, p1]
+            for v in 0..<3 {
+                let v1 = vertices[v]
+                let v2 = vertices[v+1]
+                let segSteps = 10
+                for s in 0..<segSteps {
+                    let t = Double(s) / Double(segSteps)
+                    let x = Double(v1.x) + t * Double(v2.x - v1.x)
+                    let y = Double(v1.y) + t * Double(v2.y - v1.y)
+                    pts.append(InkPoint(x: x, y: y, pressure: basePressure, timeOffset: Double(v * segSteps + s) * 0.01))
+                }
+            }
+            if let first = pts.first {
+                pts.append(InkPoint(x: first.x, y: first.y, pressure: basePressure, timeOffset: 0.35))
+            }
+        }
+        return pts
     }
 }

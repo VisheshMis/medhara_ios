@@ -150,6 +150,11 @@ struct MedhaApp: App {
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
+                Button("New Handwritten Note...") {
+                    store.promptCreateInkDocument()
+                }
+                .keyboardShortcut("n", modifiers: [.command, .control])
+
                 Button("New Notebook...") {
                     store.createNotebook(name: "New Notebook")
                 }
