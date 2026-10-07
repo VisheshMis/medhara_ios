@@ -21,7 +21,7 @@
     "test:ai": "node tests/ai.test.js",
     "test:import-export": "node tests/ankiImporter.test.js",
     "test:smoke": "npm run build:renderer && node tests/smoke.js",
-    "dist:win": "npm run build:renderer && electron-builder --win nsis portable --x64"
+    "dist:win": "npm run build:renderer && electron-builder --win nsis portable --x64 -c.npmRebuild=false"
   },
   "keywords": [
     "pkm",
