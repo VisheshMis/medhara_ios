@@ -30,6 +30,9 @@ function createWindow() {
         y: Math.round(currentDisplay.workArea.y + (screenH - winH) / 2),
         frame: false, // Frameless for macOS vibrancy / custom Windows controls
         titleBarStyle: 'hidden',
+        icon: process.platform === 'win32'
+            ? path.join(__dirname, '../build/icon.ico')
+            : path.join(__dirname, '../build/icon.png'),
         backgroundColor: '#0F172A',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
