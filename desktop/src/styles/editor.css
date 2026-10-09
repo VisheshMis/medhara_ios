@@ -412,3 +412,182 @@
     font-family: var(--font-mono);
     color: var(--text-secondary);
 }
+
+/* --- Tier 1 PKM Primitives & Governance Styling --- */
+
+/* Pinned Property & Governance Bar */
+.pinned-property-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0 14px 0;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 12px;
+}
+
+.governance-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    user-select: none;
+}
+
+.governance-pill.verified {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ADE80;
+    border-color: rgba(34, 197, 94, 0.35);
+}
+.governance-pill.verified:hover {
+    background: rgba(34, 197, 94, 0.25);
+}
+
+.governance-pill.unverified {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
+}
+.governance-pill.unverified:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.governance-pill.locked {
+    background: rgba(249, 115, 22, 0.15);
+    color: #FB923C;
+    border-color: rgba(249, 115, 22, 0.35);
+}
+.governance-pill.locked:hover {
+    background: rgba(249, 115, 22, 0.25);
+}
+
+.governance-pill.unlocked {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
+}
+.governance-pill.unlocked:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+/* Document Lock Mode Banner */
+.editor-locked-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(249, 115, 22, 0.12);
+    border: 1px solid rgba(249, 115, 22, 0.3);
+    border-radius: var(--radius-sm);
+    color: #FDBA74;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 12px;
+}
+
+/* Toggle Block & Disclosure Chevron */
+.block-toggle-btn {
+    width: 20px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: transform 0.15s ease, color 0.15s ease;
+    user-select: none;
+    flex-shrink: 0;
+}
+.block-toggle-btn:hover {
+    color: var(--text-primary);
+}
+.block-toggle-btn.collapsed {
+    transform: rotate(0deg);
+}
+.block-toggle-btn.expanded {
+    transform: rotate(90deg);
+}
+
+/* Table Block Matrix */
+.table-block-container {
+    width: 100%;
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.table-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.table-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 2px 7px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.table-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+.table-matrix-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: #0B0F19;
+}
+
+.table-matrix-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.table-matrix-cell {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 6px 10px;
+    min-width: 100px;
+    outline: none;
+    color: var(--text-primary);
+}
+
+.table-matrix-cell.header-cell {
+    background: rgba(255, 255, 255, 0.06);
+    font-weight: 600;
+    color: #93C5FD;
+}
+
+.table-matrix-cell:focus {
+    background: rgba(59, 130, 246, 0.12);
+    box-shadow: inset 0 0 0 1px #3B82F6;
+}
+
