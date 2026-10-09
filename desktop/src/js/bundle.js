@@ -607,9 +607,12 @@ var __MedhaModulesBundle = (() => {
           this.slashMenu = null;
           this.activeSlashBlockId = null;
           this.onDocSelected = options.onDocSelected || null;
-          this.initSlashMenu();
+          if (typeof document !== "undefined") {
+            this.initSlashMenu();
+          }
         }
         initSlashMenu() {
+          if (typeof document === "undefined") return;
           this.slashMenu = document.createElement("div");
           this.slashMenu.className = "slash-menu";
           document.body.appendChild(this.slashMenu);
