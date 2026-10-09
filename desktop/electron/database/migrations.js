@@ -359,6 +359,54 @@ const DatabaseMigrations = {
                 db.exec("ALTER TABLE block ADD COLUMN canvasMode TEXT DEFAULT 'a4Pages';");
             }
         });
+
+        // v12: Focus Sessions
+        runMigration('v12_focus_sessions', () => {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS focus_session (
+                    id TEXT PRIMARY KEY,
+                    durationSeconds INTEGER NOT NULL DEFAULT 0,
+                    focusedSeconds INTEGER NOT NULL DEFAULT 0,
+                    phase TEXT NOT NULL DEFAULT 'focus',
+                    docId TEXT,
+                    createdAt DATETIME NOT NULL,
+                    completedAt DATETIME,
+                    isCompleted BOOLEAN NOT NULL DEFAULT 0
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_focus_session_createdAt ON focus_session(createdAt);
+                CREATE INDEX IF NOT EXISTS idx_focus_session_completedAt ON focus_session(completedAt);
+            `);
+        });
+
+        // v13: Block Tier 1 Primitives & Document Metadata Parity
+        runMigration('v13_block_tier1_primitives_and_metadata', () => {
+            const cols = db.prepare("PRAGMA table_info(block)").all().map(c => c.name);
+            if (!cols.includes('isCollapsed')) {
+                db.exec("ALTER TABLE block ADD COLUMN isCollapsed BOOLEAN DEFAULT 0;");
+            }
+            if (!cols.includes('icon')) {
+                db.exec("ALTER TABLE block ADD COLUMN icon TEXT;");
+            }
+            if (!cols.includes('colorTint')) {
+                db.exec("ALTER TABLE block ADD COLUMN colorTint TEXT;");
+            }
+            if (!cols.includes('verifiedAt')) {
+                db.exec("ALTER TABLE block ADD COLUMN verifiedAt DATETIME;");
+            }
+            if (!cols.includes('verifiedExpiresAt')) {
+                db.exec("ALTER TABLE block ADD COLUMN verifiedExpiresAt DATETIME;");
+            }
+            if (!cols.includes('verifiedBy')) {
+                db.exec("ALTER TABLE block ADD COLUMN verifiedBy TEXT;");
+            }
+            if (!cols.includes('isLocked')) {
+                db.exec("ALTER TABLE block ADD COLUMN isLocked BOOLEAN DEFAULT 0;");
+            }
+            if (!cols.includes('pinnedPropertiesData')) {
+                db.exec("ALTER TABLE block ADD COLUMN pinnedPropertiesData TEXT;");
+            }
+        });
     }
 };
 

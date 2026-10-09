@@ -165,17 +165,21 @@ class BlockStore {
             sortOrder: order,
             isCompleted: type === 'taskList' ? 0 : null,
             refTargetId: null,
+            isCollapsed: 0,
+            icon: null,
+            colorTint: null,
             createdAt: now,
             updatedAt: now,
             notebookId: null
         };
 
         this.execute(`
-            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, isCompleted, refTargetId, createdAt, updatedAt, notebookId)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, isCompleted, refTargetId, isCollapsed, icon, colorTint, createdAt, updatedAt, notebookId)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             newBlock.id, newBlock.rootDocId, newBlock.parentId, newBlock.type, newBlock.content,
-            newBlock.sortOrder, newBlock.isCompleted, newBlock.refTargetId, newBlock.createdAt, newBlock.updatedAt, null
+            newBlock.sortOrder, newBlock.isCompleted, newBlock.refTargetId, newBlock.isCollapsed,
+            newBlock.icon, newBlock.colorTint, newBlock.createdAt, newBlock.updatedAt, null
         ]);
 
         this.blocks.push(newBlock);
@@ -254,6 +258,72 @@ class BlockStore {
             block.updatedAt = new Date().toISOString();
             this.execute('UPDATE block SET isCompleted = ?, updatedAt = ? WHERE id = ?', [block.isCompleted, block.updatedAt, id]);
             this.notify('task_toggled', block);
+        }
+    }
+
+    // --- Block Collapse, Lock & Governance ---
+    toggleBlockCollapsed(id) {
+        const block = this.blocks.find(b => b.id === id);
+        if (block) {
+            block.isCollapsed = block.isCollapsed ? 0 : 1;
+            block.updatedAt = new Date().toISOString();
+            this.execute('UPDATE block SET isCollapsed = ?, updatedAt = ? WHERE id = ?', [block.isCollapsed, block.updatedAt, id]);
+            this.notify('block_collapsed_toggled', block);
+            return block.isCollapsed;
+        }
+        return false;
+    }
+
+    setDocumentLock(docId, isLocked) {
+        const val = isLocked ? 1 : 0;
+        const doc = this.documents.find(d => d.id === docId);
+        if (doc) {
+            doc.isLocked = val;
+            doc.updatedAt = new Date().toISOString();
+            this.execute('UPDATE block SET isLocked = ?, updatedAt = ? WHERE id = ?', [val, doc.updatedAt, docId]);
+            if (this.currentDoc && this.currentDoc.id === docId) {
+                this.currentDoc.isLocked = val;
+            }
+            this.notify('doc_lock_changed', { docId, isLocked: val });
+        }
+    }
+
+    setDocumentVerification(docId, daysValid = 90, verifiedBy = 'Author') {
+        const doc = this.documents.find(d => d.id === docId);
+        if (doc) {
+            const now = new Date();
+            const expires = new Date(now.getTime() + (daysValid * 24 * 60 * 60 * 1000));
+            doc.verifiedAt = now.toISOString();
+            doc.verifiedExpiresAt = expires.toISOString();
+            doc.verifiedBy = verifiedBy;
+            doc.updatedAt = now.toISOString();
+
+            this.execute(`
+                UPDATE block
+                SET verifiedAt = ?, verifiedExpiresAt = ?, verifiedBy = ?, updatedAt = ?
+                WHERE id = ?
+            `, [doc.verifiedAt, doc.verifiedExpiresAt, doc.verifiedBy, doc.updatedAt, docId]);
+
+            if (this.currentDoc && this.currentDoc.id === docId) {
+                this.currentDoc.verifiedAt = doc.verifiedAt;
+                this.currentDoc.verifiedExpiresAt = doc.verifiedExpiresAt;
+                this.currentDoc.verifiedBy = doc.verifiedBy;
+            }
+            this.notify('doc_verification_changed', { docId, verifiedAt: doc.verifiedAt, verifiedExpiresAt: doc.verifiedExpiresAt });
+        }
+    }
+
+    updatePinnedProperties(docId, propertiesObject) {
+        const doc = this.documents.find(d => d.id === docId);
+        if (doc) {
+            const jsonStr = typeof propertiesObject === 'string' ? propertiesObject : JSON.stringify(propertiesObject);
+            doc.pinnedPropertiesData = jsonStr;
+            doc.updatedAt = new Date().toISOString();
+            this.execute('UPDATE block SET pinnedPropertiesData = ?, updatedAt = ? WHERE id = ?', [jsonStr, doc.updatedAt, docId]);
+            if (this.currentDoc && this.currentDoc.id === docId) {
+                this.currentDoc.pinnedPropertiesData = jsonStr;
+            }
+            this.notify('doc_pinned_properties_changed', { docId, pinnedPropertiesData: jsonStr });
         }
     }
 
