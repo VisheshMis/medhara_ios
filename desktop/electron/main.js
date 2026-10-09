@@ -59,9 +59,25 @@ app.whenReady().then(() => {
     });
 });
 
+app.on('before-quit', () => {
+    if (dbManager) {
+        try {
+            dbManager.close();
+        } catch (e) {
+            console.error('Error closing database during before-quit:', e);
+        }
+    }
+});
+
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
-        if (dbManager) dbManager.close();
+        if (dbManager) {
+            try {
+                dbManager.close();
+            } catch (e) {
+                console.error('Error closing database during window-all-closed:', e);
+            }
+        }
         app.quit();
     }
 });
