@@ -170,6 +170,10 @@ public final class BlockStore: ObservableObject {
     public var inkUndoStack: [[InkStroke]] = []
     public var inkRedoStack: [[InkStroke]] = []
 
+    // Unified Canvas Undo / Redo Stacks (CanvasItem + Stroke operations)
+    public var canvasUndoStack: [CanvasUndoCommand] = []
+    public var canvasRedoStack: [CanvasUndoCommand] = []
+
     // Flashcards & FSRS Decks
     @Published public var flashcards: [Flashcard] = []
     @Published public var decks: [Deck] = []
@@ -1310,10 +1314,21 @@ public final class BlockStore: ObservableObject {
         }
     }
 
-    public func addCanvasItem(_ item: CanvasItem) {
+    public func pushCanvasUndoCommand(_ command: CanvasUndoCommand) {
+        canvasUndoStack.append(command)
+        if canvasUndoStack.count > 50 {
+            canvasUndoStack.removeFirst()
+        }
+        canvasRedoStack.removeAll()
+    }
+
+    public func addCanvasItem(_ item: CanvasItem, recordUndo: Bool = true) {
         do {
             try dbManager.dbWriter.write { db in
                 try item.insert(db)
+            }
+            if recordUndo {
+                pushCanvasUndoCommand(.itemAdded(item: item))
             }
             reloadCanvasItems(docId: item.canvasDocId)
         } catch {
@@ -1357,16 +1372,18 @@ public final class BlockStore: ObservableObject {
     }
 
     public func updateCanvasItemSize(id: String, width: Double, height: Double) {
+        let clampedW = max(40.0, width)
+        let clampedH = max(40.0, height)
         if let idx = canvasItems.firstIndex(where: { $0.id == id }) {
-            canvasItems[idx].width = max(40.0, width)
-            canvasItems[idx].height = max(40.0, height)
+            canvasItems[idx].width = clampedW
+            canvasItems[idx].height = clampedH
             canvasItems[idx].updatedAt = Date()
         }
         do {
             try dbManager.dbWriter.write { db in
                 if var item = try CanvasItem.fetchOne(db, key: id) {
-                    item.width = max(40.0, width)
-                    item.height = max(40.0, height)
+                    item.width = clampedW
+                    item.height = clampedH
                     item.updatedAt = Date()
                     try item.update(db)
                 }
@@ -1376,8 +1393,13 @@ public final class BlockStore: ObservableObject {
         }
     }
 
-    public func deleteCanvasItem(id: String) {
+    public func deleteCanvasItem(id: String, recordUndo: Bool = true) {
         guard let docId = selectedDocId else { return }
+        if let item = canvasItems.first(where: { $0.id == id }) {
+            if recordUndo {
+                pushCanvasUndoCommand(.itemDeleted(item: item))
+            }
+        }
         canvasItems.removeAll(where: { $0.id == id })
         canvasConnectors.removeAll(where: { $0.fromItemId == id || $0.toItemId == id })
         do {
@@ -1388,6 +1410,54 @@ public final class BlockStore: ObservableObject {
         } catch {
             print("Error deleting canvas item: \(error)")
         }
+    }
+
+    public func recordItemMoved(id: String, oldX: Double, oldY: Double, newX: Double, newY: Double) {
+        pushCanvasUndoCommand(.itemMoved(id: id, oldX: oldX, oldY: oldY, newX: newX, newY: newY))
+    }
+
+    public func recordItemResized(id: String, oldWidth: Double, oldHeight: Double, newWidth: Double, newHeight: Double) {
+        pushCanvasUndoCommand(.itemResized(id: id, oldWidth: oldWidth, oldHeight: oldHeight, newWidth: newWidth, newHeight: newHeight))
+    }
+
+    @discardableResult
+    public func performCanvasUndo() -> Bool {
+        guard let cmd = canvasUndoStack.popLast() else { return false }
+        switch cmd {
+        case .itemAdded(let item):
+            deleteCanvasItem(id: item.id, recordUndo: false)
+            canvasRedoStack.append(.itemAdded(item: item))
+        case .itemDeleted(let item):
+            addCanvasItem(item, recordUndo: false)
+            canvasRedoStack.append(.itemDeleted(item: item))
+        case .itemMoved(let id, let oldX, let oldY, let newX, let newY):
+            updateCanvasItemPosition(id: id, x: oldX, y: oldY)
+            canvasRedoStack.append(.itemMoved(id: id, oldX: oldX, oldY: oldY, newX: newX, newY: newY))
+        case .itemResized(let id, let oldW, let oldH, let newW, let newH):
+            updateCanvasItemSize(id: id, width: oldW, height: oldH)
+            canvasRedoStack.append(.itemResized(id: id, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH))
+        }
+        return true
+    }
+
+    @discardableResult
+    public func performCanvasRedo() -> Bool {
+        guard let cmd = canvasRedoStack.popLast() else { return false }
+        switch cmd {
+        case .itemAdded(let item):
+            addCanvasItem(item, recordUndo: false)
+            canvasUndoStack.append(.itemAdded(item: item))
+        case .itemDeleted(let item):
+            deleteCanvasItem(id: item.id, recordUndo: false)
+            canvasUndoStack.append(.itemDeleted(item: item))
+        case .itemMoved(let id, let oldX, let oldY, let newX, let newY):
+            updateCanvasItemPosition(id: id, x: newX, y: newY)
+            canvasUndoStack.append(.itemMoved(id: id, oldX: oldX, oldY: oldY, newX: newX, newY: newY))
+        case .itemResized(let id, let oldW, let oldH, let newW, let newH):
+            updateCanvasItemSize(id: id, width: newW, height: newH)
+            canvasUndoStack.append(.itemResized(id: id, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH))
+        }
+        return true
     }
 
     public func bringCanvasItemToFront(id: String) {

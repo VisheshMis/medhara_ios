@@ -177,3 +177,10 @@ extension CanvasItem {
         public static let updatedAt = Column(CodingKeys.updatedAt)
     }
 }
+
+public enum CanvasUndoCommand: Equatable, Sendable {
+    case itemAdded(item: CanvasItem)
+    case itemDeleted(item: CanvasItem)
+    case itemMoved(id: String, oldX: Double, oldY: Double, newX: Double, newY: Double)
+    case itemResized(id: String, oldWidth: Double, oldHeight: Double, newWidth: Double, newHeight: Double)
+}

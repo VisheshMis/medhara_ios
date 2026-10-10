@@ -3598,7 +3598,125 @@ struct TestRunner {
 
         print("✅ testUnifiedInfiniteCanvasSuite passed")
 
-        print("\n🎉 ALL 48 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 49. CANVAS FOUNDATIONS (SELECT, MOVE, PLACE, UNDO/REDO & ADAPTIVE TEXT CONTRAST)
+        // ==========================================
+        print("\n--- 49. CANVAS FOUNDATIONS (SELECT, MOVE, PLACE, UNDO/REDO & ADAPTIVE TEXT CONTRAST) ---")
+
+        // 49.1: Adaptive Text Luminance Contrast Verification
+        let lightBlueText = InkCanvasViewportNSView.adaptiveTextColor(forFillHex: "#EFF6FF")
+        let lightYellowText = InkCanvasViewportNSView.adaptiveTextColor(forFillHex: "#FEF3C7")
+        let pureWhiteText = InkCanvasViewportNSView.adaptiveTextColor(forFillHex: "#FFFFFF")
+        let darkSlateText = InkCanvasViewportNSView.adaptiveTextColor(forFillHex: "#1E293B")
+        let pureBlackText = InkCanvasViewportNSView.adaptiveTextColor(forFillHex: "#000000")
+
+        // Light backgrounds should have dark slate text
+        let lightBlueRGB = lightBlueText.usingColorSpace(.sRGB) ?? lightBlueText
+        assert(lightBlueRGB.redComponent < 0.2, "Failed: Light blue fill must produce dark text")
+
+        let lightYellowRGB = lightYellowText.usingColorSpace(.sRGB) ?? lightYellowText
+        assert(lightYellowRGB.redComponent < 0.2, "Failed: Light yellow fill must produce dark text")
+
+        let pureWhiteRGB = pureWhiteText.usingColorSpace(.sRGB) ?? pureWhiteText
+        assert(pureWhiteRGB.redComponent < 0.2, "Failed: Pure white fill must produce dark text")
+
+        // Dark backgrounds should produce white text (r > 0.9, g > 0.9, b > 0.9)
+        let darkSlateRGB = darkSlateText.usingColorSpace(.sRGB) ?? darkSlateText
+        assert(darkSlateRGB.redComponent > 0.9 && darkSlateRGB.greenComponent > 0.9, "Failed: Dark slate fill must produce white text")
+
+        let pureBlackRGB = pureBlackText.usingColorSpace(.sRGB) ?? pureBlackText
+        assert(pureBlackRGB.redComponent > 0.9 && pureBlackRGB.greenComponent > 0.9, "Failed: Pure black fill must produce white text")
+
+        // 49.2: Multi-mode Canvas Item Creation & Persistence (InfiniteVertical & A4 Pages)
+        let vertDoc = store.createInkDocument(title: "Vertical Research Board", canvasMode: .infiniteVertical)
+        store.selectDocument(id: vertDoc.id)
+        let vertShape = CanvasItem(
+            canvasDocId: vertDoc.id,
+            itemType: .shape,
+            shapeType: .roundedRectangle,
+            x: 200,
+            y: 450,
+            width: 220,
+            height: 120,
+            fillColorHex: "#E0E7FF",
+            strokeColorHex: "#6366F1",
+            title: "Vertical Mind Map Node"
+        )
+        store.addCanvasItem(vertShape)
+        assert(store.canvasItems.contains(where: { $0.id == vertShape.id }), "Failed: Canvas item must persist in infiniteVertical mode")
+
+        // 49.3: Move & Resize Operations with Undo/Redo Engine
+        let initialX = vertShape.x
+        let initialY = vertShape.y
+        let movedX = 350.0
+        let movedY = 600.0
+
+        // Move item
+        store.updateCanvasItemPosition(id: vertShape.id, x: movedX, y: movedY)
+        store.recordItemMoved(id: vertShape.id, oldX: initialX, oldY: initialY, newX: movedX, newY: movedY)
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.x == movedX, "Failed: Item x should be moved to \(movedX)")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.y == movedY, "Failed: Item y should be moved to \(movedY)")
+
+        // Undo move
+        let didUndoMove = store.performCanvasUndo()
+        assert(didUndoMove, "Failed: performCanvasUndo should return true")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.x == initialX, "Failed: Undo move should restore initialX")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.y == initialY, "Failed: Undo move should restore initialY")
+
+        // Redo move
+        let didRedoMove = store.performCanvasRedo()
+        assert(didRedoMove, "Failed: performCanvasRedo should return true")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.x == movedX, "Failed: Redo move should restore movedX")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.y == movedY, "Failed: Redo move should restore movedY")
+
+        // Resize item
+        let initialWidth = vertShape.width
+        let initialHeight = vertShape.height
+        let resizedWidth = 320.0
+        let resizedHeight = 180.0
+
+        store.updateCanvasItemSize(id: vertShape.id, width: resizedWidth, height: resizedHeight)
+        store.recordItemResized(id: vertShape.id, oldWidth: initialWidth, oldHeight: initialHeight, newWidth: resizedWidth, newHeight: resizedHeight)
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.width == resizedWidth, "Failed: Item width should be resized")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.height == resizedHeight, "Failed: Item height should be resized")
+
+        // Undo resize
+        let didUndoResize = store.performCanvasUndo()
+        assert(didUndoResize, "Failed: performCanvasUndo for resize should return true")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.width == initialWidth, "Failed: Undo resize should restore initialWidth")
+
+        // Redo resize
+        let didRedoResize = store.performCanvasRedo()
+        assert(didRedoResize, "Failed: performCanvasRedo for resize should return true")
+        assert(store.canvasItems.first(where: { $0.id == vertShape.id })?.width == resizedWidth, "Failed: Redo resize should restore resizedWidth")
+
+        // 49.4: Item Add/Delete Undo/Redo Command
+        let textBlock = CanvasItem(
+            canvasDocId: vertDoc.id,
+            itemType: .textBlock,
+            x: 500,
+            y: 500,
+            width: 200,
+            height: 100,
+            title: "Header Note",
+            markdownContent: "Detail info"
+        )
+        store.addCanvasItem(textBlock)
+        assert(store.canvasItems.contains(where: { $0.id == textBlock.id }), "Failed: Text block should be added")
+
+        // Undo add (delete)
+        let didUndoAdd = store.performCanvasUndo()
+        assert(didUndoAdd, "Failed: Undo add item should succeed")
+        assert(!store.canvasItems.contains(where: { $0.id == textBlock.id }), "Failed: Item should be removed after undoing add")
+
+        // Redo add
+        let didRedoAdd = store.performCanvasRedo()
+        assert(didRedoAdd, "Failed: Redo add item should succeed")
+        assert(store.canvasItems.contains(where: { $0.id == textBlock.id }), "Failed: Item should be restored after redo")
+
+        print("✅ testCanvasFoundationsSuite passed")
+
+        print("\n🎉 ALL 49 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

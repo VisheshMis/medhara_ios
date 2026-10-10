@@ -120,14 +120,41 @@ public final class InkCanvasViewportNSView: NSView {
     public var onAddCanvasConnector: ((String, CanvasPortPosition, String, CanvasPortPosition, ConnectorRoutingType, String?) -> Void)?
     public var onUpdateCanvasConnectorLabel: ((String, String?) -> Void)?
     public var onDeleteCanvasConnector: ((String) -> Void)?
+    public var onRecordItemMoved: ((String, Double, Double, Double, Double) -> Void)?
+    public var onRecordItemResized: ((String, Double, Double, Double, Double) -> Void)?
+
+    // Click-to-Place & Drag-to-Size Shape Creation State
+    public var pendingShapeToPlace: CanvasShapeType? = nil {
+        didSet {
+            needsDisplay = true
+        }
+    }
+    private var isPlacingShapeWithDrag: Bool = false
+    private var shapePlacementStartPoint: CGPoint = .zero
+    private var shapePlacementCurrentPoint: CGPoint = .zero
 
     // Item Selection & Dragging State
     public var selectedItemId: String? = nil
     private var isDraggingItem: Bool = false
     private var itemDragOffset: CGPoint = .zero
+    private var itemInitialPosition: CGPoint = .zero
     private var isResizingItem: Bool = false
     private var itemResizeStartPoint: CGPoint = .zero
     private var itemInitialSize: CGSize = .zero
+
+    // MARK: - Luminance-Adaptive Text Color
+    public static func adaptiveTextColor(forFillHex hex: String?) -> NSColor {
+        guard let hex = hex?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty,
+              let color = NSColor(hex: hex) else {
+            return NSColor.labelColor
+        }
+        let rgb = color.usingColorSpace(.sRGB) ?? color
+        let r = rgb.redComponent
+        let g = rgb.greenComponent
+        let b = rgb.blueComponent
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance > 0.55 ? NSColor(calibratedRed: 0.06, green: 0.09, blue: 0.16, alpha: 1.0) : NSColor.white
+    }
 
     // Dynamic Connector Wiring State
     public var isConnectorToolActive: Bool = false
@@ -591,52 +618,80 @@ public final class InkCanvasViewportNSView: NSView {
         lastEventPoint = locInView
         lastEventTime = event.timestamp
 
-        // Check for click/interaction on Canvas Items (Shapes, Media, Text Blocks)
-        if canvasMode == .infinite2D {
-            // If connector tool is active, start wiring from clicked snap port
-            if isConnectorToolActive {
-                for item in canvasItems.reversed() {
-                    let (port, pt, dist) = item.closestPort(to: canvasPoint)
-                    if dist <= 24.0 / zoomScale {
-                        connectorStartItemId = item.id
-                        connectorStartPort = port
-                        connectorCurrentPoint = pt
-                        needsDisplay = true
-                        return
-                    }
-                }
-            }
+        // Check for click-to-place or drag-to-size if a shape is pending placement
+        if pendingShapeToPlace != nil {
+            isPlacingShapeWithDrag = true
+            shapePlacementStartPoint = canvasPoint
+            shapePlacementCurrentPoint = canvasPoint
+            needsDisplay = true
+            return
+        }
 
-            // Check click on Canvas Items (reverse zIndex order)
-            for item in canvasItems.sorted(by: { $0.zIndex > $1.zIndex }) {
-                let rect = item.boundingRect
-
-                // 1. Check Resize Handle (Bottom-Right corner)
-                let handleSize: CGFloat = 20.0 / zoomScale
-                let handleRect = CGRect(x: rect.maxX - handleSize, y: rect.maxY - handleSize, width: handleSize, height: handleSize)
-                if selectedItemId == item.id && handleRect.contains(canvasPoint) {
-                    isResizingItem = true
-                    itemResizeStartPoint = canvasPoint
-                    itemInitialSize = CGSize(width: item.width, height: item.height)
-                    return
-                }
-
-                if rect.contains(canvasPoint) {
-                    selectedItemId = item.id
-
-                    // 2. Double click to jump to referenced note if linked
-                    if event.clickCount >= 2, let noteDocId = item.linkedNoteDocId, !noteDocId.isEmpty {
-                        onSelectReferencedNote?(noteDocId)
-                        return
-                    }
-
-                    // 3. Item Dragging
-                    isDraggingItem = true
-                    itemDragOffset = CGPoint(x: canvasPoint.x - CGFloat(item.x), y: canvasPoint.y - CGFloat(item.y))
+        // Check for click/interaction on Canvas Items (Shapes, Media, Text Blocks across all canvas modes)
+        // If connector tool is active, start wiring from clicked snap port
+        if isConnectorToolActive {
+            for item in canvasItems.reversed() {
+                let (port, pt, dist) = item.closestPort(to: canvasPoint)
+                if dist <= 24.0 / zoomScale {
+                    connectorStartItemId = item.id
+                    connectorStartPort = port
+                    connectorCurrentPoint = pt
                     needsDisplay = true
                     return
                 }
             }
+        }
+
+        // Check click on Canvas Items (reverse zIndex order: topmost first)
+        var hitAnyItem = false
+        for item in canvasItems.sorted(by: { $0.zIndex > $1.zIndex }) {
+            let rect = item.boundingRect
+
+            // 1. Check Resize Handle (Bottom-Right circular handle centered at maxX, maxY)
+            let handleRadius: CGFloat = 16.0 / zoomScale
+            let handleCenter = CGPoint(x: rect.maxX, y: rect.maxY)
+            if selectedItemId == item.id && hypot(canvasPoint.x - handleCenter.x, canvasPoint.y - handleCenter.y) <= handleRadius {
+                isResizingItem = true
+                itemResizeStartPoint = canvasPoint
+                itemInitialSize = CGSize(width: item.width, height: item.height)
+                return
+            }
+
+            // 2. Shape / Item Body Hit-Testing
+            let shapePath = createShapePath(for: item, rect: rect)
+            let isFilled = (item.fillColorHex != nil && item.fillColorHex != "clear")
+            let isHit: Bool
+            if isFilled {
+                isHit = shapePath.contains(canvasPoint) || rect.insetBy(dx: -4.0 / zoomScale, dy: -4.0 / zoomScale).contains(canvasPoint)
+            } else {
+                let strokeTol = max(10.0 / zoomScale, CGFloat(item.strokeWidth) + 6.0 / zoomScale)
+                let stroked = shapePath.copy(strokingWithWidth: strokeTol, lineCap: .round, lineJoin: .round, miterLimit: 10)
+                isHit = stroked.contains(canvasPoint)
+            }
+
+            if isHit {
+                hitAnyItem = true
+                selectedItemId = item.id
+
+                // Double click to jump to referenced note if linked
+                if event.clickCount >= 2, let noteDocId = item.linkedNoteDocId, !noteDocId.isEmpty {
+                    onSelectReferencedNote?(noteDocId)
+                    return
+                }
+
+                // Item Dragging
+                isDraggingItem = true
+                itemInitialPosition = CGPoint(x: item.x, y: item.y)
+                itemDragOffset = CGPoint(x: canvasPoint.x - CGFloat(item.x), y: canvasPoint.y - CGFloat(item.y))
+                needsDisplay = true
+                return
+            }
+        }
+
+        // If user clicked empty space without hitting any item and active tool is ballpoint, clear item selection
+        if !hitAnyItem && selectedItemId != nil && activeTool == .ballpoint {
+            selectedItemId = nil
+            needsDisplay = true
         }
 
         // Check for click/interaction on Canvas Note Cards (reverse order for top-most)
@@ -851,6 +906,13 @@ public final class InkCanvasViewportNSView: NSView {
 
         let canvasPoint = canvasPointFrom(viewPoint: locInView)
 
+        // Rubber-Band Drag-to-Size Shape Placement
+        if isPlacingShapeWithDrag {
+            shapePlacementCurrentPoint = canvasPoint
+            needsDisplay = true
+            return
+        }
+
         // Dynamic Connector Live Wiring Drag
         if isConnectorToolActive, connectorStartItemId != nil {
             connectorCurrentPoint = canvasPoint
@@ -1061,6 +1123,41 @@ public final class InkCanvasViewportNSView: NSView {
         shapeHoldTimer?.invalidate()
         shapeHoldTimer = nil
 
+        // Commit Click-to-Place or Drag-to-Size Shape Creation
+        if isPlacingShapeWithDrag, let pending = pendingShapeToPlace {
+            isPlacingShapeWithDrag = false
+            pendingShapeToPlace = nil
+            let dx = abs(shapePlacementCurrentPoint.x - shapePlacementStartPoint.x)
+            let dy = abs(shapePlacementCurrentPoint.y - shapePlacementStartPoint.y)
+            let rect: CGRect
+            if hypot(dx, dy) < 14.0 {
+                // Click-to-Place: centered at clicked point
+                rect = CGRect(x: shapePlacementStartPoint.x - 75.0, y: shapePlacementStartPoint.y - 50.0, width: 150.0, height: 100.0)
+            } else {
+                // Drag-to-Size rubber band
+                let minX = min(shapePlacementStartPoint.x, shapePlacementCurrentPoint.x)
+                let minY = min(shapePlacementStartPoint.y, shapePlacementCurrentPoint.y)
+                rect = CGRect(x: minX, y: minY, width: max(60.0, dx), height: max(40.0, dy))
+            }
+            let newItem = CanvasItem(
+                canvasDocId: docId,
+                itemType: .shape,
+                shapeType: pending,
+                x: Double(rect.origin.x),
+                y: Double(rect.origin.y),
+                width: Double(rect.width),
+                height: Double(rect.height),
+                fillColorHex: pending == .diamond ? "#FEF3C7" : (pending == .ellipse ? "#E0E7FF" : "#EFF6FF"),
+                strokeColorHex: "#3B82F6",
+                strokeWidth: 2.0,
+                title: pending == .diamond ? "Decision" : (pending == .ellipse ? "Start / End" : "Process Step")
+            )
+            onAddCanvasItem?(newItem)
+            selectedItemId = newItem.id
+            needsDisplay = true
+            return
+        }
+
         // Commit Dynamic Connector Wiring
         if isConnectorToolActive, let startId = connectorStartItemId, let startPort = connectorStartPort {
             if let target = hoveredSnapPort {
@@ -1079,6 +1176,10 @@ public final class InkCanvasViewportNSView: NSView {
             isDraggingItem = false
             if let item = canvasItems.first(where: { $0.id == itemId }) {
                 onUpdateCanvasItemPosition?(item.id, item.x, item.y)
+                let dist = hypot(item.x - Double(itemInitialPosition.x), item.y - Double(itemInitialPosition.y))
+                if dist > 0.5 {
+                    onRecordItemMoved?(item.id, Double(itemInitialPosition.x), Double(itemInitialPosition.y), item.x, item.y)
+                }
             }
             needsDisplay = true
             return
@@ -1089,6 +1190,11 @@ public final class InkCanvasViewportNSView: NSView {
             isResizingItem = false
             if let item = canvasItems.first(where: { $0.id == itemId }) {
                 onUpdateCanvasItemSize?(item.id, item.width, item.height)
+                let dw = abs(item.width - Double(itemInitialSize.width))
+                let dh = abs(item.height - Double(itemInitialSize.height))
+                if dw > 0.5 || dh > 0.5 {
+                    onRecordItemResized?(item.id, Double(itemInitialSize.width), Double(itemInitialSize.height), item.width, item.height)
+                }
             }
             needsDisplay = true
             return
@@ -1481,6 +1587,9 @@ public final class InkCanvasViewportNSView: NSView {
         // Render unified canvas items (shapes, media, text blocks)
         drawCanvasItems(in: context)
 
+        // Render live rubberband shape placement preview
+        drawShapePlacementPreview(in: context)
+
         // Render embedded note cards in 2D space
         drawCanvasNoteCards(in: context)
 
@@ -1800,9 +1909,10 @@ public final class InkCanvasViewportNSView: NSView {
 
         let fontSize: CGFloat = isMacro ? max(12, min(24, 18 / zoomScale)) : 14.0
         let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+        let textColor = Self.adaptiveTextColor(forFillHex: item.fillColorHex)
         let titleAttrs: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: textColor
         ]
 
         let titleStr = title as NSString
@@ -1911,11 +2021,14 @@ public final class InkCanvasViewportNSView: NSView {
     }
 
     private func drawTextOrCardContent(item: CanvasItem, rect: CGRect, isMacro: Bool, isDeepDetail: Bool, in context: CGContext) {
+        let textColor = Self.adaptiveTextColor(forFillHex: item.fillColorHex)
+        let secondaryColor = textColor.withAlphaComponent(0.72)
+
         if isMacro {
             let title = (item.title?.isEmpty == false ? item.title! : "Text Block") as NSString
             title.draw(at: CGPoint(x: rect.minX + 14, y: rect.midY - 8), withAttributes: [
                 .font: NSFont.systemFont(ofSize: max(11, 14 / zoomScale), weight: .bold),
-                .foregroundColor: NSColor.labelColor
+                .foregroundColor: textColor
             ])
             return
         }
@@ -1924,7 +2037,7 @@ public final class InkCanvasViewportNSView: NSView {
         let titleText = item.title?.isEmpty == false ? item.title! : "Text Block"
         let titleAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .bold),
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: textColor
         ]
         (titleText as NSString).draw(in: CGRect(x: rect.minX + 14, y: rect.minY + 12, width: rect.width - 28, height: 20), withAttributes: titleAttrs)
 
@@ -1933,7 +2046,7 @@ public final class InkCanvasViewportNSView: NSView {
         if !bodyText.isEmpty {
             let bodyAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
-                .foregroundColor: NSColor.secondaryLabelColor
+                .foregroundColor: secondaryColor
             ]
             (bodyText as NSString).draw(in: CGRect(x: rect.minX + 14, y: rect.minY + 36, width: rect.width - 28, height: rect.height - 44), withAttributes: bodyAttrs)
         }
@@ -1971,6 +2084,42 @@ public final class InkCanvasViewportNSView: NSView {
             context.strokeEllipse(in: CGRect(x: pt.x - portRadius, y: pt.y - portRadius, width: portRadius * 2, height: portRadius * 2))
             context.restoreGState()
         }
+    }
+
+    private func drawShapePlacementPreview(in context: CGContext) {
+        guard isPlacingShapeWithDrag, let pending = pendingShapeToPlace else { return }
+        let dx = abs(shapePlacementCurrentPoint.x - shapePlacementStartPoint.x)
+        let dy = abs(shapePlacementCurrentPoint.y - shapePlacementStartPoint.y)
+        let rect: CGRect
+        if hypot(dx, dy) < 14.0 {
+            rect = CGRect(x: shapePlacementStartPoint.x - 75.0, y: shapePlacementStartPoint.y - 50.0, width: 150.0, height: 100.0)
+        } else {
+            let minX = min(shapePlacementStartPoint.x, shapePlacementCurrentPoint.x)
+            let minY = min(shapePlacementStartPoint.y, shapePlacementCurrentPoint.y)
+            rect = CGRect(x: minX, y: minY, width: max(60.0, dx), height: max(40.0, dy))
+        }
+
+        context.saveGState()
+        let dummy = CanvasItem(
+            canvasDocId: docId,
+            itemType: .shape,
+            shapeType: pending,
+            x: Double(rect.origin.x),
+            y: Double(rect.origin.y),
+            width: Double(rect.width),
+            height: Double(rect.height)
+        )
+        let path = createShapePath(for: dummy, rect: rect)
+        context.addPath(path)
+        context.setFillColor(NSColor.systemBlue.withAlphaComponent(0.12).cgColor)
+        context.fillPath()
+
+        context.addPath(path)
+        context.setStrokeColor(NSColor.systemBlue.cgColor)
+        context.setLineWidth(2.0 / zoomScale)
+        context.setLineDash(phase: 0, lengths: [6.0 / zoomScale, 4.0 / zoomScale])
+        context.strokePath()
+        context.restoreGState()
     }
 
     private func drawItemResizeHandle(for item: CanvasItem, in context: CGContext) {

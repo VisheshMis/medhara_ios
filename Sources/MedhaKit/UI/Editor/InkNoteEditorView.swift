@@ -295,6 +295,12 @@ public struct InkNoteEditorView: View {
             onDeleteCanvasItem: { itemId in
                 store.deleteCanvasItem(id: itemId)
             },
+            onRecordItemMoved: { itemId, oldX, oldY, newX, newY in
+                store.recordItemMoved(id: itemId, oldX: oldX, oldY: oldY, newX: newX, newY: newY)
+            },
+            onRecordItemResized: { itemId, oldW, oldH, newW, newH in
+                store.recordItemResized(id: itemId, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH)
+            },
             onAddCanvasConnector: { sourceId, sourcePort, targetId, targetPort, routing, label in
                 store.addCanvasConnector(
                     canvasDocId: doc.id,
@@ -368,8 +374,8 @@ public struct InkNoteEditorView: View {
                     store: store,
                     onUndo: performUndo,
                     onRedo: performRedo,
-                    canUndo: !store.inkUndoStack.isEmpty,
-                    canRedo: !store.inkRedoStack.isEmpty,
+                    canUndo: !store.canvasUndoStack.isEmpty || !store.inkUndoStack.isEmpty,
+                    canRedo: !store.canvasRedoStack.isEmpty || !store.inkRedoStack.isEmpty,
                     onBringToFront: {
                         viewportNSView?.bringSelectionToFront()
                     },
@@ -380,7 +386,7 @@ public struct InkNoteEditorView: View {
                 .padding(.top, store.isInkFocusMode ? 20 : 16)
 
                 // Floating macOS Glass Unified Canvas Toolbar (Shapes, Connectors, Text, Media, Note Link)
-                if doc.resolvedCanvasMode == .infinite2D && !store.isInkFocusMode {
+                if !store.isInkFocusMode {
                     VStack {
                         Spacer()
                         CanvasUnifiedFloatingToolbar(
@@ -500,13 +506,18 @@ public struct InkNoteEditorView: View {
 
     // MARK: - Canvas Item & Media Insertion Helpers
     private func insertShape(_ shapeType: CanvasShapeType) {
+        if let viewport = viewportNSView {
+            viewport.pendingShapeToPlace = shapeType
+            return
+        }
         let centerPoint = viewportNSView?.centerPointInCanvasCoordinates() ?? CGPoint(x: 200, y: 200)
+        let cascade = Double((store.canvasItems.count % 8) * 24)
         let item = CanvasItem(
             canvasDocId: doc.id,
             itemType: .shape,
             shapeType: shapeType,
-            x: Double(centerPoint.x) - 75,
-            y: Double(centerPoint.y) - 50,
+            x: Double(centerPoint.x) - 75 + cascade,
+            y: Double(centerPoint.y) - 50 + cascade,
             width: 150,
             height: 100,
             fillColorHex: shapeType == .diamond ? "#FEF3C7" : (shapeType == .ellipse ? "#E0E7FF" : "#EFF6FF"),
@@ -515,15 +526,18 @@ public struct InkNoteEditorView: View {
             title: shapeType == .diamond ? "Decision" : (shapeType == .ellipse ? "Start / End" : "Process Step")
         )
         store.addCanvasItem(item)
+        viewportNSView?.selectedItemId = item.id
+        viewportNSView?.needsDisplay = true
     }
 
     private func insertTextBlock() {
         let centerPoint = viewportNSView?.centerPointInCanvasCoordinates() ?? CGPoint(x: 200, y: 200)
+        let cascade = Double((store.canvasItems.count % 8) * 24)
         let item = CanvasItem(
             canvasDocId: doc.id,
             itemType: .textBlock,
-            x: Double(centerPoint.x) - 100,
-            y: Double(centerPoint.y) - 40,
+            x: Double(centerPoint.x) - 100 + cascade,
+            y: Double(centerPoint.y) - 40 + cascade,
             width: 200,
             height: 80,
             fillColorHex: "#FFFFFF",
@@ -533,6 +547,8 @@ public struct InkNoteEditorView: View {
             markdownContent: "Double-click to edit text"
         )
         store.addCanvasItem(item)
+        viewportNSView?.selectedItemId = item.id
+        viewportNSView?.needsDisplay = true
     }
 
     private func promptMediaUpload() {
@@ -655,21 +671,35 @@ public struct InkNoteEditorView: View {
     }
 
     private func performUndo() {
+        if !store.canvasUndoStack.isEmpty {
+            store.performCanvasUndo()
+            loadPagesData()
+            viewportNSView?.needsDisplay = true
+            return
+        }
         guard let prev = store.inkUndoStack.popLast() else { return }
         let targetIndex = 0
         let current = pagesStrokes[targetIndex] ?? []
         store.inkRedoStack.append(current)
         pagesStrokes[targetIndex] = prev
         store.saveInkPageStrokes(pageIndex: targetIndex, strokes: prev)
+        viewportNSView?.needsDisplay = true
     }
 
     private func performRedo() {
+        if !store.canvasRedoStack.isEmpty {
+            store.performCanvasRedo()
+            loadPagesData()
+            viewportNSView?.needsDisplay = true
+            return
+        }
         guard let next = store.inkRedoStack.popLast() else { return }
         let targetIndex = 0
         let current = pagesStrokes[targetIndex] ?? []
         store.inkUndoStack.append(current)
         pagesStrokes[targetIndex] = next
         store.saveInkPageStrokes(pageIndex: targetIndex, strokes: next)
+        viewportNSView?.needsDisplay = true
     }
 
     // MARK: - Export Logic
