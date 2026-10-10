@@ -187,7 +187,12 @@ public enum InkExportService {
                 if pt.y > maxY { maxY = pt.y }
             }
         }
-        let totalHeight = max(pageHeight, ceil(CGFloat(maxY + 40.0) / pageHeight) * pageHeight)
+
+        // Account for imported PDF pages
+        let pdfPages = pages.filter { $0.pdfPath != nil && $0.pdfPageIndex != nil }
+        let pdfTotalHeight = CGFloat(pdfPages.count) * (pageHeight + 40.0)
+
+        let totalHeight = max(max(pageHeight, ceil(CGFloat(maxY + 40.0) / pageHeight) * pageHeight), pdfTotalHeight)
         let sliceCount = max(1, Int(round(totalHeight / pageHeight)))
 
         let pdfData = NSMutableData()
@@ -213,6 +218,16 @@ public enum InkExportService {
             let sliceOffsetY = CGFloat(sliceIndex) * pageHeight
             pdfContext.clip(to: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
             pdfContext.translateBy(x: 0, y: -sliceOffsetY)
+
+            // Render any PDF page falling on this vertical canvas area
+            for (idx, page) in pdfPages.enumerated() {
+                if let path = page.pdfPath, let pIdx = page.pdfPageIndex,
+                   let pdfURL = InkPDFImporterService.resolvePDFURL(for: path) {
+                    let pageY = CGFloat(idx) * (pageHeight + 40.0)
+                    let pageTargetRect = CGRect(x: 0, y: pageY, width: pageWidth, height: pageHeight)
+                    InkPDFImporterService.renderPDFPage(from: pdfURL, pageIndex: pIdx, in: pdfContext, targetRect: pageTargetRect)
+                }
+            }
 
             // Render strokes
             for stroke in allStrokes where stroke.tool == .highlighter {
@@ -247,7 +262,12 @@ public enum InkExportService {
                 if pt.y > maxY { maxY = pt.y }
             }
         }
-        let totalHeight = max(pageHeight, CGFloat(maxY + 60.0))
+
+        // Account for imported PDF pages
+        let pdfPages = pages.filter { $0.pdfPath != nil && $0.pdfPageIndex != nil }
+        let pdfTotalHeight = CGFloat(pdfPages.count) * (pageHeight + 40.0)
+
+        let totalHeight = max(max(pageHeight, CGFloat(maxY + 60.0)), pdfTotalHeight)
 
         let scaledWidth = Int(pageWidth * scale)
         let scaledHeight = Int(totalHeight * scale)
@@ -265,6 +285,16 @@ public enum InkExportService {
 
         context.scaleBy(x: scale, y: scale)
         drawTemplate(template: template, width: pageWidth, height: totalHeight, in: context)
+
+        // Render PDF pages
+        for (idx, page) in pdfPages.enumerated() {
+            if let path = page.pdfPath, let pIdx = page.pdfPageIndex,
+               let pdfURL = InkPDFImporterService.resolvePDFURL(for: path) {
+                let pageY = CGFloat(idx) * (pageHeight + 40.0)
+                let pageTargetRect = CGRect(x: 0, y: pageY, width: pageWidth, height: pageHeight)
+                InkPDFImporterService.renderPDFPage(from: pdfURL, pageIndex: pIdx, in: context, targetRect: pageTargetRect)
+            }
+        }
 
         for stroke in allStrokes where stroke.tool == .highlighter {
             renderStrokeToCGContext(stroke, in: context)
@@ -287,8 +317,21 @@ public enum InkExportService {
         let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
         let template = pages.first?.templateType ?? .dotGrid
 
-        let boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes) ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
-        let paddedRect = boundingBox.insetBy(dx: -48.0, dy: -48.0)
+        var boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes)
+
+        let pdfPages = pages.filter { $0.pdfPath != nil && $0.pdfPageIndex != nil }
+        if !pdfPages.isEmpty {
+            let totalPDFH = CGFloat(pdfPages.count) * (minHeight + 40.0)
+            let pdfRect = CGRect(x: 0, y: 0, width: minWidth, height: totalPDFH)
+            if let existing = boundingBox {
+                boundingBox = existing.union(pdfRect)
+            } else {
+                boundingBox = pdfRect
+            }
+        }
+
+        let effectiveBox = boundingBox ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
+        let paddedRect = effectiveBox.insetBy(dx: -48.0, dy: -48.0)
         let exportWidth = max(minWidth, paddedRect.width)
         let exportHeight = max(minHeight, paddedRect.height)
 
@@ -310,8 +353,24 @@ public enum InkExportService {
         // Draw template across the framed bounding area
         drawTemplate(template: template, width: exportWidth, height: exportHeight, in: pdfContext)
 
-        // Translate world coordinates so strokes align inside the padded area
+        // Translate world coordinates so strokes & pages align inside the padded area
         pdfContext.translateBy(x: -paddedRect.minX, y: -paddedRect.minY)
+
+        // Render PDF pages with white paper backdrop
+        for (idx, page) in pdfPages.enumerated() {
+            if let path = page.pdfPath, let pIdx = page.pdfPageIndex,
+               let pdfURL = InkPDFImporterService.resolvePDFURL(for: path) {
+                let pageY = CGFloat(idx) * (minHeight + 40.0)
+                let pageTargetRect = CGRect(x: 0, y: pageY, width: minWidth, height: minHeight)
+
+                pdfContext.saveGState()
+                pdfContext.setFillColor(NSColor.white.cgColor)
+                pdfContext.fill(pageTargetRect)
+                pdfContext.restoreGState()
+
+                InkPDFImporterService.renderPDFPage(from: pdfURL, pageIndex: pIdx, in: pdfContext, targetRect: pageTargetRect)
+            }
+        }
 
         for stroke in allStrokes where stroke.tool == .highlighter {
             renderStrokeToCGContext(stroke, in: pdfContext)
@@ -336,8 +395,21 @@ public enum InkExportService {
         let allStrokes = pages.flatMap { InkPagePayload.deserialize(from: $0.strokesData).strokes }
         let template = pages.first?.templateType ?? .dotGrid
 
-        let boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes) ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
-        let paddedRect = boundingBox.insetBy(dx: -48.0, dy: -48.0)
+        var boundingBox = InkGeometry.combinedBoundingBox(for: allStrokes)
+
+        let pdfPages = pages.filter { $0.pdfPath != nil && $0.pdfPageIndex != nil }
+        if !pdfPages.isEmpty {
+            let totalPDFH = CGFloat(pdfPages.count) * (minHeight + 40.0)
+            let pdfRect = CGRect(x: 0, y: 0, width: minWidth, height: totalPDFH)
+            if let existing = boundingBox {
+                boundingBox = existing.union(pdfRect)
+            } else {
+                boundingBox = pdfRect
+            }
+        }
+
+        let effectiveBox = boundingBox ?? CGRect(x: 0, y: 0, width: minWidth, height: minHeight)
+        let paddedRect = effectiveBox.insetBy(dx: -48.0, dy: -48.0)
         let exportWidth = max(minWidth, paddedRect.width)
         let exportHeight = max(minHeight, paddedRect.height)
 
@@ -359,6 +431,22 @@ public enum InkExportService {
         drawTemplate(template: template, width: exportWidth, height: exportHeight, in: context)
 
         context.translateBy(x: -paddedRect.minX, y: -paddedRect.minY)
+
+        // Render PDF pages
+        for (idx, page) in pdfPages.enumerated() {
+            if let path = page.pdfPath, let pIdx = page.pdfPageIndex,
+               let pdfURL = InkPDFImporterService.resolvePDFURL(for: path) {
+                let pageY = CGFloat(idx) * (minHeight + 40.0)
+                let pageTargetRect = CGRect(x: 0, y: pageY, width: minWidth, height: minHeight)
+
+                context.saveGState()
+                context.setFillColor(NSColor.white.cgColor)
+                context.fill(pageTargetRect)
+                context.restoreGState()
+
+                InkPDFImporterService.renderPDFPage(from: pdfURL, pageIndex: pIdx, in: context, targetRect: pageTargetRect)
+            }
+        }
 
         for stroke in allStrokes where stroke.tool == .highlighter {
             renderStrokeToCGContext(stroke, in: context)

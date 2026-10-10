@@ -105,6 +105,11 @@ public struct DocumentRowView: View {
             .medhaRow(isSelected: isSelected, tint: MedhaTheme.Colors.notesAccent)
         }
         .buttonStyle(.plain)
+        .onDrag {
+            let provider = NSItemProvider(object: NSString(string: node.doc.id))
+            provider.suggestedName = node.doc.content
+            return provider
+        }
         .onHover { hovering in
             isHovered = hovering
         }

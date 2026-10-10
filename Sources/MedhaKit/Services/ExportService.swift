@@ -35,6 +35,20 @@ public enum ExportService {
                 if let ref = block.refTargetId {
                     lines.append("\(indentLevel)((\(ref)))")
                 }
+            case .toggle:
+                lines.append("\(indentLevel)> ▾ \(block.content)\n")
+            case .table:
+                if let payload = block.tablePayload {
+                    for (rIdx, row) in payload.rows.enumerated() {
+                        let rowStr = "\(indentLevel)| " + row.joined(separator: " | ") + " |"
+                        lines.append(rowStr)
+                        if rIdx == 0 && payload.hasHeaderRow {
+                            let sep = "\(indentLevel)| " + row.map { _ in "---" }.joined(separator: " | ") + " |"
+                            lines.append(sep)
+                        }
+                    }
+                    lines.append("")
+                }
             }
         }
         return lines.joined(separator: "\n")

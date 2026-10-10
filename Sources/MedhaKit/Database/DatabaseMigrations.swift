@@ -305,6 +305,154 @@ public enum DatabaseMigrations {
             try db.create(index: "idx_focus_session_createdAt", on: "focus_session", columns: ["createdAt"])
             try db.create(index: "idx_focus_session_completedAt", on: "focus_session", columns: ["completedAt"])
         }
+
+        migrator.registerMigration("v13_block_tier1_primitives_and_metadata") { db in
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN isCollapsed BOOLEAN DEFAULT 0;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN icon TEXT;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN colorTint TEXT;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN verifiedAt DATETIME;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN verifiedExpiresAt DATETIME;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN verifiedBy TEXT;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN isLocked BOOLEAN DEFAULT 0;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN pinnedPropertiesData TEXT;")
+        }
+
+        migrator.registerMigration("v14_canvas_note_cards") { db in
+            try db.create(table: "canvas_note_card") { t in
+                t.column("id", .text).primaryKey()
+                t.column("canvasDocId", .text).notNull()
+                t.column("noteDocId", .text).notNull()
+                t.column("canvasX", .double).notNull().defaults(to: 100.0)
+                t.column("canvasY", .double).notNull().defaults(to: 100.0)
+                t.column("canvasWidth", .double).notNull().defaults(to: 320.0)
+                t.column("canvasHeight", .double).notNull().defaults(to: 200.0)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_canvas_note_card_canvasDocId", on: "canvas_note_card", columns: ["canvasDocId"])
+            try db.create(index: "idx_canvas_note_card_noteDocId", on: "canvas_note_card", columns: ["noteDocId"])
+        }
+
+        migrator.registerMigration("v15_notion_relational_databases") { db in
+            // Databases table
+            try db.create(table: "databases") { t in
+                t.column("id", .text).primaryKey()
+                t.column("rootDocId", .text).notNull()
+                t.column("title", .text).notNull().defaults(to: "Untitled Database")
+                t.column("description", .text)
+                t.column("icon", .text).defaults(to: "tablecells")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_databases_rootDocId", on: "databases", columns: ["rootDocId"])
+
+            // Database properties table
+            try db.create(table: "database_properties") { t in
+                t.column("id", .text).primaryKey()
+                t.column("databaseId", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("type", .text).notNull()
+                t.column("configJson", .text)
+                t.column("sortOrder", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(index: "idx_database_properties_databaseId", on: "database_properties", columns: ["databaseId"])
+            try db.create(index: "idx_database_properties_sortOrder", on: "database_properties", columns: ["sortOrder"])
+
+            // Database records table
+            try db.create(table: "database_records") { t in
+                t.column("id", .text).primaryKey()
+                t.column("databaseId", .text).notNull()
+                t.column("docId", .text).notNull()
+                t.column("uniqueSeqNumber", .integer)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_database_records_databaseId", on: "database_records", columns: ["databaseId"])
+            try db.create(index: "idx_database_records_docId", on: "database_records", columns: ["docId"])
+
+            // Database cell values table (EAV store)
+            try db.create(table: "database_cell_values") { t in
+                t.column("recordId", .text).notNull()
+                t.column("propertyId", .text).notNull()
+                t.column("valueText", .text)
+                t.column("valueNumber", .double)
+                t.column("valueDate", .datetime)
+                t.column("valueJson", .text)
+                t.primaryKey(["recordId", "propertyId"])
+            }
+            try db.create(index: "idx_cell_values_recordId", on: "database_cell_values", columns: ["recordId"])
+            try db.create(index: "idx_cell_values_propertyId", on: "database_cell_values", columns: ["propertyId"])
+
+            // Record relations table
+            try db.create(table: "record_relations") { t in
+                t.column("id", .text).primaryKey()
+                t.column("fromRecordId", .text).notNull()
+                t.column("toRecordId", .text).notNull()
+                t.column("relationPropertyId", .text).notNull()
+            }
+            try db.create(index: "idx_record_relations_fromRecordId", on: "record_relations", columns: ["fromRecordId"])
+            try db.create(index: "idx_record_relations_toRecordId", on: "record_relations", columns: ["toRecordId"])
+            try db.create(index: "idx_record_relations_propId", on: "record_relations", columns: ["relationPropertyId"])
+        }
+
+        migrator.registerMigration("v16_ink_page_spatial_layout_and_crop") { db in
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN canvasX DOUBLE;")
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN canvasY DOUBLE;")
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN customWidth DOUBLE;")
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN customHeight DOUBLE;")
+            try db.execute(sql: "ALTER TABLE ink_document_page ADD COLUMN cropRectData TEXT;")
+        }
+
+        migrator.registerMigration("v17_unified_infinite_canvas") { db in
+            try db.create(table: "canvas_items") { t in
+                t.column("id", .text).primaryKey()
+                t.column("canvasDocId", .text).notNull().references("block", onDelete: .cascade)
+                t.column("itemType", .text).notNull() // shape, mediaImage, mediaVideo, mediaAudio, mediaPDF, textBlock, noteCard
+                t.column("linkedNoteDocId", .text).references("block", onDelete: .setNull)
+                t.column("shapeType", .text) // rectangle, roundedRectangle, diamond, ellipse, group
+                t.column("x", .double).notNull()
+                t.column("y", .double).notNull()
+                t.column("width", .double).notNull()
+                t.column("height", .double).notNull()
+                t.column("rotationDegrees", .double).notNull().defaults(to: 0.0)
+                t.column("zIndex", .integer).notNull().defaults(to: 0)
+                t.column("fillColorHex", .text)
+                t.column("strokeColorHex", .text)
+                t.column("strokeWidth", .double).notNull().defaults(to: 1.5)
+                t.column("cornerRadius", .double).notNull().defaults(to: 8.0)
+                t.column("title", .text)
+                t.column("summarySnippet", .text)
+                t.column("markdownContent", .text)
+                t.column("mediaAssetKey", .text)
+                t.column("metadataJson", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_canvas_items_canvasDocId", on: "canvas_items", columns: ["canvasDocId"])
+            try db.create(index: "idx_canvas_items_itemType", on: "canvas_items", columns: ["itemType"])
+            try db.create(index: "idx_canvas_items_linkedNoteDocId", on: "canvas_items", columns: ["linkedNoteDocId"])
+            try db.create(index: "idx_canvas_items_zIndex", on: "canvas_items", columns: ["zIndex"])
+
+            try db.create(table: "canvas_connectors") { t in
+                t.column("id", .text).primaryKey()
+                t.column("canvasDocId", .text).notNull().references("block", onDelete: .cascade)
+                t.column("fromItemId", .text).notNull().references("canvas_items", onDelete: .cascade)
+                t.column("fromPort", .text).notNull() // top, right, bottom, left
+                t.column("toItemId", .text).notNull().references("canvas_items", onDelete: .cascade)
+                t.column("toPort", .text).notNull() // top, right, bottom, left
+                t.column("routingType", .text).notNull().defaults(to: "orthogonal") // orthogonal, curved, straight
+                t.column("label", .text)
+                t.column("strokeColorHex", .text).notNull().defaults(to: "#64748B")
+                t.column("strokeWidth", .double).notNull().defaults(to: 2.0)
+                t.column("arrowType", .text).notNull().defaults(to: "endArrow") // none, endArrow, bothArrows
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_canvas_connectors_canvasDocId", on: "canvas_connectors", columns: ["canvasDocId"])
+            try db.create(index: "idx_canvas_connectors_fromItemId", on: "canvas_connectors", columns: ["fromItemId"])
+            try db.create(index: "idx_canvas_connectors_toItemId", on: "canvas_connectors", columns: ["toItemId"])
+        }
     }
 }
+
 

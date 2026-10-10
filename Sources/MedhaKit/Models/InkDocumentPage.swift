@@ -47,6 +47,11 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
     public var textProjection: String? // Reserved for future OCR
     public var pdfPath: String?       // Relative filename or absolute path in DocumentAssets
     public var pdfPageIndex: Int?     // 1-based page number in the trimmed PDF
+    public var canvasX: Double?       // Spatial X in 2D mode
+    public var canvasY: Double?       // Spatial Y in 2D mode
+    public var customWidth: Double?   // Resized width
+    public var customHeight: Double?  // Resized height
+    public var cropRectData: String?  // Serialized normalized crop [x, y, w, h]
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -59,6 +64,11 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
         textProjection: String? = nil,
         pdfPath: String? = nil,
         pdfPageIndex: Int? = nil,
+        canvasX: Double? = nil,
+        canvasY: Double? = nil,
+        customWidth: Double? = nil,
+        customHeight: Double? = nil,
+        cropRectData: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -70,6 +80,11 @@ public struct InkDocumentPage: Identifiable, Codable, FetchableRecord, Persistab
         self.textProjection = textProjection
         self.pdfPath = pdfPath
         self.pdfPageIndex = pdfPageIndex
+        self.canvasX = canvasX
+        self.canvasY = canvasY
+        self.customWidth = customWidth
+        self.customHeight = customHeight
+        self.cropRectData = cropRectData
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -91,6 +106,11 @@ extension InkDocumentPage {
         public static let textProjection = Column(CodingKeys.textProjection)
         public static let pdfPath = Column(CodingKeys.pdfPath)
         public static let pdfPageIndex = Column(CodingKeys.pdfPageIndex)
+        public static let canvasX = Column(CodingKeys.canvasX)
+        public static let canvasY = Column(CodingKeys.canvasY)
+        public static let customWidth = Column(CodingKeys.customWidth)
+        public static let customHeight = Column(CodingKeys.customHeight)
+        public static let cropRectData = Column(CodingKeys.cropRectData)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
     }

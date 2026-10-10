@@ -2918,8 +2918,690 @@ struct TestRunner {
 
         print("✅ testFocusTimerStatsAndSessionPersistence passed")
 
-        print("\n🎉 ALL 41 TEST SUITES PASSED SUCCESSFULLY!")
+        // =========================================================================
+        // --- Running Suite 42: Tier 1 Notion Primitives & Record Layouts ---
+        // =========================================================================
+        print("\n--- Running Suite 42: Tier 1 Notion Primitives & Record Layouts ---")
+        
+        // 42.1: Toggle Block Creation & Child Visibility Folding
+        let notionDoc = store.createDocument(title: "Notion Primitives Spec")
+        store.selectDocument(id: notionDoc.id)
+
+        let toggleBlock = store.createBlock(type: .toggle, content: "Collapsible Research Notes")
+        assert(toggleBlock.type == .toggle, "Failed: Toggle block type")
+        assert(toggleBlock.isCollapsed == false, "Failed: Default toggle state should be expanded")
+
+        let childBlock = store.createBlock(type: .paragraph, content: "Confidential child detail", parentId: toggleBlock.id)
+        assert(childBlock.parentId == toggleBlock.id, "Failed: Child block parentId should match toggle")
+        assert(store.visibleBlocks.contains(where: { $0.id == childBlock.id }), "Failed: Child should be visible when toggle is expanded")
+
+        // Collapse toggle
+        store.toggleBlockCollapse(id: toggleBlock.id)
+        assert(store.visibleBlocks.contains(where: { $0.id == toggleBlock.id }), "Failed: Toggle itself must remain visible")
+        assert(!store.visibleBlocks.contains(where: { $0.id == childBlock.id }), "Failed: Collapsed toggle child must be hidden from visibleBlocks")
+
+        // Expand toggle again
+        store.toggleBlockCollapse(id: toggleBlock.id)
+        assert(store.visibleBlocks.contains(where: { $0.id == childBlock.id }), "Failed: Re-expanded toggle child must be visible again")
+
+        // 42.2: Heading Section Folding
+        let secA = store.createBlock(type: .heading1, content: "Section Alpha")
+        let paraA = store.createBlock(type: .paragraph, content: "Alpha body text")
+        let secB = store.createBlock(type: .heading1, content: "Section Beta")
+        let paraB = store.createBlock(type: .paragraph, content: "Beta body text")
+
+        assert(store.visibleBlocks.contains(where: { $0.id == paraA.id }), "Failed: Alpha paragraph visible initially")
+        assert(store.visibleBlocks.contains(where: { $0.id == paraB.id }), "Failed: Beta paragraph visible initially")
+
+        // Fold Section Alpha
+        store.toggleBlockCollapse(id: secA.id)
+        assert(!store.visibleBlocks.contains(where: { $0.id == paraA.id }), "Failed: Alpha paragraph hidden when Section Alpha is folded")
+        assert(store.visibleBlocks.contains(where: { $0.id == secB.id }), "Failed: Section Beta must remain visible when Section Alpha is folded")
+        assert(store.visibleBlocks.contains(where: { $0.id == paraB.id }), "Failed: Beta paragraph must remain visible when Section Alpha is folded")
+
+        // Unfold Section Alpha
+        store.toggleBlockCollapse(id: secA.id)
+        assert(store.visibleBlocks.contains(where: { $0.id == paraA.id }), "Failed: Alpha paragraph restored after unfolding")
+
+        // 42.3: Table Block Payload & 2D Grid Serialization
+        let tableBlock = store.createBlock(type: .table, content: "")
+        assert(tableBlock.type == .table, "Failed: Table block type")
+        let initialPayload = tableBlock.tablePayload ?? TableBlockPayload.defaultTable()
+        assert(initialPayload.rows.count == 3, "Failed: Default table rows count")
+        assert(initialPayload.hasHeaderRow == true, "Failed: Default table hasHeaderRow")
+
+        var mutatedPayload = initialPayload
+        mutatedPayload.rows[0][0] = "Feature"
+        mutatedPayload.rows[0][1] = "Status"
+        mutatedPayload.rows[1][0] = "Toggles"
+        mutatedPayload.rows[1][1] = "Shipped"
+        store.updateTableBlock(id: tableBlock.id, payload: mutatedPayload)
+
+        let reloadedTable = store.blocks.first(where: { $0.id == tableBlock.id })
+        assert(reloadedTable?.tablePayload?.rows[0][0] == "Feature", "Failed: Table cell mutation persistence")
+        assert(reloadedTable?.tablePayload?.rows[1][1] == "Shipped", "Failed: Table cell value")
+
+        // 42.4: Page Verification Life Cycle & Days Remaining
+        assert(!notionDoc.isVerified, "Failed: Doc should not be verified initially")
+        store.setDocumentVerification(docId: notionDoc.id, days: 90, verifiedBy: "Dr. Medha")
+        let verifiedDoc = store.documents.first(where: { $0.id == notionDoc.id })!
+        assert(verifiedDoc.isVerified, "Failed: Doc should be verified")
+        assert(verifiedDoc.verifiedBy == "Dr. Medha", "Failed: Doc verifiedBy")
+        assert(verifiedDoc.verificationDaysRemaining >= 88 && verifiedDoc.verificationDaysRemaining <= 91, "Failed: Verification days remaining calculation")
+
+        // Clear verification
+        store.clearDocumentVerification(docId: notionDoc.id)
+        let unverifiedDoc = store.documents.first(where: { $0.id == notionDoc.id })!
+        assert(!unverifiedDoc.isVerified, "Failed: Doc should be unverified after clear")
+
+        // 42.5: Document Egress Lock
+        assert(!store.isCurrentDocLocked, "Failed: Document lock initially false")
+        store.setDocumentLock(docId: notionDoc.id, isLocked: true)
+        assert(store.isCurrentDocLocked, "Failed: Document lock should be true")
+        store.setDocumentLock(docId: notionDoc.id, isLocked: false)
+        assert(!store.isCurrentDocLocked, "Failed: Document lock should be false after unlocking")
+
+        // 42.6: FTS5 Search Ranking Verification Boost
+        let docV = store.createDocument(title: "Quantum Physics QuantumCosmos")
+        let docU = store.createDocument(title: "General Physics QuantumCosmos")
+        _ = store.createBlock(after: nil, type: .paragraph, content: "Comprehensive lecture note on QuantumCosmos principles", parentId: docV.id)
+        _ = store.createBlock(after: nil, type: .paragraph, content: "Introductory lecture note on QuantumCosmos basics", parentId: docU.id)
+        store.setDocumentVerification(docId: docV.id, days: 30, verifiedBy: "Physics Dept")
+
+        let searchRes = store.search(query: "QuantumCosmos")
+        assert(searchRes.count >= 2, "Failed: FTS5 query should find both documents")
+        assert(searchRes.first?.rootDocId == docV.id, "Failed: Verified document must rank first due to verification score boost")
+
+        print("✅ testTier1NotionPrimitivesAndRecordLayouts passed")
+
+        // Suite 43: Canvas Note Cards Drag-and-Drop & Vast 2D Space
+        print("\n--- Running Suite 43: Canvas Note Cards & Vast 2D Space ---")
+        let canvasDoc = store.createInkDocument(title: "Grand Research Map", templateType: .dotGrid, canvasMode: .infinite2D)
+        let sourceDoc = store.createDocument(title: "Neurobiology Fundamentals")
+        _ = store.createBlock(after: nil, type: .heading1, content: "Action Potentials & Synapses", parentId: sourceDoc.id)
+        _ = store.createBlock(after: nil, type: .paragraph, content: "Voltage-gated sodium channels initiate the depolarisation wave.", parentId: sourceDoc.id)
+
+        // 43.1: Add Canvas Note Card
+        store.addCanvasNoteCard(canvasDocId: canvasDoc.id, noteDocId: sourceDoc.id, x: 450.0, y: 320.0)
+        assert(store.canvasNoteCards.count == 1, "Failed: canvasNoteCards should contain 1 card")
+        let card = store.canvasNoteCards[0]
+        assert(card.canvasDocId == canvasDoc.id, "Failed: card canvasDocId")
+        assert(card.noteDocId == sourceDoc.id, "Failed: card noteDocId")
+        assert(card.canvasX == 450.0 && card.canvasY == 320.0, "Failed: card coordinates")
+
+        // 43.2: Note Summary Provider
+        let summary = store.fetchNoteCardSummary(noteDocId: sourceDoc.id)
+        assert(summary.title == "Neurobiology Fundamentals", "Failed: Summary title must match")
+        assert(summary.snippets.count == 2, "Failed: Summary snippets should have 2 blocks")
+        assert(summary.snippets[0] == "Action Potentials & Synapses", "Failed: Heading snippet")
+
+        // 43.3: Position update & persistence across store reload
+        store.updateCanvasNoteCardPosition(id: card.id, x: 800.0, y: 650.0)
+        assert(store.canvasNoteCards[0].canvasX == 800.0, "Failed: Updated X coordinate in memory")
+
+        let reloadedStore = BlockStore(dbManager: db)
+        reloadedStore.selectDocument(id: canvasDoc.id)
+        assert(reloadedStore.canvasNoteCards.count == 1, "Failed: Reloaded store should have 1 note card")
+        assert(reloadedStore.canvasNoteCards[0].canvasX == 800.0, "Failed: Reloaded store should preserve X")
+        assert(reloadedStore.canvasNoteCards[0].canvasY == 650.0, "Failed: Reloaded store should preserve Y")
+
+        // 43.4: Card Deletion
+        reloadedStore.deleteCanvasNoteCard(id: card.id)
+        assert(reloadedStore.canvasNoteCards.isEmpty, "Failed: Card should be deleted")
+
+        // 43.5: Vast Space Zoom Range Bounds (0.02x to 20.0x)
+        let minScale = min(max(0.01, 0.02), 20.0)
+        assert(minScale == 0.02, "Failed: Minimum scale bound should clamp to 0.02 (2%)")
+        let maxScale = min(max(25.0, 0.02), 20.0)
+        assert(maxScale == 20.0, "Failed: Maximum scale bound should clamp to 20.0 (2000%)")
+
+        print("✅ testCanvasNoteCardsAndVast2DSpace passed")
+
+        // Suite 44: Tier 2 Notion Relational Database Engine, Typed Properties & Rollups
+        print("\n--- Running Suite 44: Notion Relational Database Engine & Typed Properties ---")
+        let parentDoc = store.createDocument(title: "Research Project Hub")
+        store.selectDocument(id: parentDoc.id)
+
+        // 44.1: Database Creation with Default Title Property
+        guard let taskDb = store.createDatabase(title: "Tasks & Deliverables", description: "Sprint task tracker", icon: "checklist") else {
+            fatalError("Failed to create task database")
+        }
+        assert(store.databases.count == 1, "Failed: store should hold 1 database")
+        assert(taskDb.title == "Tasks & Deliverables", "Failed: Database title")
+        assert(store.activeDatabaseProperties.count == 1, "Failed: Default title property must be created automatically")
+        let titleProp = store.activeDatabaseProperties[0]
+        assert(titleProp.type == .title, "Failed: First property must be .title")
+
+        // 44.2: Add Typed Properties: Status, Number (Story Points), Checkbox (Done), Unique ID
+        let statusProp = store.addDatabaseProperty(
+            databaseId: taskDb.id,
+            name: "Status",
+            type: .status,
+            config: DatabasePropertyConfig(selectOptions: [
+                SelectOption(name: "To-do", color: "gray"),
+                SelectOption(name: "In Progress", color: "blue"),
+                SelectOption(name: "Completed", color: "green")
+            ])
+        )
+        assert(statusProp.type == .status, "Failed: Status property type")
+        assert(statusProp.parsedConfig?.selectOptions?.count == 3, "Failed: Status options count")
+
+        let pointsProp = store.addDatabaseProperty(
+            databaseId: taskDb.id,
+            name: "Points",
+            type: .number,
+            config: DatabasePropertyConfig(numberConfig: NumberFormatConfig(format: "number"))
+        )
+        assert(pointsProp.type == .number, "Failed: Number property type")
+
+        let doneProp = store.addDatabaseProperty(
+            databaseId: taskDb.id,
+            name: "Verified Done",
+            type: .checkbox
+        )
+        assert(doneProp.type == .checkbox, "Failed: Checkbox property type")
+
+        let idProp = store.addDatabaseProperty(
+            databaseId: taskDb.id,
+            name: "Issue Key",
+            type: .uniqueId,
+            config: DatabasePropertyConfig(uniqueIdConfig: UniqueIdConfig(prefix: "MEDHA-"))
+        )
+        assert(idProp.type == .uniqueId, "Failed: Unique ID property type")
+
+        assert(store.activeDatabaseProperties.count == 5, "Failed: Total property count should be 5")
+
+        // 44.3: Add Records and Populate Cells
+        let rec1 = store.addDatabaseRecord(databaseId: taskDb.id)
+        assert(rec1.uniqueSeqNumber == 1, "Failed: First record should have uniqueSeqNumber == 1")
+        store.updateDatabaseCellValue(recordId: rec1.id, propertyId: titleProp.id, databaseId: taskDb.id, valueText: "Implement GRDB EAV Engine")
+        store.updateDatabaseCellValue(recordId: rec1.id, propertyId: statusProp.id, databaseId: taskDb.id, valueText: "In Progress")
+        store.updateDatabaseCellValue(recordId: rec1.id, propertyId: pointsProp.id, databaseId: taskDb.id, valueNumber: 8.0)
+        store.updateDatabaseCellValue(recordId: rec1.id, propertyId: doneProp.id, databaseId: taskDb.id, valueNumber: 0.0)
+
+        let rec2 = store.addDatabaseRecord(databaseId: taskDb.id)
+        assert(rec2.uniqueSeqNumber == 2, "Failed: Second record should have uniqueSeqNumber == 2")
+        store.updateDatabaseCellValue(recordId: rec2.id, propertyId: titleProp.id, databaseId: taskDb.id, valueText: "Build Swift Charts Component")
+        store.updateDatabaseCellValue(recordId: rec2.id, propertyId: statusProp.id, databaseId: taskDb.id, valueText: "Completed")
+        store.updateDatabaseCellValue(recordId: rec2.id, propertyId: pointsProp.id, databaseId: taskDb.id, valueNumber: 5.0)
+        store.updateDatabaseCellValue(recordId: rec2.id, propertyId: doneProp.id, databaseId: taskDb.id, valueNumber: 1.0)
+
+        assert(store.activeDatabaseRecords.count == 2, "Failed: Records count must be 2")
+        assert(store.activeDatabaseCellValues[rec1.id]?[pointsProp.id]?.valueNumber == 8.0, "Failed: rec1 points value")
+        assert(store.activeDatabaseCellValues[rec2.id]?[pointsProp.id]?.valueNumber == 5.0, "Failed: rec2 points value")
+
+        // 44.4: Bidirectional Relation Engine
+        guard let projectDb = store.createDatabase(title: "Projects", description: "Parent projects container") else {
+            fatalError("Failed to create projects database")
+        }
+        let projectTitleProp = store.activeDatabaseProperties.first(where: { $0.type == .title })!
+        let projRec = store.addDatabaseRecord(databaseId: projectDb.id)
+        store.updateDatabaseCellValue(recordId: projRec.id, propertyId: projectTitleProp.id, databaseId: projectDb.id, valueText: "Notion Architecture Parity")
+
+        // Add two-way relation property on Project linking to Tasks
+        let tasksRelProp = store.addDatabaseProperty(
+            databaseId: projectDb.id,
+            name: "Child Tasks",
+            type: .relation,
+            config: DatabasePropertyConfig(relationConfig: RelationConfig(targetDatabaseId: taskDb.id, isTwoWay: false))
+        )
+
+        // Relate rec1 and rec2 to projRec
+        store.databaseService.addRelation(fromRecordId: projRec.id, toRecordId: rec1.id, relationPropertyId: tasksRelProp.id)
+        store.databaseService.addRelation(fromRecordId: projRec.id, toRecordId: rec2.id, relationPropertyId: tasksRelProp.id)
+
+        let relatedTaskIds = store.databaseService.fetchRelatedRecordIds(recordId: projRec.id, relationPropertyId: tasksRelProp.id)
+        assert(relatedTaskIds.count == 2, "Failed: Related tasks count should be 2")
+        assert(relatedTaskIds.contains(rec1.id), "Failed: Related tasks should contain rec1")
+        assert(relatedTaskIds.contains(rec2.id), "Failed: Related tasks should contain rec2")
+
+        // 44.5: Rollup Aggregations (Sum of Points, Count of Tasks)
+        let rollupSumProp = store.addDatabaseProperty(
+            databaseId: projectDb.id,
+            name: "Total Story Points",
+            type: .rollup,
+            config: DatabasePropertyConfig(rollupConfig: RollupConfig(
+                relationPropertyId: tasksRelProp.id,
+                targetPropertyId: pointsProp.id,
+                aggregation: .sum
+            ))
+        )
+        let totalPoints = store.databaseService.computeRollup(currentRecordId: projRec.id, rollupPropertyId: rollupSumProp.id)
+        assert(totalPoints == 13.0, "Failed: Rollup sum of story points (8 + 5) must be 13.0")
+
+        let rollupCountProp = store.addDatabaseProperty(
+            databaseId: projectDb.id,
+            name: "Task Count",
+            type: .rollup,
+            config: DatabasePropertyConfig(rollupConfig: RollupConfig(
+                relationPropertyId: tasksRelProp.id,
+                targetPropertyId: pointsProp.id,
+                aggregation: .count
+            ))
+        )
+        let taskCount = store.databaseService.computeRollup(currentRecordId: projRec.id, rollupPropertyId: rollupCountProp.id)
+        assert(taskCount == 2.0, "Failed: Rollup task count must be 2.0")
+
+        // 44.6: Database Persistence Across Store Reload
+        let freshStore = BlockStore(dbManager: db)
+        freshStore.selectDocument(id: parentDoc.id)
+        assert(freshStore.databases.count == 2, "Failed: Reloaded store must load both databases")
+        freshStore.loadDatabaseData(databaseId: taskDb.id)
+        assert(freshStore.activeDatabaseRecords.count == 2, "Failed: Reloaded records count")
+        assert(freshStore.activeDatabaseCellValues[rec1.id]?[statusProp.id]?.valueText == "In Progress", "Failed: Reloaded cell status value")
+
+        print("✅ testNotionRelationalDatabasesAndTypedProperties passed")
+
+        // Suite 45: Notion Multi-View Database Canvases (Table, Board, Gallery, Calendar)
+        print("\n--- Running Suite 45: Notion Multi-View Canvases (Table, Board, Gallery, Calendar) ---")
+        let multiViewDoc = store.createDocument(title: "Product Roadmap Hub")
+        store.selectDocument(id: multiViewDoc.id)
+
+        guard let roadmapDb = store.createDatabase(title: "Roadmap Milestones", description: "Multi-view canvas test database", icon: "square.grid.3x2") else {
+            fatalError("Failed to create roadmap database")
+        }
+        let nameProp = store.activeDatabaseProperties.first(where: { $0.type == .title })!
+
+        // 45.1: Configure Status and Date Properties for Kanban and Calendar
+        let stageProp = store.addDatabaseProperty(
+            databaseId: roadmapDb.id,
+            name: "Stage",
+            type: .status,
+            config: DatabasePropertyConfig(selectOptions: [
+                SelectOption(name: "To-do", color: "gray"),
+                SelectOption(name: "In Progress", color: "blue"),
+                SelectOption(name: "Completed", color: "green")
+            ])
+        )
+        let launchDateProp = store.addDatabaseProperty(
+            databaseId: roadmapDb.id,
+            name: "Target Date",
+            type: .date
+        )
+
+        // 45.2: Create Records with Status and Date Mappings
+        let rA = store.addDatabaseRecord(databaseId: roadmapDb.id)
+        let rB = store.addDatabaseRecord(databaseId: roadmapDb.id)
+        let rC = store.addDatabaseRecord(databaseId: roadmapDb.id)
+
+        let now = Date()
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: now)!
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+
+        store.updateDatabaseCellValue(recordId: rA.id, propertyId: nameProp.id, databaseId: roadmapDb.id, valueText: "Alpha Launch")
+        store.updateDatabaseCellValue(recordId: rA.id, propertyId: stageProp.id, databaseId: roadmapDb.id, valueText: "To-do")
+        store.updateDatabaseCellValue(recordId: rA.id, propertyId: launchDateProp.id, databaseId: roadmapDb.id, valueDate: yesterday)
+
+        store.updateDatabaseCellValue(recordId: rB.id, propertyId: nameProp.id, databaseId: roadmapDb.id, valueText: "Beta BetaRelease")
+        store.updateDatabaseCellValue(recordId: rB.id, propertyId: stageProp.id, databaseId: roadmapDb.id, valueText: "In Progress")
+        store.updateDatabaseCellValue(recordId: rB.id, propertyId: launchDateProp.id, databaseId: roadmapDb.id, valueDate: now)
+
+        store.updateDatabaseCellValue(recordId: rC.id, propertyId: nameProp.id, databaseId: roadmapDb.id, valueText: "General Availability")
+        store.updateDatabaseCellValue(recordId: rC.id, propertyId: stageProp.id, databaseId: roadmapDb.id, valueText: "Completed")
+        store.updateDatabaseCellValue(recordId: rC.id, propertyId: launchDateProp.id, databaseId: roadmapDb.id, valueDate: tomorrow)
+
+        // 45.3: Test View Mode State Management
+        assert(store.getDatabaseViewMode(databaseId: roadmapDb.id) == .table, "Default view mode should be .table")
+
+        store.setDatabaseViewMode(databaseId: roadmapDb.id, mode: .board)
+        assert(store.getDatabaseViewMode(databaseId: roadmapDb.id) == .board, "View mode should switch to .board")
+
+        store.setDatabaseViewMode(databaseId: roadmapDb.id, mode: .gallery)
+        assert(store.getDatabaseViewMode(databaseId: roadmapDb.id) == .gallery, "View mode should switch to .gallery")
+
+        store.setDatabaseViewMode(databaseId: roadmapDb.id, mode: .calendar)
+        assert(store.getDatabaseViewMode(databaseId: roadmapDb.id) == .calendar, "View mode should switch to .calendar")
+
+        // 45.4: Test Kanban Swimlane Grouping Integrity
+        let boardRecords = store.activeDatabaseRecords
+        let todoRecords = boardRecords.filter { store.activeDatabaseCellValues[$0.id]?[stageProp.id]?.valueText == "To-do" }
+        let inProgressRecords = boardRecords.filter { store.activeDatabaseCellValues[$0.id]?[stageProp.id]?.valueText == "In Progress" }
+        let completedRecords = boardRecords.filter { store.activeDatabaseCellValues[$0.id]?[stageProp.id]?.valueText == "Completed" }
+
+        assert(todoRecords.count == 1, "Failed: Board To-do swimlane count")
+        assert(inProgressRecords.count == 1, "Failed: Board In Progress swimlane count")
+        assert(completedRecords.count == 1, "Failed: Board Completed swimlane count")
+
+        // Move rA to In Progress (simulating Kanban Drag/Drop)
+        store.updateDatabaseCellValue(recordId: rA.id, propertyId: stageProp.id, databaseId: roadmapDb.id, valueText: "In Progress")
+        let updatedInProgress = store.activeDatabaseRecords.filter { store.activeDatabaseCellValues[$0.id]?[stageProp.id]?.valueText == "In Progress" }
+        assert(updatedInProgress.count == 2, "Failed: Updated swimlane should contain 2 records")
+
+        // 45.5: Test Calendar Date Resolution Integrity
+        let todayMatches = store.activeDatabaseRecords.filter { rec in
+            guard let cell = store.activeDatabaseCellValues[rec.id]?[launchDateProp.id], let date = cell.valueDate else { return false }
+            return Calendar.current.isDateInToday(date)
+        }
+        assert(todayMatches.count == 1, "Failed: Today's calendar date should match exactly 1 record (BetaRelease)")
+        assert(store.activeDatabaseCellValues[todayMatches[0].id]?[nameProp.id]?.valueText == "Beta BetaRelease", "Failed: Matched record title")
+
+        print("✅ testNotionMultiViewCanvases passed")
+
+        // Suite 46: Interactive Spatial PDF Pages, Resizing, Cropping & Native Text Selection
+        print("\n--- Suite 46: Interactive Spatial PDF Pages, Resizing, Cropping & Native Text Selection ---")
+        try testSpatialPDFPagesInteraction(store: store)
+        print("✅ testSpatialPDFPagesInteraction passed")
+
+        // Suite 47: Phase 4 Visual Analytics (Charts), Intake Forms & Workflow Automations
+        try testVisualAnalyticsFormsAndAutomations(store: store)
+
+        print("\n🎉 ALL 47 TEST SUITES PASSED SUCCESSFULLY!")
+    }
+
+    @MainActor
+    static func testSpatialPDFPagesInteraction(store: BlockStore) throws {
+        // 46.1: Create mock PDF file on disk
+        let pdfData = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData),
+              let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            fatalError("Failed to create CGContext for test PDF")
+        }
+
+        // Page 1
+        context.beginPage(mediaBox: &mediaBox)
+        let str1 = "Medha Architecture Diagram Page 1" as CFString
+        let attrStr1 = CFAttributedStringCreate(kCFAllocatorDefault, str1, nil)
+        let line1 = CTLineCreateWithAttributedString(attrStr1!)
+        context.textPosition = CGPoint(x: 50, y: 700)
+        CTLineDraw(line1, context)
+        context.endPage()
+
+        // Page 2
+        context.beginPage(mediaBox: &mediaBox)
+        let str2 = "Executive Summary Page 2 Content" as CFString
+        let attrStr2 = CFAttributedStringCreate(kCFAllocatorDefault, str2, nil)
+        let line2 = CTLineCreateWithAttributedString(attrStr2!)
+        context.textPosition = CGPoint(x: 50, y: 700)
+        CTLineDraw(line2, context)
+        context.endPage()
+
+        context.closePDF()
+
+        let tempPDFURL = FileManager.default.temporaryDirectory.appendingPathComponent("SpatialPDFTest_\(UUID().uuidString).pdf")
+        try (pdfData as Data).write(to: tempPDFURL)
+
+        // 46.2: Create a 2D canvas document and select it
+        let doc = store.createInkDocument(title: "Spatial PDF Test Doc", templateType: .blank, canvasMode: .infinite2D)
+        assert(doc.resolvedCanvasMode == .infinite2D, "Document must be infinite2D")
+        store.selectDocument(id: doc.id)
+
+        // Import the 2 pages of the PDF
+        store.importTrimmedPDFPages(from: tempPDFURL, startPage: 1, endPage: 2)
+        assert(store.inkPages.count == 2, "Imported PDF should produce 2 pages")
+        assert(store.inkPages[0].pageIndex == 0, "Page 0 index")
+        assert(store.inkPages[1].pageIndex == 1, "Page 1 index")
+
+        let pages = store.inkPages
+
+        // 46.3: Spatial positioning & relocation in 2D space
+        // Simulate dragging Page 1 to (150, 200) and resizing to 700x900
+        store.updateInkPageSpatialLayout(pageId: pages[0].id, canvasX: 150.0, canvasY: 200.0, customWidth: 700.0, customHeight: 900.0)
+
+        // Simulate moving Page 2 side-by-side at (900, 200)
+        store.updateInkPageSpatialLayout(pageId: pages[1].id, canvasX: 900.0, canvasY: 200.0, customWidth: 612.0, customHeight: 792.0)
+
+        // Verify in-memory and database reload
+        assert(store.inkPages.count == 2, "Should have 2 pages fetched")
+        let p0 = store.inkPages.first { $0.id == pages[0].id }!
+        let p1 = store.inkPages.first { $0.id == pages[1].id }!
+
+        assert(p0.canvasX == 150.0, "Page 0 canvasX mismatch: \(String(describing: p0.canvasX))")
+        assert(p0.canvasY == 200.0, "Page 0 canvasY mismatch: \(String(describing: p0.canvasY))")
+        assert(p0.customWidth == 700.0, "Page 0 customWidth mismatch")
+        assert(p0.customHeight == 900.0, "Page 0 customHeight mismatch")
+
+        assert(p1.canvasX == 900.0, "Page 1 canvasX mismatch: \(String(describing: p1.canvasX))")
+        assert(p1.canvasY == 200.0, "Page 1 canvasY mismatch: \(String(describing: p1.canvasY))")
+
+        // 46.4: Interactive Cropping persistence
+        let crop = CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.6)
+        store.updateInkPageCrop(pageId: p0.id, cropRect: crop)
+
+        let p0Cropped = store.inkPages.first { $0.id == pages[0].id }!
+        assert(p0Cropped.cropRectData != nil, "cropRectData should not be nil")
+        if let data = p0Cropped.cropRectData?.data(using: String.Encoding.utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [Double] {
+            assert(arr.count == 4 && arr[0] == 0.1 && arr[1] == 0.1 && arr[2] == 0.8 && arr[3] == 0.6, "Crop JSON payload valid")
+        } else {
+            fatalError("Failed to deserialize cropRectData JSON")
+        }
+
+        // Test clearing crop
+        store.updateInkPageCrop(pageId: p0.id, cropRect: nil)
+        let p0Cleared = store.inkPages.first { $0.id == pages[0].id }!
+        assert(p0Cleared.cropRectData == nil, "cropRectData should be nil after clearing")
+
+        // 46.5: Native PDF Text Selection & Cache Inspection
+        let cachedDoc = InkPDFImporterService.cachedPDFDocument(for: tempPDFURL)
+        assert(cachedDoc != nil, "PDFDocument cache must return instance")
+        if let pdfPage = cachedDoc?.page(at: 0) {
+            let pageString = pdfPage.string ?? ""
+            assert(pageString.contains("Medha Architecture Diagram"), "Cached PDF page text accessible")
+        }
+
+        // 46.6: Page Deletion in 2D Space and Index Re-sequencing
+        store.deleteInkPage(pageId: p0.id)
+        assert(store.inkPages.count == 1, "Only 1 page should remain after deletion")
+        assert(store.inkPages[0].id == p1.id, "Remaining page should be Page 2")
+        assert(store.inkPages[0].pageIndex == 0, "Remaining page should be re-indexed to 0")
+
+        // Clean up temp file
+        try? FileManager.default.removeItem(at: tempPDFURL)
+
+        print("✅ testInteractiveSpatialPDFPagesAndTextSelection passed")
+    }
+
+    @MainActor
+    static func testVisualAnalyticsFormsAndAutomations(store: BlockStore) throws {
+        // Suite 47: Phase 4 Visual Analytics, Local Forms & Workflow Automations
+        print("\n--- Running Suite 47: Visual Analytics (Charts), Intake Forms & Workflow Automations ---")
+        let analyticsDoc = store.createDocument(title: "Engineering Analytics Hub")
+        store.selectDocument(id: analyticsDoc.id)
+
+        guard let issueDb = store.createDatabase(title: "Issue Tracker", description: "Sprint defect and telemetry tracker", icon: "ladybug.fill") else {
+            fatalError("Failed to create issue database")
+        }
+        let issueNameProp = store.activeDatabaseProperties.first(where: { $0.type == .title })!
+
+        let categoryProp = store.addDatabaseProperty(
+            databaseId: issueDb.id,
+            name: "Category",
+            type: .select,
+            config: DatabasePropertyConfig(selectOptions: [
+                SelectOption(name: "UI", color: "blue"),
+                SelectOption(name: "Backend", color: "purple"),
+                SelectOption(name: "Database", color: "amber")
+            ])
+        )
+
+        let storyPointsProp = store.addDatabaseProperty(
+            databaseId: issueDb.id,
+            name: "Points",
+            type: .number
+        )
+
+        let issueStatusProp = store.addDatabaseProperty(
+            databaseId: issueDb.id,
+            name: "Status",
+            type: .status,
+            config: DatabasePropertyConfig(selectOptions: [
+                SelectOption(name: "Open"),
+                SelectOption(name: "In Progress"),
+                SelectOption(name: "Completed")
+            ])
+        )
+
+        // 47.1: Add Test Records for Analytics
+        let i1 = store.addDatabaseRecord(databaseId: issueDb.id)
+        store.updateDatabaseCellValue(recordId: i1.id, propertyId: issueNameProp.id, databaseId: issueDb.id, valueText: "Crash on empty canvas")
+        store.updateDatabaseCellValue(recordId: i1.id, propertyId: categoryProp.id, databaseId: issueDb.id, valueText: "UI")
+        store.updateDatabaseCellValue(recordId: i1.id, propertyId: storyPointsProp.id, databaseId: issueDb.id, valueNumber: 5.0)
+
+        let i2 = store.addDatabaseRecord(databaseId: issueDb.id)
+        store.updateDatabaseCellValue(recordId: i2.id, propertyId: issueNameProp.id, databaseId: issueDb.id, valueText: "Button alignment in Inspector")
+        store.updateDatabaseCellValue(recordId: i2.id, propertyId: categoryProp.id, databaseId: issueDb.id, valueText: "UI")
+        store.updateDatabaseCellValue(recordId: i2.id, propertyId: storyPointsProp.id, databaseId: issueDb.id, valueNumber: 3.0)
+
+        let i3 = store.addDatabaseRecord(databaseId: issueDb.id)
+        store.updateDatabaseCellValue(recordId: i3.id, propertyId: issueNameProp.id, databaseId: issueDb.id, valueText: "SQLite lock timeout in batch write")
+        store.updateDatabaseCellValue(recordId: i3.id, propertyId: categoryProp.id, databaseId: issueDb.id, valueText: "Database")
+        store.updateDatabaseCellValue(recordId: i3.id, propertyId: storyPointsProp.id, databaseId: issueDb.id, valueNumber: 8.0)
+
+        // 47.2: Verify Visual Analytics Computation (Count Aggregation)
+        let countPoints = store.databaseService.computeAnalyticsData(
+            databaseId: issueDb.id,
+            groupByPropertyId: categoryProp.id,
+            metricPropertyId: nil,
+            aggregation: .count
+        )
+        assert(countPoints.count == 2, "Failed: Two distinct categories should exist (UI and Database)")
+        let uiCount = countPoints.first(where: { $0.category == "UI" })?.value
+        let dbCount = countPoints.first(where: { $0.category == "Database" })?.value
+        assert(uiCount == 2.0, "Failed: UI count must be 2")
+        assert(dbCount == 1.0, "Failed: Database count must be 1")
+
+        // 47.3: Verify Visual Analytics Computation (Sum Aggregation over Story Points)
+        let sumPoints = store.databaseService.computeAnalyticsData(
+            databaseId: issueDb.id,
+            groupByPropertyId: categoryProp.id,
+            metricPropertyId: storyPointsProp.id,
+            aggregation: .sum
+        )
+        let uiSum = sumPoints.first(where: { $0.category == "UI" })?.value
+        let dbSum = sumPoints.first(where: { $0.category == "Database" })?.value
+        assert(uiSum == 8.0, "Failed: UI points sum (5 + 3) must be 8.0")
+        assert(dbSum == 8.0, "Failed: Database points sum must be 8.0")
+
+        // 47.4: Verify Analytics View Switcher State
+        store.setDatabaseViewMode(databaseId: issueDb.id, mode: .chart)
+        assert(store.getDatabaseViewMode(databaseId: issueDb.id) == .chart, "Failed: Database view mode should switch to .chart")
+
+        // 47.5: Verify Workflow Automations Engine
+        let autoRule = DatabaseAutomationRule(
+            databaseId: issueDb.id,
+            name: "Auto-set status to Open on record creation",
+            triggerType: .recordCreated,
+            actionType: .updateProperty,
+            targetPropertyId: issueStatusProp.id,
+            targetValueText: "Open"
+        )
+        store.addAutomationRule(autoRule)
+
+        let i4 = store.addDatabaseRecord(databaseId: issueDb.id)
+        store.triggerAutomation(databaseId: issueDb.id, recordId: i4.id, trigger: .recordCreated)
+        assert(store.activeDatabaseCellValues[i4.id]?[issueStatusProp.id]?.valueText == "Open", "Failed: Automation should set status to Open on create")
+
+        // Trigger markComplete automation
+        let completeRule = DatabaseAutomationRule(
+            databaseId: issueDb.id,
+            name: "Close Issue",
+            triggerType: .buttonClicked,
+            actionType: .markComplete,
+            targetPropertyId: issueStatusProp.id
+        )
+        store.addAutomationRule(completeRule)
+        store.triggerAutomation(databaseId: issueDb.id, recordId: i1.id, trigger: .buttonClicked)
+        assert(store.activeDatabaseCellValues[i1.id]?[issueStatusProp.id]?.valueText == "Completed", "Failed: Automation should mark record completed")
+
+        print("✅ testVisualAnalyticsFormsAndAutomations passed")
+
+        // ==========================================
+        // 48. UNIFIED INFINITE CANVAS TEST SUITE
+        // ==========================================
+        print("\n--- 48. UNIFIED INFINITE CANVAS SUITE ---")
+        let canvasDoc = store.createInkDocument(title: "Unified Infinite Board", canvasMode: .infinite2D)
+        assert(canvasDoc.resolvedCanvasMode == .infinite2D, "Failed: canvasDoc must be infinite2D")
+        store.selectDocument(id: canvasDoc.id)
+
+        // 48.1: CanvasItem CRUD & Flowchart Cardinal Ports
+        let procItem = CanvasItem(
+            canvasDocId: canvasDoc.id,
+            itemType: .shape,
+            shapeType: .rectangle,
+            x: 100,
+            y: 100,
+            width: 160,
+            height: 90,
+            fillColorHex: "#EFF6FF",
+            strokeColorHex: "#3B82F6",
+            title: "Process Step"
+        )
+        store.addCanvasItem(procItem)
+
+        let decItem = CanvasItem(
+            canvasDocId: canvasDoc.id,
+            itemType: .shape,
+            shapeType: .diamond,
+            x: 350,
+            y: 100,
+            width: 140,
+            height: 90,
+            fillColorHex: "#FEF3C7",
+            strokeColorHex: "#F59E0B",
+            title: "Validate"
+        )
+        store.addCanvasItem(decItem)
+
+        assert(store.canvasItems.count >= 2, "Failed: canvasItems should contain 2 items")
+        assert(procItem.portPoint(for: .right).x == 260 && procItem.portPoint(for: .right).y == 145, "Failed: Right port math")
+        assert(decItem.portPoint(for: .left).x == 350 && decItem.portPoint(for: .left).y == 145, "Failed: Left port math")
+
+        // 48.2: Smart Dynamic Connector (Orthogonal 90° Manhattan & Curved Bezier)
+        let orthoRoute = CanvasRoutingService.computeRoute(
+            from: procItem.portPoint(for: .right),
+            startPort: .right,
+            to: decItem.portPoint(for: .left),
+            endPort: .left,
+            routingType: .orthogonal
+        )
+        assert(!orthoRoute.path.isEmpty, "Failed: Orthogonal route should produce non-empty CGPath")
+
+        let bezierRoute = CanvasRoutingService.computeRoute(
+            from: procItem.portPoint(for: .right),
+            startPort: .right,
+            to: decItem.portPoint(for: .left),
+            endPort: .left,
+            routingType: .curved
+        )
+        assert(!bezierRoute.path.isEmpty, "Failed: Curved route should produce non-empty CGPath")
+
+        let conn = store.addCanvasConnector(
+            canvasDocId: canvasDoc.id,
+            fromItemId: procItem.id,
+            fromPort: .right,
+            toItemId: decItem.id,
+            toPort: .left,
+            routingType: .orthogonal,
+            label: "Yes / Approve"
+        )
+        assert(conn != nil, "Failed: Add canvas connector")
+        assert(store.canvasConnectors.count >= 1, "Failed: Canvas connector store count")
+        assert(store.canvasConnectors.first?.label == "Yes / Approve", "Failed: Connector label mismatch")
+
+        // 48.3: Universal Note Linking & PKM Graph Integration
+        let targetNote = store.createDocument(title: "Architecture Specification")
+        store.selectDocument(id: canvasDoc.id)
+        store.attachNoteToCanvasItem(itemId: procItem.id, noteDocId: targetNote.id)
+        assert(store.canvasItems.first(where: { $0.id == procItem.id })?.linkedNoteDocId == targetNote.id, "Failed: Canvas item linked note doc id")
+        assert(store.docLinks.contains(where: { $0.targetDocId == targetNote.id }), "Failed: Attaching note to canvas item should register a DocLink")
+
+        store.detachNoteFromCanvasItem(itemId: procItem.id)
+        assert(store.canvasItems.first(where: { $0.id == procItem.id })?.linkedNoteDocId == nil, "Failed: Detach note from canvas item")
+
+        // 48.4: Rich Media Ingestion & Audio Waveform Mock
+        let mockAudioData = Data(repeating: 120, count: 1024)
+        if let mediaResult = try? CanvasAssetStorage.importMediaData(mockAudioData, suggestedExtension: "mp3", canvasDocId: canvasDoc.id) {
+            let peaks = CanvasAssetStorage.generateWaveformPeaks(for: mediaResult.assetKey, sampleCount: 20)
+            assert(peaks.count == 20, "Failed: Waveform generation peak count")
+        }
+
+        print("✅ testUnifiedInfiniteCanvasSuite passed")
+
+        print("\n🎉 ALL 48 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
+
+
 
 

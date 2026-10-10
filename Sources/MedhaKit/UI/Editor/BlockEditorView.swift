@@ -8,9 +8,22 @@ public struct BlockEditorView: View {
     @State private var singleNoteFillStage: String = ""
     @State private var singleNoteFillError: String? = nil
     @State private var selectedDepthForFill: String = "working"
+    @State private var selectedRecordTab: String = "overview"
     @FocusState private var isTitleFocused: Bool
 
     private let availableIcons = ["doc.text", "brain.head.profile", "lightbulb", "sparkles", "folder", "star", "bookmark", "tag", "checklist", "terminal", "cube"]
+
+    private var displayedBlocks: [Block] {
+        let visible = store.visibleBlocks
+        switch selectedRecordTab {
+        case "tasks":
+            return visible.filter { $0.type == .taskList }
+        case "specs":
+            return visible.filter { $0.type == .codeBlock || $0.type == .table || $0.type == .callout }
+        default:
+            return visible
+        }
+    }
 
     public var body: some View {
         Group {
@@ -57,11 +70,38 @@ public struct BlockEditorView: View {
 
                                 // Living Folder Command Hub Status Badges
                                 livingFolderHubView(doc: doc)
+
+                                // Pinned Property Bar (Verification, Lock, Metrics)
+                                PinnedPropertyBarView(store: store, doc: doc)
+
+                                // Tabbed Record Layout Switcher
+                                HStack {
+                                    Picker("View Mode", selection: $selectedRecordTab) {
+                                        Text("Overview").tag("overview")
+                                        Text("Specifications").tag("specs")
+                                        Text("Tasks").tag("tasks")
+                                        Text("All Notes").tag("notes")
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(maxWidth: 340)
+                                    Spacer()
+                                }
+                                .padding(.top, 4)
                             }
                             .padding(.bottom, 6)
 
                             // Nested Subfolders & Documents in this Folder
                             subfoldersGalleryView(doc: doc)
+
+                            // Relational Databases in this Document (Multi-View Canvases)
+                            if !store.databases.isEmpty {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(store.databases) { database in
+                                        DatabaseContainerView(store: store, database: database)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                            }
 
                             // Interactive Skeletal Fill Card (2-step on-demand generation)
                             if isCurrentDocSkeletal || isFillingSingleNote {
@@ -72,24 +112,35 @@ public struct BlockEditorView: View {
 
                             // Continuous Block Stream
                             VStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(store.blocks.enumerated()), id: \.element.id) { index, block in
+                                ForEach(Array(displayedBlocks.enumerated()), id: \.element.id) { index, block in
                                     BlockRowView(
                                         store: store,
                                         block: block,
                                         isFirst: index == 0,
-                                        isLast: index == store.blocks.count - 1
+                                        isLast: index == displayedBlocks.count - 1
                                     )
                                     .id(block.id)
                                 }
                             }
 
                             // Clickable bottom buffer to add new block
-                            Color.clear
-                                .frame(height: 40)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    store.createBlock(type: .paragraph, content: "")
+                            if !store.isCurrentDocLocked {
+                                Color.clear
+                                    .frame(height: 40)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        store.createBlock(type: .paragraph, content: "")
+                                    }
+                            } else {
+                                HStack {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundColor(.orange)
+                                    Text("This document is locked (read-only mode).")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(MedhaTheme.Colors.textTertiary)
                                 }
+                                .padding(.vertical, 12)
+                            }
 
                             // Flashcards Attached to this Folder / Note
                             flashcardsSectionView(doc: doc)

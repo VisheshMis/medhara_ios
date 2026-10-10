@@ -82,6 +82,61 @@ public final class BlockStore: ObservableObject {
     @Published public var blocks: [Block] = []
     @Published public var focusedBlockId: String?
 
+    public var visibleBlocks: [Block] {
+        var result: [Block] = []
+        var collapsedParentIds: Set<String> = []
+        var foldingHeadingLevel: Int? = nil
+
+        for block in blocks {
+            // Check if this block is nested inside a collapsed toggle parent
+            if let parentId = block.parentId, collapsedParentIds.contains(parentId) {
+                if (block.type == .toggle || block.isHeading) && block.isCollapsed == true {
+                    collapsedParentIds.insert(block.id)
+                }
+                continue
+            }
+
+            // Check if this block is inside a folded heading section
+            if let foldLevel = foldingHeadingLevel {
+                let currentLevel: Int? = {
+                    switch block.type {
+                    case .heading1: return 1
+                    case .heading2: return 2
+                    case .heading3: return 3
+                    default: return nil
+                    }
+                }()
+
+                if let lvl = currentLevel, lvl <= foldLevel {
+                    // Exited the folded section
+                    foldingHeadingLevel = nil
+                } else {
+                    // Still inside the folded section
+                    continue
+                }
+            }
+
+            result.append(block)
+
+            // Update folding states
+            if block.type == .toggle && block.isCollapsed == true {
+                collapsedParentIds.insert(block.id)
+            } else if block.isHeading && block.isCollapsed == true {
+                switch block.type {
+                case .heading1: foldingHeadingLevel = 1
+                case .heading2: foldingHeadingLevel = 2
+                case .heading3: foldingHeadingLevel = 3
+                default: break
+                }
+            }
+        }
+        return result
+    }
+
+    public var isCurrentDocLocked: Bool {
+        currentDoc?.isLocked ?? false
+    }
+
     // Handwritten (Ink) Notes
     @Published public var inkPages: [InkDocumentPage] = []
     @Published public var activeInkTool: InkToolType = .ballpoint
@@ -96,6 +151,20 @@ public final class BlockStore: ObservableObject {
     @Published public var pendingNewInkNotebookId: String? = nil
     @Published public var pendingNewInkParentDocId: String? = nil
     @Published public var isInkFocusMode: Bool = false
+
+    // Canvas Embedded Note Cards & Unified Items/Connectors (for spatial 2D & infinite canvases)
+    @Published public var canvasNoteCards: [CanvasNoteCard] = []
+    @Published public var canvasItems: [CanvasItem] = []
+    @Published public var canvasConnectors: [CanvasConnector] = []
+
+    // Notion Relational Database Engine
+    public let databaseService: NotionDatabaseService
+    @Published public var databases: [NotionDatabase] = []
+    @Published public var activeDatabaseProperties: [DatabaseProperty] = []
+    @Published public var activeDatabaseRecords: [DatabaseRecord] = []
+    @Published public var activeDatabaseCellValues: [String: [String: DatabaseCellValue]] = [:] // recordId -> [propertyId: DatabaseCellValue]
+    @Published public var activeDatabaseViewModes: [String: DatabaseViewMode] = [:] // databaseId -> DatabaseViewMode
+    @Published public var activeAutomationRules: [DatabaseAutomationRule] = []
 
     // Undo / Redo Stacks for Active Ink Document (Strokes history)
     public var inkUndoStack: [[InkStroke]] = []
@@ -217,6 +286,7 @@ public final class BlockStore: ObservableObject {
 
     public init(dbManager: DatabaseManager = .shared) {
         self.dbManager = dbManager
+        self.databaseService = NotionDatabaseService(dbManager: dbManager)
         self.searchService = SearchService(dbWriter: dbManager.dbWriter)
         let stats = FocusStatsService(dbWriter: dbManager.dbWriter)
         self.focusStatsService = stats
@@ -1049,7 +1119,17 @@ public final class BlockStore: ObservableObject {
                 self.inkPages = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == id)
                     .order(InkDocumentPage.Columns.pageIndex)
                     .fetchAll(db)
+                self.canvasNoteCards = try CanvasNoteCard.filter(CanvasNoteCard.Columns.canvasDocId == id)
+                    .order(CanvasNoteCard.Columns.createdAt.asc)
+                    .fetchAll(db)
+                self.canvasItems = try CanvasItem.filter(CanvasItem.Columns.canvasDocId == id)
+                    .order(CanvasItem.Columns.zIndex.asc, CanvasItem.Columns.createdAt.asc)
+                    .fetchAll(db)
+                self.canvasConnectors = try CanvasConnector.filter(CanvasConnector.Columns.canvasDocId == id)
+                    .order(CanvasConnector.Columns.createdAt.asc)
+                    .fetchAll(db)
             }
+            self.reloadDatabases(for: id)
         } catch {
             print("Error selecting document: \(error)")
         }
@@ -1082,6 +1162,544 @@ public final class BlockStore: ObservableObject {
         } catch {
             print("Error reloading ink pages: \(error)")
         }
+    }
+
+    public func reloadCanvasNoteCards(docId: String? = nil) {
+        guard let targetId = docId ?? selectedDocId else { return }
+        do {
+            try dbManager.dbWriter.read { db in
+                self.canvasNoteCards = try CanvasNoteCard.filter(CanvasNoteCard.Columns.canvasDocId == targetId)
+                    .order(CanvasNoteCard.Columns.createdAt.asc)
+                    .fetchAll(db)
+            }
+        } catch {
+            print("Error reloading canvas note cards: \(error)")
+        }
+    }
+
+    public func addCanvasNoteCard(canvasDocId: String, noteDocId: String, x: Double, y: Double) {
+        let card = CanvasNoteCard(
+            canvasDocId: canvasDocId,
+            noteDocId: noteDocId,
+            canvasX: x,
+            canvasY: y,
+            canvasWidth: 320.0,
+            canvasHeight: 180.0
+        )
+        do {
+            try dbManager.dbWriter.write { db in
+                try card.insert(db)
+            }
+            reloadCanvasNoteCards(docId: canvasDocId)
+        } catch {
+            print("Error inserting canvas note card: \(error)")
+        }
+    }
+
+    public func updateCanvasNoteCardPosition(id: String, x: Double, y: Double) {
+        if let idx = canvasNoteCards.firstIndex(where: { $0.id == id }) {
+            canvasNoteCards[idx].canvasX = x
+            canvasNoteCards[idx].canvasY = y
+            canvasNoteCards[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var card = try CanvasNoteCard.fetchOne(db, key: id) {
+                    card.canvasX = x
+                    card.canvasY = y
+                    card.updatedAt = Date()
+                    try card.update(db)
+                }
+            }
+        } catch {
+            print("Error updating canvas note card position: \(error)")
+        }
+    }
+
+    public func deleteCanvasNoteCard(id: String) {
+        canvasNoteCards.removeAll(where: { $0.id == id })
+        do {
+            try dbManager.dbWriter.write { db in
+                _ = try CanvasNoteCard.filter(CanvasNoteCard.Columns.id == id).deleteAll(db)
+            }
+        } catch {
+            print("Error deleting canvas note card: \(error)")
+        }
+    }
+
+    // MARK: - Unified Canvas Items & Connectors CRUD
+    public func reloadCanvasItems(docId: String? = nil) {
+        guard let targetId = docId ?? selectedDocId else { return }
+        do {
+            try dbManager.dbWriter.read { db in
+                self.canvasItems = try CanvasItem.filter(CanvasItem.Columns.canvasDocId == targetId)
+                    .order(CanvasItem.Columns.zIndex.asc, CanvasItem.Columns.createdAt.asc)
+                    .fetchAll(db)
+            }
+        } catch {
+            print("Error reloading canvas items: \(error)")
+        }
+    }
+
+    public func reloadCanvasConnectors(docId: String? = nil) {
+        guard let targetId = docId ?? selectedDocId else { return }
+        do {
+            try dbManager.dbWriter.read { db in
+                self.canvasConnectors = try CanvasConnector.filter(CanvasConnector.Columns.canvasDocId == targetId)
+                    .order(CanvasConnector.Columns.createdAt.asc)
+                    .fetchAll(db)
+            }
+        } catch {
+            print("Error reloading canvas connectors: \(error)")
+        }
+    }
+
+    @discardableResult
+    public func addCanvasItem(
+        canvasDocId: String? = nil,
+        itemType: CanvasItemType,
+        linkedNoteDocId: String? = nil,
+        shapeType: CanvasShapeType? = nil,
+        x: Double = 100.0,
+        y: Double = 100.0,
+        width: Double = 220.0,
+        height: Double = 140.0,
+        fillColorHex: String? = nil,
+        strokeColorHex: String? = nil,
+        strokeWidth: Double = 1.5,
+        cornerRadius: Double = 8.0,
+        title: String? = nil,
+        summarySnippet: String? = nil,
+        markdownContent: String? = nil,
+        mediaAssetKey: String? = nil,
+        metadataJson: String? = nil
+    ) -> CanvasItem? {
+        guard let docId = canvasDocId ?? selectedDocId else { return nil }
+        let maxZ = canvasItems.map(\.zIndex).max() ?? 0
+        let item = CanvasItem(
+            canvasDocId: docId,
+            itemType: itemType,
+            linkedNoteDocId: linkedNoteDocId,
+            shapeType: shapeType,
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            rotationDegrees: 0.0,
+            zIndex: maxZ + 1,
+            fillColorHex: fillColorHex,
+            strokeColorHex: strokeColorHex,
+            strokeWidth: strokeWidth,
+            cornerRadius: cornerRadius,
+            title: title,
+            summarySnippet: summarySnippet,
+            markdownContent: markdownContent,
+            mediaAssetKey: mediaAssetKey,
+            metadataJson: metadataJson
+        )
+
+        do {
+            try dbManager.dbWriter.write { db in
+                try item.insert(db)
+            }
+            reloadCanvasItems(docId: docId)
+            return item
+        } catch {
+            print("Error inserting canvas item: \(error)")
+            return nil
+        }
+    }
+
+    public func addCanvasItem(_ item: CanvasItem) {
+        do {
+            try dbManager.dbWriter.write { db in
+                try item.insert(db)
+            }
+            reloadCanvasItems(docId: item.canvasDocId)
+        } catch {
+            print("Error inserting canvas item: \(error)")
+        }
+    }
+
+    public func updateCanvasItem(_ item: CanvasItem) {
+        if let idx = canvasItems.firstIndex(where: { $0.id == item.id }) {
+            canvasItems[idx] = item
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                var updated = item
+                updated.updatedAt = Date()
+                try updated.update(db)
+            }
+        } catch {
+            print("Error updating canvas item: \(error)")
+        }
+    }
+
+    public func updateCanvasItemPosition(id: String, x: Double, y: Double) {
+        if let idx = canvasItems.firstIndex(where: { $0.id == id }) {
+            canvasItems[idx].x = x
+            canvasItems[idx].y = y
+            canvasItems[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var item = try CanvasItem.fetchOne(db, key: id) {
+                    item.x = x
+                    item.y = y
+                    item.updatedAt = Date()
+                    try item.update(db)
+                }
+            }
+        } catch {
+            print("Error updating canvas item position: \(error)")
+        }
+    }
+
+    public func updateCanvasItemSize(id: String, width: Double, height: Double) {
+        if let idx = canvasItems.firstIndex(where: { $0.id == id }) {
+            canvasItems[idx].width = max(40.0, width)
+            canvasItems[idx].height = max(40.0, height)
+            canvasItems[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var item = try CanvasItem.fetchOne(db, key: id) {
+                    item.width = max(40.0, width)
+                    item.height = max(40.0, height)
+                    item.updatedAt = Date()
+                    try item.update(db)
+                }
+            }
+        } catch {
+            print("Error updating canvas item size: \(error)")
+        }
+    }
+
+    public func deleteCanvasItem(id: String) {
+        guard let docId = selectedDocId else { return }
+        canvasItems.removeAll(where: { $0.id == id })
+        canvasConnectors.removeAll(where: { $0.fromItemId == id || $0.toItemId == id })
+        do {
+            try dbManager.dbWriter.write { db in
+                _ = try CanvasItem.filter(CanvasItem.Columns.id == id).deleteAll(db)
+            }
+            reloadCanvasConnectors(docId: docId)
+        } catch {
+            print("Error deleting canvas item: \(error)")
+        }
+    }
+
+    public func bringCanvasItemToFront(id: String) {
+        guard let docId = selectedDocId else { return }
+        let maxZ = canvasItems.map(\.zIndex).max() ?? 0
+        if let idx = canvasItems.firstIndex(where: { $0.id == id }) {
+            canvasItems[idx].zIndex = maxZ + 1
+            do {
+                try dbManager.dbWriter.write { db in
+                    if var item = try CanvasItem.fetchOne(db, key: id) {
+                        item.zIndex = maxZ + 1
+                        item.updatedAt = Date()
+                        try item.update(db)
+                    }
+                }
+                reloadCanvasItems(docId: docId)
+            } catch {
+                print("Error bringing item to front: \(error)")
+            }
+        }
+    }
+
+    public func sendCanvasItemToBack(id: String) {
+        guard let docId = selectedDocId else { return }
+        let minZ = canvasItems.map(\.zIndex).min() ?? 0
+        if let idx = canvasItems.firstIndex(where: { $0.id == id }) {
+            canvasItems[idx].zIndex = minZ - 1
+            do {
+                try dbManager.dbWriter.write { db in
+                    if var item = try CanvasItem.fetchOne(db, key: id) {
+                        item.zIndex = minZ - 1
+                        item.updatedAt = Date()
+                        try item.update(db)
+                    }
+                }
+                reloadCanvasItems(docId: docId)
+            } catch {
+                print("Error sending item to back: \(error)")
+            }
+        }
+    }
+
+    @discardableResult
+    public func addCanvasConnector(
+        canvasDocId: String? = nil,
+        fromItemId: String,
+        fromPort: CanvasPortPosition,
+        toItemId: String,
+        toPort: CanvasPortPosition,
+        routingType: ConnectorRoutingType = .orthogonal,
+        label: String? = nil,
+        strokeColorHex: String = "#64748B",
+        strokeWidth: Double = 2.0,
+        arrowType: ConnectorArrowType = .endArrow
+    ) -> CanvasConnector? {
+        guard let docId = canvasDocId ?? selectedDocId else { return nil }
+        let conn = CanvasConnector(
+            canvasDocId: docId,
+            fromItemId: fromItemId,
+            fromPort: fromPort,
+            toItemId: toItemId,
+            toPort: toPort,
+            routingType: routingType,
+            label: label,
+            strokeColorHex: strokeColorHex,
+            strokeWidth: strokeWidth,
+            arrowType: arrowType
+        )
+
+        do {
+            try dbManager.dbWriter.write { db in
+                try conn.insert(db)
+            }
+            reloadCanvasConnectors(docId: docId)
+            return conn
+        } catch {
+            print("Error inserting canvas connector: \(error)")
+            return nil
+        }
+    }
+
+    public func updateCanvasConnectorLabel(id: String, label: String?) {
+        if let idx = canvasConnectors.firstIndex(where: { $0.id == id }) {
+            canvasConnectors[idx].label = label
+            canvasConnectors[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var conn = try CanvasConnector.fetchOne(db, key: id) {
+                    conn.label = label
+                    conn.updatedAt = Date()
+                    try conn.update(db)
+                }
+            }
+        } catch {
+            print("Error updating canvas connector label: \(error)")
+        }
+    }
+
+    public func deleteCanvasConnector(id: String) {
+        canvasConnectors.removeAll(where: { $0.id == id })
+        do {
+            try dbManager.dbWriter.write { db in
+                _ = try CanvasConnector.filter(CanvasConnector.Columns.id == id).deleteAll(db)
+            }
+        } catch {
+            print("Error deleting canvas connector: \(error)")
+        }
+    }
+
+    public func attachNoteToCanvasItem(itemId: String, noteDocId: String) {
+        do {
+            try dbManager.dbWriter.write { db in
+                guard var item = try CanvasItem.fetchOne(db, key: itemId) else { return }
+                item.linkedNoteDocId = noteDocId
+                item.updatedAt = Date()
+                try item.update(db)
+
+                // Sync with DocLink so it shows up in PKM Graph
+                let targetDoc = try Block.fetchOne(db, key: noteDocId)
+                let targetTitle = targetDoc?.content.isEmpty == false ? targetDoc!.content : "Referenced Note"
+                _ = try DocLink.filter(DocLink.Columns.sourceBlockId == itemId).deleteAll(db)
+                let link = DocLink(
+                    sourceDocId: item.canvasDocId,
+                    sourceBlockId: itemId,
+                    targetTitle: targetTitle,
+                    targetDocId: noteDocId
+                )
+                try link.insert(db)
+            }
+            loadDocLinks()
+            if let canvasDocId = canvasItems.first(where: { $0.id == itemId })?.canvasDocId ?? selectedDocId {
+                reloadCanvasItems(docId: canvasDocId)
+            }
+        } catch {
+            print("Error attaching note to canvas item: \(error)")
+        }
+    }
+
+    public func detachNoteFromCanvasItem(itemId: String) {
+        do {
+            try dbManager.dbWriter.write { db in
+                guard var item = try CanvasItem.fetchOne(db, key: itemId) else { return }
+                item.linkedNoteDocId = nil
+                item.updatedAt = Date()
+                try item.update(db)
+                _ = try DocLink.filter(DocLink.Columns.sourceBlockId == itemId).deleteAll(db)
+            }
+            loadDocLinks()
+            if let canvasDocId = canvasItems.first(where: { $0.id == itemId })?.canvasDocId ?? selectedDocId {
+                reloadCanvasItems(docId: canvasDocId)
+            }
+        } catch {
+            print("Error detaching note from canvas item: \(error)")
+        }
+    }
+
+
+
+    public func fetchNoteCardSummary(noteDocId: String) -> (title: String, icon: String?, snippets: [String]) {
+        do {
+            return try dbManager.dbWriter.read { db in
+                let doc = try Block.fetchOne(db, key: noteDocId)
+                let title = doc?.content.isEmpty == false ? doc!.content : "Untitled Note"
+                let icon = doc?.icon
+
+                // Fetch first few readable block contents
+                let childBlocks = try Block.filter(Block.Columns.rootDocId == noteDocId && Block.Columns.type != BlockType.doc.rawValue && Block.Columns.type != BlockType.inkDoc.rawValue)
+                    .order(Block.Columns.sortOrder.asc)
+                    .limit(3)
+                    .fetchAll(db)
+
+                let snippets = childBlocks.compactMap { b -> String? in
+                    let trimmed = b.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+
+                return (title: title, icon: icon, snippets: snippets)
+            }
+        } catch {
+            return (title: "Note", icon: nil, snippets: [])
+        }
+    }
+
+    // MARK: - Notion Relational Database Methods
+    public func reloadDatabases(for docId: String) {
+        databases = databaseService.fetchDatabases(for: docId)
+        if let firstDb = databases.first {
+            loadDatabaseData(databaseId: firstDb.id)
+        } else {
+            activeDatabaseProperties = []
+            activeDatabaseRecords = []
+            activeDatabaseCellValues = [:]
+        }
+    }
+
+    public func loadDatabaseData(databaseId: String) {
+        activeDatabaseProperties = databaseService.fetchProperties(databaseId: databaseId)
+        activeDatabaseRecords = databaseService.fetchRecords(databaseId: databaseId)
+
+        var cellMap: [String: [String: DatabaseCellValue]] = [:]
+        for record in activeDatabaseRecords {
+            let cells = databaseService.fetchCellValues(for: record.id)
+            var propMap: [String: DatabaseCellValue] = [:]
+            for cell in cells {
+                propMap[cell.propertyId] = cell
+            }
+            cellMap[record.id] = propMap
+        }
+        activeDatabaseCellValues = cellMap
+    }
+
+    @discardableResult
+    public func createDatabase(
+        title: String = "Untitled Database",
+        description: String? = nil,
+        icon: String? = "tablecells"
+    ) -> NotionDatabase? {
+        guard let docId = selectedDocId else { return nil }
+        let db = databaseService.createDatabase(
+            rootDocId: docId,
+            title: title,
+            description: description,
+            icon: icon
+        )
+        reloadDatabases(for: docId)
+        return db
+    }
+
+    @discardableResult
+    public func addDatabaseProperty(
+        databaseId: String,
+        name: String,
+        type: DatabasePropertyType,
+        config: DatabasePropertyConfig? = nil
+    ) -> DatabaseProperty {
+        let prop = databaseService.createProperty(
+            databaseId: databaseId,
+            name: name,
+            type: type,
+            config: config
+        )
+        loadDatabaseData(databaseId: databaseId)
+        return prop
+    }
+
+    @discardableResult
+    public func addDatabaseRecord(databaseId: String) -> DatabaseRecord {
+        guard let docId = selectedDocId else {
+            fatalError("Cannot create record without selected document")
+        }
+        let rec = databaseService.createRecord(databaseId: databaseId, docId: docId)
+        loadDatabaseData(databaseId: databaseId)
+        return rec
+    }
+
+    public func updateDatabaseCellValue(
+        recordId: String,
+        propertyId: String,
+        databaseId: String,
+        valueText: String? = nil,
+        valueNumber: Double? = nil,
+        valueDate: Date? = nil,
+        valueJson: String? = nil
+    ) {
+        databaseService.setCellValue(
+            recordId: recordId,
+            propertyId: propertyId,
+            valueText: valueText,
+            valueNumber: valueNumber,
+            valueDate: valueDate,
+            valueJson: valueJson
+        )
+        loadDatabaseData(databaseId: databaseId)
+    }
+
+    public func deleteDatabase(id: String) {
+        guard let docId = selectedDocId else { return }
+        databaseService.deleteDatabase(id: id)
+        reloadDatabases(for: docId)
+    }
+
+    public func deleteDatabaseProperty(id: String, databaseId: String) {
+        databaseService.deleteProperty(id: id)
+        loadDatabaseData(databaseId: databaseId)
+    }
+
+    public func deleteDatabaseRecord(id: String, databaseId: String) {
+        databaseService.deleteRecord(id: id)
+        loadDatabaseData(databaseId: databaseId)
+    }
+
+    public func setDatabaseViewMode(databaseId: String, mode: DatabaseViewMode) {
+        activeDatabaseViewModes[databaseId] = mode
+    }
+
+    public func getDatabaseViewMode(databaseId: String) -> DatabaseViewMode {
+        activeDatabaseViewModes[databaseId] ?? .table
+    }
+
+    public func addAutomationRule(_ rule: DatabaseAutomationRule) {
+        activeAutomationRules.append(rule)
+    }
+
+    public func triggerAutomation(databaseId: String, recordId: String, trigger: AutomationTriggerType) {
+        databaseService.executeAutomationRules(
+            databaseId: databaseId,
+            recordId: recordId,
+            trigger: trigger,
+            rules: activeAutomationRules
+        )
+        loadDatabaseData(databaseId: databaseId)
     }
 
     public func saveInkPageStrokes(pageIndex: Int, strokes: [InkStroke]) {
@@ -1275,6 +1893,80 @@ public final class BlockStore: ObservableObject {
         }
     }
 
+    /// Updates spatial layout (canvasX, canvasY, customWidth, customHeight) for an ink page in 2D mode
+    public func updateInkPageSpatialLayout(
+        pageId: String,
+        canvasX: Double,
+        canvasY: Double,
+        customWidth: Double? = nil,
+        customHeight: Double? = nil
+    ) {
+        do {
+            try dbManager.dbWriter.write { db in
+                if var page = try InkDocumentPage.filter(InkDocumentPage.Columns.id == pageId).fetchOne(db) {
+                    page.canvasX = canvasX
+                    page.canvasY = canvasY
+                    if let w = customWidth { page.customWidth = w }
+                    if let h = customHeight { page.customHeight = h }
+                    page.updatedAt = Date()
+                    try page.update(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error updating ink page spatial layout: \(error)")
+        }
+    }
+
+    /// Updates normalized crop bounds [x, y, w, h] for an ink page
+    public func updateInkPageCrop(
+        pageId: String,
+        cropRect: CGRect?
+    ) {
+        do {
+            let cropStr: String?
+            if let crop = cropRect {
+                cropStr = "[\(crop.origin.x),\(crop.origin.y),\(crop.size.width),\(crop.size.height)]"
+            } else {
+                cropStr = nil
+            }
+
+            try dbManager.dbWriter.write { db in
+                if var page = try InkDocumentPage.filter(InkDocumentPage.Columns.id == pageId).fetchOne(db) {
+                    page.cropRectData = cropStr
+                    page.updatedAt = Date()
+                    try page.update(db)
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error updating ink page crop: \(error)")
+        }
+    }
+
+    /// Deletes a specific ink page and adjusts page indexes
+    public func deleteInkPage(pageId: String) {
+        guard let docId = selectedDocId else { return }
+        do {
+            try dbManager.dbWriter.write { db in
+                _ = try InkDocumentPage.filter(InkDocumentPage.Columns.id == pageId).deleteAll(db)
+                // Re-sequence remaining pages
+                let remaining = try InkDocumentPage.filter(InkDocumentPage.Columns.docId == docId)
+                    .order(InkDocumentPage.Columns.pageIndex.asc)
+                    .fetchAll(db)
+                for (newIdx, var p) in remaining.enumerated() {
+                    if p.pageIndex != newIdx {
+                        p.pageIndex = newIdx
+                        try p.update(db)
+                    }
+                }
+            }
+            reloadInkPages()
+        } catch {
+            print("Error deleting ink page: \(error)")
+        }
+    }
+
     // MARK: - Block Editing Operations
     @discardableResult
     public func createBlock(
@@ -1303,7 +1995,8 @@ public final class BlockStore: ObservableObject {
             sortOrder: newSortOrder,
             isCompleted: type == .taskList ? false : nil,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            isCollapsed: (type == .toggle || type == .heading1 || type == .heading2 || type == .heading3) ? false : nil
         )
 
         do {
@@ -1405,6 +2098,12 @@ public final class BlockStore: ObservableObject {
         if newType == .taskList && blocks[index].isCompleted == nil {
             blocks[index].isCompleted = false
         }
+        if newType == .table && blocks[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            blocks[index].content = TableBlockPayload.defaultTable().serialize()
+        }
+        if newType == .toggle && blocks[index].isCollapsed == nil {
+            blocks[index].isCollapsed = false
+        }
         blocks[index].updatedAt = Date()
 
         let blockToSave = blocks[index]
@@ -1414,6 +2113,178 @@ public final class BlockStore: ObservableObject {
             }
         } catch {
             print("Error converting block type: \(error)")
+        }
+    }
+
+    public func toggleBlockCollapse(id: String) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        let current = blocks[index].isCollapsed ?? false
+        blocks[index].isCollapsed = !current
+        blocks[index].updatedAt = Date()
+
+        let blockToSave = blocks[index]
+        do {
+            try dbManager.dbWriter.write { db in
+                try blockToSave.update(db)
+            }
+        } catch {
+            print("Error toggling block collapse: \(error)")
+        }
+    }
+
+    public func setBlockIcon(id: String, icon: String?) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        blocks[index].icon = icon
+        blocks[index].updatedAt = Date()
+
+        let blockToSave = blocks[index]
+        do {
+            try dbManager.dbWriter.write { db in
+                try blockToSave.update(db)
+            }
+        } catch {
+            print("Error setting block icon: \(error)")
+        }
+    }
+
+    public func setBlockColorTint(id: String, tint: String?) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        blocks[index].colorTint = tint
+        blocks[index].updatedAt = Date()
+
+        let blockToSave = blocks[index]
+        do {
+            try dbManager.dbWriter.write { db in
+                try blockToSave.update(db)
+            }
+        } catch {
+            print("Error setting block color tint: \(error)")
+        }
+    }
+
+    public func updateTableBlock(id: String, payload: TableBlockPayload) {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
+        let json = payload.serialize()
+        blocks[index].content = json
+        blocks[index].updatedAt = Date()
+
+        let blockToSave = blocks[index]
+        do {
+            try dbManager.dbWriter.write { db in
+                try blockToSave.update(db)
+            }
+        } catch {
+            print("Error updating table block: \(error)")
+        }
+    }
+
+    public func setDocumentVerification(docId: String, days: Int = 30, verifiedBy: String = "Author") {
+        let now = Date()
+        let expires = Calendar.current.date(byAdding: .day, value: days, to: now)
+
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].verifiedAt = now
+            documents[idx].verifiedExpiresAt = expires
+            documents[idx].verifiedBy = verifiedBy
+            documents[idx].updatedAt = now
+        }
+        if selectedDocId == docId {
+            currentDoc?.verifiedAt = now
+            currentDoc?.verifiedExpiresAt = expires
+            currentDoc?.verifiedBy = verifiedBy
+            currentDoc?.updatedAt = now
+        }
+
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.verifiedAt = now
+                    doc.verifiedExpiresAt = expires
+                    doc.verifiedBy = verifiedBy
+                    doc.updatedAt = now
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting document verification: \(error)")
+        }
+    }
+
+    public func clearDocumentVerification(docId: String) {
+        let now = Date()
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].verifiedAt = nil
+            documents[idx].verifiedExpiresAt = nil
+            documents[idx].verifiedBy = nil
+            documents[idx].updatedAt = now
+        }
+        if selectedDocId == docId {
+            currentDoc?.verifiedAt = nil
+            currentDoc?.verifiedExpiresAt = nil
+            currentDoc?.verifiedBy = nil
+            currentDoc?.updatedAt = now
+        }
+
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.verifiedAt = nil
+                    doc.verifiedExpiresAt = nil
+                    doc.verifiedBy = nil
+                    doc.updatedAt = now
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error clearing document verification: \(error)")
+        }
+    }
+
+    public func setDocumentLock(docId: String, isLocked: Bool) {
+        let now = Date()
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].isLocked = isLocked
+            documents[idx].updatedAt = now
+        }
+        if selectedDocId == docId {
+            currentDoc?.isLocked = isLocked
+            currentDoc?.updatedAt = now
+        }
+
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.isLocked = isLocked
+                    doc.updatedAt = now
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting document lock: \(error)")
+        }
+    }
+
+    public func setDocumentPinnedProperties(docId: String, data: String?) {
+        let now = Date()
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].pinnedPropertiesData = data
+            documents[idx].updatedAt = now
+        }
+        if selectedDocId == docId {
+            currentDoc?.pinnedPropertiesData = data
+            currentDoc?.updatedAt = now
+        }
+
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.pinnedPropertiesData = data
+                    doc.updatedAt = now
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting pinned properties: \(error)")
         }
     }
 

@@ -63,7 +63,7 @@ public struct SlashMenuView: View {
     }
 
     private var filteredTypes: [BlockType] {
-        let types = BlockType.allCases.filter { $0 != .doc }
+        let types = BlockType.allCases.filter { $0 != .doc && $0 != .inkDoc }
         if filterText.isEmpty { return types }
         return types.filter { $0.displayName.localizedCaseInsensitiveContains(filterText) }
     }
@@ -122,6 +122,43 @@ public struct SlashMenuView: View {
                             .buttonStyle(.plain)
                             .cornerRadius(4)
                         }
+
+                        Divider()
+                            .padding(.vertical, 2)
+                    }
+
+                    // Relational Database Section
+                    if filterText.isEmpty || "database".contains(filterText.lowercased()) {
+                        Text("DATABASES")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 2)
+
+                        Button(action: {
+                            cleanSlashFromBlock()
+                            store.createDatabase(title: "New Table Database")
+                            onDismiss()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "tablecells.badge.ellipsis")
+                                    .frame(width: 16)
+                                    .foregroundColor(.blue)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Database Table")
+                                        .font(.system(size: 12, weight: .medium))
+                                    Text("Relational table with typed columns")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .cornerRadius(4)
 
                         Divider()
                             .padding(.vertical, 2)

@@ -34,7 +34,13 @@ public final class SearchService: @unchecked Sendable {
                 JOIN block b ON b.id = block_fts.id
                 JOIN block d ON d.id = b.rootDocId
                 WHERE block_fts MATCH ?
-                ORDER BY bm25(block_fts)
+                ORDER BY (
+                    CASE 
+                        WHEN d.verifiedExpiresAt IS NOT NULL AND d.verifiedExpiresAt > datetime('now') 
+                        THEN bm25(block_fts) - 2.0 
+                        ELSE bm25(block_fts) 
+                    END
+                )
                 LIMIT 40
                 """
                 let rows = try Row.fetchAll(db, sql: sql, arguments: [ftsPattern])

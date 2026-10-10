@@ -63,6 +63,15 @@ public enum InkPDFImporterService {
         return (relativeFilename: safeName, pageCount: trimmedDoc.pageCount)
     }
 
+    /// Returns the natural CGSize of a specific page (1-indexed) in points
+    public static func pageSize(for url: URL, pageIndex: Int) -> CGSize? {
+        guard let document = CGPDFDocument(url as CFURL),
+              let page = document.page(at: pageIndex) else { return nil }
+        let box = page.getBoxRect(.mediaBox)
+        guard box.width > 0 && box.height > 0 else { return nil }
+        return box.size
+    }
+
     /// Resolves full filesystem URL for a given pdfPath
     public static func resolvePDFURL(for pathOrFilename: String) -> URL? {
         let trimmed = pathOrFilename.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -83,12 +92,25 @@ public enum InkPDFImporterService {
         return nil
     }
 
-    /// Renders a specific page of a PDF into a CGContext within the target rect
+    // MARK: - PDFKit In-Memory Cache
+    private static var documentCache = NSCache<NSURL, PDFDocument>()
+
+    public static func cachedPDFDocument(for url: URL) -> PDFDocument? {
+        if let cached = documentCache.object(forKey: url as NSURL) {
+            return cached
+        }
+        guard let doc = PDFDocument(url: url) else { return nil }
+        documentCache.setObject(doc, forKey: url as NSURL)
+        return doc
+    }
+
+    /// Renders a specific page of a PDF into a CGContext within the target rect, with optional normalized crop bounds [0...1]
     public static func renderPDFPage(
         from url: URL,
         pageIndex: Int, // 1-indexed
         in context: CGContext,
-        targetRect: CGRect
+        targetRect: CGRect,
+        cropRect: CGRect? = nil // Normalized unit coordinates (x: 0...1, y: 0...1, w: 0...1, h: 0...1) in top-left space
     ) {
         guard let document = CGPDFDocument(url as CFURL) else { return }
         guard let page = document.page(at: pageIndex) else { return }
@@ -102,23 +124,128 @@ public enum InkPDFImporterService {
         context.setFillColor(NSColor.white.cgColor)
         context.fill(targetRect)
 
-        // Calculate aspect-fit scaling
-        let scaleX = targetRect.width / pageRect.width
-        let scaleY = targetRect.height / pageRect.height
-        let scale = min(scaleX, scaleY)
+        if let crop = cropRect, crop.width > 0.01, crop.height > 0.01 {
+            // Apply clip to the targetRect
+            context.clip(to: targetRect)
 
-        let scaledWidth = pageRect.width * scale
-        let scaledHeight = pageRect.height * scale
-        let offsetX = targetRect.origin.x + (targetRect.width - scaledWidth) * 0.5
-        let offsetY = targetRect.origin.y + (targetRect.height - scaledHeight) * 0.5
+            // The visible portion corresponds to crop: (x, y, w, h) in unit space [0...1]
+            // Scale so that cropped portion fills targetRect
+            let scaleX = targetRect.width / (pageRect.width * crop.width)
+            let scaleY = targetRect.height / (pageRect.height * crop.height)
+            let scale = min(scaleX, scaleY)
 
-        // CGPDFPage draws in traditional bottom-left Cartesian coordinates.
-        // If our context is flipped (top-left origin), we translate to the bottom of the drawn area
-        // and invert Y so the PDF text and images render right-side up.
-        context.translateBy(x: offsetX, y: offsetY + scaledHeight)
-        context.scaleBy(x: scale, y: -scale)
+            let fullScaledWidth = pageRect.width * scale
+            let fullScaledHeight = pageRect.height * scale
 
-        context.drawPDFPage(page)
+            // In top-left space, crop.minX and crop.minY offset the origin
+            let offsetX = targetRect.origin.x - (crop.origin.x * fullScaledWidth)
+            let offsetY = targetRect.origin.y - (crop.origin.y * fullScaledHeight)
+
+            context.translateBy(x: offsetX, y: offsetY + fullScaledHeight)
+            context.scaleBy(x: scale, y: -scale)
+            context.drawPDFPage(page)
+        } else {
+            // Calculate aspect-fit scaling
+            let scaleX = targetRect.width / pageRect.width
+            let scaleY = targetRect.height / pageRect.height
+            let scale = min(scaleX, scaleY)
+
+            let scaledWidth = pageRect.width * scale
+            let scaledHeight = pageRect.height * scale
+            let offsetX = targetRect.origin.x + (targetRect.width - scaledWidth) * 0.5
+            let offsetY = targetRect.origin.y + (targetRect.height - scaledHeight) * 0.5
+
+            context.translateBy(x: offsetX, y: offsetY + scaledHeight)
+            context.scaleBy(x: scale, y: -scale)
+            context.drawPDFPage(page)
+        }
+
         context.restoreGState()
+    }
+
+    /// Converts a point in targetRect back into PDFPage coordinate space (bottom-left origin)
+    public static func pdfPagePoint(
+        from targetPoint: CGPoint,
+        in targetRect: CGRect,
+        page: PDFPage,
+        cropRect: CGRect? = nil
+    ) -> CGPoint {
+        let pageBounds = page.bounds(for: .mediaBox)
+        guard pageBounds.width > 0, pageBounds.height > 0 else { return .zero }
+
+        if let crop = cropRect, crop.width > 0.01, crop.height > 0.01 {
+            let scaleX = targetRect.width / (pageBounds.width * crop.width)
+            let scaleY = targetRect.height / (pageBounds.height * crop.height)
+            let scale = min(scaleX, scaleY)
+
+            let fullScaledWidth = pageBounds.width * scale
+            let fullScaledHeight = pageBounds.height * scale
+            let offsetX = targetRect.origin.x - (crop.origin.x * fullScaledWidth)
+            let offsetY = targetRect.origin.y - (crop.origin.y * fullScaledHeight)
+
+            let relX = (targetPoint.x - offsetX) / scale
+            let topRelY = (targetPoint.y - offsetY) / scale
+            let pdfY = pageBounds.height - topRelY
+            return CGPoint(x: relX, y: pdfY)
+        } else {
+            let scaleX = targetRect.width / pageBounds.width
+            let scaleY = targetRect.height / pageBounds.height
+            let scale = min(scaleX, scaleY)
+
+            let scaledWidth = pageBounds.width * scale
+            let scaledHeight = pageBounds.height * scale
+            let offsetX = targetRect.origin.x + (targetRect.width - scaledWidth) * 0.5
+            let offsetY = targetRect.origin.y + (targetRect.height - scaledHeight) * 0.5
+
+            let relX = (targetPoint.x - offsetX) / scale
+            let topRelY = (targetPoint.y - offsetY) / scale
+            let pdfY = pageBounds.height - topRelY
+            return CGPoint(x: relX, y: pdfY)
+        }
+    }
+
+    /// Converts a rect in PDFPage coordinate space into targetRect coordinates (top-left origin)
+    public static func targetRect(
+        from pdfRect: NSRect,
+        in targetRect: CGRect,
+        page: PDFPage,
+        cropRect: CGRect? = nil
+    ) -> CGRect {
+        let pageBounds = page.bounds(for: .mediaBox)
+        guard pageBounds.width > 0, pageBounds.height > 0 else { return .zero }
+
+        if let crop = cropRect, crop.width > 0.01, crop.height > 0.01 {
+            let scaleX = targetRect.width / (pageBounds.width * crop.width)
+            let scaleY = targetRect.height / (pageBounds.height * crop.height)
+            let scale = min(scaleX, scaleY)
+
+            let fullScaledWidth = pageBounds.width * scale
+            let fullScaledHeight = pageBounds.height * scale
+            let offsetX = targetRect.origin.x - (crop.origin.x * fullScaledWidth)
+            let offsetY = targetRect.origin.y - (crop.origin.y * fullScaledHeight)
+
+            let x = offsetX + (pdfRect.minX * scale)
+            let topRelY = (pageBounds.height - pdfRect.maxY) * scale
+            let y = offsetY + topRelY
+            let w = pdfRect.width * scale
+            let h = pdfRect.height * scale
+            return CGRect(x: x, y: y, width: w, height: h)
+        } else {
+            let scaleX = targetRect.width / pageBounds.width
+            let scaleY = targetRect.height / pageBounds.height
+            let scale = min(scaleX, scaleY)
+
+            let scaledWidth = pageBounds.width * scale
+            let scaledHeight = pageBounds.height * scale
+            let offsetX = targetRect.origin.x + (targetRect.width - scaledWidth) * 0.5
+            let offsetY = targetRect.origin.y + (targetRect.height - scaledHeight) * 0.5
+
+            let x = offsetX + (pdfRect.minX * scale)
+            let topRelY = (pageBounds.height - pdfRect.maxY) * scale
+            let y = offsetY + topRelY
+            let w = pdfRect.width * scale
+            let h = pdfRect.height * scale
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
     }
 }

@@ -70,11 +70,23 @@ public struct BlockRowView: View {
                     Label("Outdent", systemImage: "decrease.indent")
                 }
 
+                if block.type == .quote || block.type == .callout {
+                    Menu("Color Accent") {
+                        Button("Default") { store.setBlockColorTint(id: block.id, tint: nil) }
+                        Button("Neo Green") { store.setBlockColorTint(id: block.id, tint: "green") }
+                        Button("Azure Blue") { store.setBlockColorTint(id: block.id, tint: "blue") }
+                        Button("Amber") { store.setBlockColorTint(id: block.id, tint: "amber") }
+                        Button("Rose") { store.setBlockColorTint(id: block.id, tint: "rose") }
+                        Button("Purple") { store.setBlockColorTint(id: block.id, tint: "purple") }
+                    }
+                }
+
                 Divider()
 
                 Button(role: .destructive, action: { store.deleteBlock(id: block.id) }) {
                     Label("Delete Block", systemImage: "trash")
                 }
+                .disabled(store.isCurrentDocLocked)
             } label: {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 10, weight: .bold))
@@ -179,6 +191,25 @@ public struct BlockRowView: View {
                     )
                 case .blockRef:
                     BlockRefView(store: store, block: block)
+                case .toggle:
+                    ToggleBlockView(
+                        store: store,
+                        block: block,
+                        isFocused: isFocused,
+                        onCommitReturn: handleCommitReturn,
+                        onDeleteEmpty: handleDeleteEmpty,
+                        onDeleteAtStart: handleDeleteAtStart,
+                        onTab: { store.indentBlock(id: block.id) },
+                        onShiftTab: { store.outdentBlock(id: block.id) },
+                        onArrowUp: handleArrowUp,
+                        onArrowDown: handleArrowDown
+                    )
+                case .table:
+                    TableBlockView(
+                        store: store,
+                        block: block,
+                        isFocused: isFocused
+                    )
                 }
             }
 

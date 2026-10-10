@@ -190,6 +190,12 @@ public struct HeadingBlockView: View {
     public let onArrowUp: () -> Void
     public let onArrowDown: () -> Void
 
+    @State private var isHovered: Bool = false
+
+    private var isCollapsed: Bool {
+        block.isCollapsed ?? false
+    }
+
     private var headingFont: NSFont {
         let z = store.editorZoomLevel
         switch block.type {
@@ -207,29 +213,49 @@ public struct HeadingBlockView: View {
     }
 
     public var body: some View {
-        BlockTextViewRepresentable(
-            text: Binding(
-                get: { block.content },
-                set: { store.updateBlockContent(id: block.id, content: $0) }
-            ),
-            isFocused: isFocused,
-            font: headingFont,
-            textColor: .labelColor,
-            placeholder: block.type.placeholder,
-            onCommitReturn: onCommitReturn,
-            onDeleteEmpty: onDeleteEmpty,
-            onDeleteAtStart: onDeleteAtStart,
-            onArrowUp: onArrowUp,
-            onArrowDown: onArrowDown,
-            onFocus: {
-                store.focusedBlockId = block.id
-            },
-            onZoomIn: { store.zoomIn() },
-            onZoomOut: { store.zoomOut() },
-            onResetZoom: { store.resetZoom() }
-        )
-        .frame(minHeight: minHeight)
-        .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 4) {
+            // Fold / Disclosure Chevron
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    store.toggleBlockCollapse(id: block.id)
+                }
+            }) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isCollapsed ? Color.accentColor : MedhaTheme.Colors.textTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: 14, height: minHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(isHovered || isCollapsed ? 1.0 : 0.0)
+            .help(isCollapsed ? "Expand heading section" : "Collapse heading section")
+
+            BlockTextViewRepresentable(
+                text: Binding(
+                    get: { block.content },
+                    set: { store.updateBlockContent(id: block.id, content: $0) }
+                ),
+                isFocused: isFocused,
+                font: headingFont,
+                textColor: .labelColor,
+                placeholder: block.type.placeholder,
+                onCommitReturn: onCommitReturn,
+                onDeleteEmpty: onDeleteEmpty,
+                onDeleteAtStart: onDeleteAtStart,
+                onArrowUp: onArrowUp,
+                onArrowDown: onArrowDown,
+                onFocus: {
+                    store.focusedBlockId = block.id
+                },
+                onZoomIn: { store.zoomIn() },
+                onZoomOut: { store.zoomOut() },
+                onResetZoom: { store.resetZoom() }
+            )
+            .frame(minHeight: minHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -390,12 +416,40 @@ public struct CodeBlockView: View {
     public let onDeleteEmpty: () -> Void
     @State private var copied: Bool = false
 
+    private let availableLanguages = [
+        "Swift", "Python", "JavaScript", "TypeScript", "Rust", "Go", "C++", "SQL", "HTML", "CSS", "JSON", "Markdown", "Shell"
+    ]
+
+    private var currentLanguage: String {
+        block.icon ?? "Swift"
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Swift / Code")
-                    .font(MedhaTheme.Typography.monoBadge)
+                Menu {
+                    ForEach(availableLanguages, id: \.self) { lang in
+                        Button(lang) {
+                            store.setBlockIcon(id: block.id, icon: lang)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "curlybraces")
+                            .font(.system(size: 9))
+                        Text(currentLanguage)
+                            .font(MedhaTheme.Typography.monoBadge)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7))
+                    }
                     .foregroundColor(MedhaTheme.Colors.textTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(MedhaTheme.Colors.bgSurface.opacity(0.8))
+                    .cornerRadius(4)
+                }
+                .menuStyle(.borderlessButton)
+
                 Spacer()
                 Button(action: {
                     NSPasteboard.general.clearContents()
@@ -475,10 +529,21 @@ public struct QuoteBlockView: View {
     public let onArrowUp: () -> Void
     public let onArrowDown: () -> Void
 
+    private var quoteColor: Color {
+        switch block.colorTint?.lowercased() {
+        case "green": return Color(red: 0.16, green: 0.86, blue: 0.53)
+        case "amber": return Color.orange
+        case "rose": return Color.red
+        case "purple": return Color.purple
+        case "blue": return Color.blue
+        default: return Color.accentColor
+        }
+    }
+
     public var body: some View {
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color.accentColor.opacity(0.8))
+                .fill(quoteColor.opacity(0.8))
                 .frame(width: 3)
 
             BlockTextViewRepresentable(
@@ -518,25 +583,37 @@ public struct CalloutBlockView: View {
     public let onDeleteEmpty: () -> Void
     public var onDeleteAtStart: () -> Void = {}
 
-    // Light Neo Green palette
-    private let neoGreen = Color(red: 0.16, green: 0.86, blue: 0.53)
+    private var accentColor: Color {
+        switch block.colorTint?.lowercased() {
+        case "blue": return Color.blue
+        case "amber": return Color.orange
+        case "rose": return Color.red
+        case "purple": return Color.purple
+        case "neutral": return Color.secondary
+        default: return Color(red: 0.16, green: 0.86, blue: 0.53) // Neo green default
+        }
+    }
+
+    private var iconName: String {
+        block.icon ?? "lightbulb.fill"
+    }
 
     public var body: some View {
         HStack(alignment: .top, spacing: 10) {
             // Subtle vertical accent bar on the left
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(neoGreen.opacity(0.85))
+                .fill(accentColor.opacity(0.85))
                 .frame(width: 3)
                 .padding(.vertical, 2)
 
-            // Refined mini lightbulb badge
+            // Refined badge
             ZStack {
                 Circle()
-                    .fill(neoGreen.opacity(0.14))
+                    .fill(accentColor.opacity(0.14))
                     .frame(width: 20, height: 20)
-                Image(systemName: "lightbulb.fill")
+                Image(systemName: iconName)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(neoGreen)
+                    .foregroundColor(accentColor)
             }
             .padding(.top, 2)
 
@@ -564,11 +641,11 @@ public struct CalloutBlockView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(neoGreen.opacity(0.06))
+        .background(accentColor.opacity(0.06))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(neoGreen.opacity(0.18), lineWidth: 1)
+                .stroke(accentColor.opacity(0.18), lineWidth: 1)
         )
     }
 }
