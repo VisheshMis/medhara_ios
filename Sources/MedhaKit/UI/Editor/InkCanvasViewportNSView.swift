@@ -541,6 +541,9 @@ public final class InkCanvasViewportNSView: NSView {
         case "l":
             activeTool = .lasso
             needsDisplay = true
+        case "s":
+            isShapeSnappingEnabled.toggle()
+            needsDisplay = true
         default:
             super.keyDown(with: event)
         }

@@ -301,6 +301,9 @@ public struct InkNoteEditorView: View {
             onRecordItemResized: { itemId, oldW, oldH, newW, newH in
                 store.recordItemResized(id: itemId, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH)
             },
+            onRecordItemSnappedFromInk: { item, stroke, pageIndex in
+                store.pushCanvasUndoCommand(.itemSnappedFromInk(item: item, originalStroke: stroke, pageIndex: pageIndex))
+            },
             onAddCanvasConnector: { sourceId, sourcePort, targetId, targetPort, routing, label in
                 store.addCanvasConnector(
                     canvasDocId: doc.id,

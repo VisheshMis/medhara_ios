@@ -52,6 +52,20 @@ public struct CanvasUnifiedFloatingToolbar: View {
             .buttonStyle(.plain)
             .help("Pan / Hand Tool (Spacebar)")
 
+            // MARK: - Freeform ↔ Snap Mode Toggle
+            Button(action: {
+                store.isShapeSnappingEnabled.toggle()
+            }) {
+                Image(systemName: store.isShapeSnappingEnabled ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(store.isShapeSnappingEnabled ? .accentColor : .primary)
+                    .frame(width: 28, height: 28)
+                    .background(store.isShapeSnappingEnabled ? Color.accentColor.opacity(0.18) : Color.clear)
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help(store.isShapeSnappingEnabled ? "Snap Mode: Hold to snap perfect shapes (Enabled)" : "Freeform Mode: Freehand ink without snapping (Disabled)")
+
             Divider()
                 .frame(height: 18)
 
@@ -68,6 +82,9 @@ public struct CanvasUnifiedFloatingToolbar: View {
                 }
                 Button(action: { onInsertShape(.ellipse) }) {
                     Label("Terminator (Circle / Oval)", systemImage: "circle")
+                }
+                Button(action: { onInsertShape(.triangle) }) {
+                    Label("Triangle", systemImage: "triangle")
                 }
                 Divider()
                 Button(action: { onInsertShape(.group) }) {

@@ -3716,7 +3716,339 @@ struct TestRunner {
 
         print("✅ testCanvasFoundationsSuite passed")
 
-        print("\n🎉 ALL 49 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 50. SMART SHAPE RECOGNITION, SNAPPING & FIXTURE CORPUS SUITE
+        // ==========================================
+        print("\n--- 50. SMART SHAPE RECOGNITION, SNAPPING & FIXTURE CORPUS SUITE ---")
+
+        // 50.1: Fixture Corpus Generation (46 realistic stroke fixtures)
+        func makeRoughLine(from s: CGPoint, to e: CGPoint, count: Int = 30) -> [CGPoint] {
+            var pts: [CGPoint] = []
+            for i in 0..<count {
+                let t = CGFloat(i) / CGFloat(count - 1)
+                let jitter = sin(CGFloat(i) * 1.5) * 1.2
+                pts.append(CGPoint(
+                    x: s.x + t * (e.x - s.x) + jitter * 0.2,
+                    y: s.y + t * (e.y - s.y) + jitter
+                ))
+            }
+            return pts
+        }
+
+        func makeRoughRect(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, rotationDeg: CGFloat = 0) -> [CGPoint] {
+            let rad = rotationDeg * .pi / 180.0
+            let cx = x + w / 2.0
+            let cy = y + h / 2.0
+            func rotatePt(_ p: CGPoint) -> CGPoint {
+                if rotationDeg == 0 { return p }
+                let dx = p.x - cx
+                let dy = p.y - cy
+                return CGPoint(x: cx + dx * cos(rad) - dy * sin(rad), y: cy + dx * sin(rad) + dy * cos(rad))
+            }
+            let corners = [
+                CGPoint(x: x, y: y),
+                CGPoint(x: x + w, y: y),
+                CGPoint(x: x + w, y: y + h),
+                CGPoint(x: x, y: y + h),
+                CGPoint(x: x, y: y)
+            ]
+            var pts: [CGPoint] = []
+            for c in 0..<4 {
+                let c1 = corners[c], c2 = corners[c+1]
+                for s in 0..<12 {
+                    let t = CGFloat(s) / 12.0
+                    let jitter = cos(CGFloat(s) * 2.0) * 1.5
+                    let raw = CGPoint(x: c1.x + t * (c2.x - c1.x) + jitter * 0.3, y: c1.y + t * (c2.y - c1.y) + jitter)
+                    pts.append(rotatePt(raw))
+                }
+            }
+            pts.append(rotatePt(corners[0]))
+            return pts
+        }
+
+        func makeRoughCircle(cx: CGFloat, cy: CGFloat, r: CGFloat, count: Int = 48) -> [CGPoint] {
+            var pts: [CGPoint] = []
+            for i in 0..<count {
+                let angle = (CGFloat(i) / CGFloat(count)) * 2.0 * .pi
+                let jitter = sin(CGFloat(i) * 3.0) * 1.8
+                let rad = r + jitter
+                pts.append(CGPoint(x: cx + rad * cos(angle), y: cy + rad * sin(angle)))
+            }
+            pts.append(pts[0])
+            return pts
+        }
+
+        func makeRoughTriangle(p1: CGPoint, p2: CGPoint, p3: CGPoint) -> [CGPoint] {
+            let vertices = [p1, p2, p3, p1]
+            var pts: [CGPoint] = []
+            for c in 0..<3 {
+                let c1 = vertices[c], c2 = vertices[c+1]
+                for s in 0..<16 {
+                    let t = CGFloat(s) / 16.0
+                    let jitter = sin(CGFloat(s) * 1.8) * 1.5
+                    pts.append(CGPoint(x: c1.x + t * (c2.x - c1.x) + jitter * 0.3, y: c1.y + t * (c2.y - c1.y) + jitter))
+                }
+            }
+            pts.append(p1)
+            return pts
+        }
+
+        func makeRoughDiamond(cx: CGFloat, cy: CGFloat, rx: CGFloat, ry: CGFloat) -> [CGPoint] {
+            let corners = [
+                CGPoint(x: cx, y: cy - ry),
+                CGPoint(x: cx + rx, y: cy),
+                CGPoint(x: cx, y: cy + ry),
+                CGPoint(x: cx - rx, y: cy),
+                CGPoint(x: cx, y: cy - ry)
+            ]
+            var pts: [CGPoint] = []
+            for c in 0..<4 {
+                let c1 = corners[c], c2 = corners[c+1]
+                for s in 0..<12 {
+                    let t = CGFloat(s) / 12.0
+                    let jitter = cos(CGFloat(s) * 1.5) * 1.4
+                    pts.append(CGPoint(x: c1.x + t * (c2.x - c1.x) + jitter * 0.2, y: c1.y + t * (c2.y - c1.y) + jitter))
+                }
+            }
+            pts.append(corners[0])
+            return pts
+        }
+
+        func makeHandwritingScribble(type: Int) -> [CGPoint] {
+            var pts: [CGPoint] = []
+            switch type {
+            case 0:
+                // Cursive 'm' wave
+                for i in 0..<40 {
+                    let x = CGFloat(i) * 5.0
+                    let y = sin(CGFloat(i) * 0.6) * 25.0
+                    pts.append(CGPoint(x: x, y: y))
+                }
+            case 1:
+                // Spiral / cursive squiggle
+                for i in 0..<50 {
+                    let angle = CGFloat(i) * 0.4
+                    let rad = CGFloat(i) * 1.5
+                    pts.append(CGPoint(x: 200 + rad * cos(angle), y: 200 + rad * sin(angle)))
+                }
+            case 2:
+                // Sharp erratic zigzag
+                for i in 0..<36 {
+                    let x = CGFloat(i) * 6.0
+                    let y = (i % 2 == 0) ? 0.0 : 60.0
+                    pts.append(CGPoint(x: x, y: y))
+                }
+            default:
+                // Cursive loop with open long tail (letter 'g' or 'y')
+                for i in 0..<30 {
+                    let angle = (CGFloat(i) / 30.0) * 2.0 * .pi
+                    pts.append(CGPoint(x: 100 + 20 * cos(angle), y: 100 + 20 * sin(angle)))
+                }
+                for i in 0..<20 {
+                    pts.append(CGPoint(x: 100 + CGFloat(i) * 4.0, y: 120 + CGFloat(i) * 8.0))
+                }
+            }
+            return pts
+        }
+
+        // Test 8 Rough Rectangles
+        var rectPassCount = 0
+        for i in 0..<8 {
+            let w = CGFloat(100 + i * 20)
+            let h = CGFloat(80 + i * 15)
+            let stroke = makeRoughRect(x: 50, y: 50, w: w, h: h)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if case .rectangle = recognized {
+                rectPassCount += 1
+            } else {
+                print("❌ Rough rectangle #\(i) failed, got: \(String(describing: recognized))")
+            }
+        }
+        assert(rectPassCount == 8, "Failed: Rough rectangles must NEVER be classified as circles (got \(rectPassCount)/8)")
+
+        // Test 8 Rough Circles / Ellipses
+        var circlePassCount = 0
+        for i in 0..<8 {
+            let r = CGFloat(40 + i * 10)
+            let stroke = makeRoughCircle(cx: 200, cy: 200, r: r)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if case .circle = recognized {
+                circlePassCount += 1
+            } else if case .ellipse = recognized {
+                circlePassCount += 1
+            }
+        }
+        assert(circlePassCount == 8, "Failed: Rough circles must be classified as circles/ellipses (got \(circlePassCount)/8)")
+
+        // Test 6 Rough Triangles
+        var triPassCount = 0
+        for i in 0..<6 {
+            let offset = CGFloat(i * 15)
+            let p1 = CGPoint(x: 150 + offset, y: 50)
+            let p2 = CGPoint(x: 220 + offset, y: 170)
+            let p3 = CGPoint(x: 80 + offset, y: 170)
+            let stroke = makeRoughTriangle(p1: p1, p2: p2, p3: p3)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if case .triangle = recognized {
+                triPassCount += 1
+            }
+        }
+        assert(triPassCount == 6, "Failed: Rough triangles must be classified as triangles (got \(triPassCount)/6)")
+
+        // Test 6 Rough Diamonds
+        var diamondPassCount = 0
+        for i in 0..<6 {
+            let rx = CGFloat(50 + i * 10)
+            let ry = CGFloat(40 + i * 8)
+            let stroke = makeRoughDiamond(cx: 200, cy: 200, rx: rx, ry: ry)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if case .diamond = recognized {
+                diamondPassCount += 1
+            }
+        }
+        assert(diamondPassCount == 6, "Failed: Rough diamonds must be classified as diamonds (got \(diamondPassCount)/6)")
+
+        // Test 6 Straight Lines
+        var linePassCount = 0
+        let lineSpecs = [
+            (CGPoint(x: 20, y: 50), CGPoint(x: 280, y: 50)), // Horizontal
+            (CGPoint(x: 100, y: 20), CGPoint(x: 100, y: 300)), // Vertical
+            (CGPoint(x: 30, y: 40), CGPoint(x: 250, y: 260)), // Diagonal 45°
+            (CGPoint(x: 50, y: 200), CGPoint(x: 300, y: 120)), // Low angle
+            (CGPoint(x: 80, y: 30), CGPoint(x: 120, y: 280)), // Steep angle
+            (CGPoint(x: 300, y: 200), CGPoint(x: 50, y: 200)) // Reverse horizontal
+        ]
+        for spec in lineSpecs {
+            let stroke = makeRoughLine(from: spec.0, to: spec.1)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if case .line = recognized {
+                linePassCount += 1
+            }
+        }
+        assert(linePassCount == 6, "Failed: Straight lines must be classified as lines (got \(linePassCount)/6)")
+
+        // Test 12 Handwriting & Scribble Strokes (MUST NEVER BE RECOGNIZED AS SHAPES)
+        var falsePositiveCount = 0
+        for i in 0..<12 {
+            let stroke = makeHandwritingScribble(type: i % 4)
+            let recognized = CanvasShapeRecognizer.recognize(points: stroke)
+            if recognized != nil {
+                falsePositiveCount += 1
+                print("❌ False positive on handwriting #\(i): converted to \(String(describing: recognized))")
+            }
+        }
+        assert(falsePositiveCount == 0, "Failed: 0% false positives required on handwriting (got \(falsePositiveCount)/12)")
+
+        let totalShapesTested = 8 + 8 + 6 + 6 + 6
+        let totalShapesPassed = rectPassCount + circlePassCount + triPassCount + diamondPassCount + linePassCount
+        let accuracy = Double(totalShapesPassed) / Double(totalShapesTested) * 100.0
+        print("🎯 Fixture Corpus Results: \(totalShapesPassed)/\(totalShapesTested) shapes recognized (\(String(format: "%.1f", accuracy))% accuracy, 0% handwriting false positives)")
+        assert(accuracy >= 90.0, "Failed: Accuracy must be at least 90%")
+
+        // 50.2: Axis Alignment & Rotation Snap
+        let tiltedNearZero = makeRoughRect(x: 100, y: 100, w: 150, h: 100, rotationDeg: 4.0)
+        let recNearZero = CanvasShapeRecognizer.recognize(points: tiltedNearZero)
+        if case .rectangle(_, let rot) = recNearZero {
+            assert(rot == 0.0, "Failed: Near-horizontal rect (4°) must snap to 0°")
+        } else {
+            fatalError("Failed: Expected rectangle for near-horizontal rect")
+        }
+
+        let tilted25 = makeRoughRect(x: 100, y: 100, w: 150, h: 100, rotationDeg: 25.0)
+        let rec25 = CanvasShapeRecognizer.recognize(points: tilted25)
+        if case .rectangle(_, let rot) = rec25 {
+            assert(abs(rot - 25.0) < 6.0, "Failed: Rotated rect (25°) must preserve angle (got \(rot))")
+        } else {
+            fatalError("Failed: Expected rotated rectangle")
+        }
+
+        // 50.3: Session Persistence for Shape Snapping Toggle
+        store.isShapeSnappingEnabled = false
+        assert(UserDefaults.standard.bool(forKey: "medha.canvas.shape_snapping_enabled") == false, "Failed: isShapeSnappingEnabled must persist false")
+        store.isShapeSnappingEnabled = true
+        assert(UserDefaults.standard.bool(forKey: "medha.canvas.shape_snapping_enabled") == true, "Failed: isShapeSnappingEnabled must persist true")
+
+        // 50.4: Smart Alignment Guides & Grid Snapping Engine
+        let refItem = CanvasItem(
+            canvasDocId: "test-snap-doc",
+            itemType: .shape,
+            shapeType: .rectangle,
+            x: 200,
+            y: 200,
+            width: 100,
+            height: 100
+        )
+        let draggedCand = CGRect(x: 204, y: 203, width: 80, height: 80) // 4pt off X, 3pt off Y
+
+        let snapResult = CanvasSnappingService.snap(
+            rect: draggedCand,
+            against: [refItem],
+            excludingItemId: nil,
+            gridSize: 20.0,
+            threshold: 6.0,
+            snapToGrid: true
+        )
+        assert(snapResult.rect.minX == 200, "Failed: Dragged rect should snap left edge to 200 (got \(snapResult.rect.minX))")
+        assert(snapResult.rect.minY == 200, "Failed: Dragged rect should snap top edge to 200 (got \(snapResult.rect.minY))")
+        assert(!snapResult.guides.isEmpty, "Failed: Alignment guides should be generated when snapped to existing item")
+
+        // Freeform Grid Snap (away from other items)
+        let gridCand = CGRect(x: 504, y: 603, width: 80, height: 80)
+        let gridResult = CanvasSnappingService.snap(
+            rect: gridCand,
+            against: [],
+            gridSize: 20.0,
+            threshold: 6.0,
+            snapToGrid: true
+        )
+        assert(gridResult.rect.minX == 500, "Failed: Should snap to nearest 20pt grid X (500)")
+        assert(gridResult.rect.minY == 600, "Failed: Should snap to nearest 20pt grid Y (600)")
+
+        // 50.5: Undo/Redo Round-trip for Shape Snap
+        let snapDoc = store.createInkDocument(title: "Snap Undo Board", canvasMode: .infinite2D)
+        store.selectDocument(id: snapDoc.id)
+
+        let initialRawStroke = InkStroke(
+            tool: .ballpoint,
+            colorHex: "#3B82F6",
+            baseWidth: 2.0,
+            points: [InkPoint(x: 10, y: 10), InkPoint(x: 50, y: 50)],
+            pattern: .solid
+        )
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [initialRawStroke])
+        assert(store.getStrokes(forPage: 0).count == 1, "Failed: Initial stroke in page")
+
+        let snappedItem = CanvasItem(
+            canvasDocId: snapDoc.id,
+            itemType: .shape,
+            shapeType: .rectangle,
+            x: 100,
+            y: 100,
+            width: 150,
+            height: 100
+        )
+        store.addCanvasItem(snappedItem, recordUndo: false)
+        store.saveInkPageStrokes(pageIndex: 0, strokes: []) // Ink stroke removed on snap
+        store.pushCanvasUndoCommand(.itemSnappedFromInk(item: snappedItem, originalStroke: initialRawStroke, pageIndex: 0))
+
+        assert(store.canvasItems.contains(where: { $0.id == snappedItem.id }), "Failed: Snapped item should exist in store")
+        assert(store.getStrokes(forPage: 0).isEmpty, "Failed: Ink stroke should be removed after snap")
+
+        // Cmd+Z right after snap restores the original ink
+        let didUndoSnap = store.performCanvasUndo()
+        assert(didUndoSnap, "Failed: performCanvasUndo should return true")
+        assert(!store.canvasItems.contains(where: { $0.id == snappedItem.id }), "Failed: Snapped item must be removed on undo")
+        assert(store.getStrokes(forPage: 0).contains(where: { $0.id == initialRawStroke.id }), "Failed: Original freehand stroke must be restored on undo")
+
+        // Redo snap restores the shape
+        let didRedoSnap = store.performCanvasRedo()
+        assert(didRedoSnap, "Failed: performCanvasRedo should return true")
+        assert(store.canvasItems.contains(where: { $0.id == snappedItem.id }), "Failed: Snapped item must be restored on redo")
+        assert(!store.getStrokes(forPage: 0).contains(where: { $0.id == initialRawStroke.id }), "Failed: Original stroke must be removed on redo")
+
+        print("✅ testSmartShapeRecognitionAndSnappingSuite passed")
+
+        print("\n🎉 ALL 50 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 
