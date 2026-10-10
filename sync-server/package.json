@@ -1,0 +1,17 @@
+{
+  "name": "medha-sync-server",
+  "version": "1.0.0",
+  "description": "Lightweight, Self-Hosted Multi-Platform Delta Synchronization Server for Medha (Mac, Windows, Android)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node tests/sync_server.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

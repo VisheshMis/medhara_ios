@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  medha-sync:
+    build: .
+    container_name: medha-sync-server
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
