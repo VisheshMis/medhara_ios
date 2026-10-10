@@ -308,57 +308,23 @@ public enum InkGeometry {
     }
 
     /// Fits raw stroke points to canonical 2D geometric primitives
+    /// Fits raw stroke points to canonical 2D geometric primitives using the smart classifier
     public static func fitPrimitive(from points: [InkPoint]) -> FittedShape? {
-        guard points.count >= 6 else { return nil }
-
-        let start = CGPoint(x: points.first!.x, y: points.first!.y)
-        let end = CGPoint(x: points.last!.x, y: points.last!.y)
-
-        var totalPerimeter: CGFloat = 0
-        for i in 0..<(points.count - 1) {
-            totalPerimeter += distance(CGPoint(x: points[i].x, y: points[i].y),
-                                       CGPoint(x: points[i+1].x, y: points[i+1].y))
+        guard let recognized = CanvasShapeRecognizer.recognize(inkPoints: points) else {
+            return nil
         }
-        guard totalPerimeter > 10.0 else { return nil }
-
-        let endToEndDist = distance(start, end)
-
-        // 1. Straight Line Check: straight distance / arc distance >= 0.88
-        if (endToEndDist / totalPerimeter) >= 0.88 {
-            return .line(start: start, end: end)
+        switch recognized {
+        case .line(let s, let e):
+            return .line(start: s, end: e)
+        case .rectangle(let r, _), .roundedRectangle(let r, _), .diamond(let r), .polygon:
+            return .rectangle(r)
+        case .circle(let c, let rad):
+            return .circle(center: c, radius: rad)
+        case .ellipse(let r):
+            return .ellipse(r)
+        case .triangle(let p1, let p2, let p3, _):
+            return .triangle(p1: p1, p2: p2, p3: p3)
         }
-
-        // 2. Closed Loop Check: start and end are close together relative to perimeter
-        if (endToEndDist / totalPerimeter) <= 0.28 {
-            var minX = CGFloat.greatestFiniteMagnitude
-            var minY = CGFloat.greatestFiniteMagnitude
-            var maxX = -CGFloat.greatestFiniteMagnitude
-            var maxY = -CGFloat.greatestFiniteMagnitude
-            for pt in points {
-                let x = CGFloat(pt.x)
-                let y = CGFloat(pt.y)
-                if x < minX { minX = x }
-                if y < minY { minY = y }
-                if x > maxX { maxX = x }
-                if y > maxY { maxY = y }
-            }
-            let rect = CGRect(x: minX, y: minY, width: max(10, maxX - minX), height: max(10, maxY - minY))
-            let aspectRatio = rect.width / rect.height
-
-            // Circle check (aspect ratio between 0.8 and 1.25)
-            if aspectRatio >= 0.80 && aspectRatio <= 1.25 {
-                let center = CGPoint(x: rect.midX, y: rect.midY)
-                let radius = (rect.width + rect.height) / 4.0
-                return .circle(center: center, radius: radius)
-            } else if aspectRatio < 0.60 || aspectRatio > 1.66 {
-                // Highly non-square: check if ellipse or rectangle
-                return .rectangle(rect)
-            } else {
-                return .ellipse(rect)
-            }
-        }
-
-        return nil
     }
 
     /// Converts a fitted shape into smooth synthetic InkPoints for rendering & storage

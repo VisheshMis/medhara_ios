@@ -122,6 +122,12 @@ public final class InkCanvasViewportNSView: NSView {
     public var onDeleteCanvasConnector: ((String) -> Void)?
     public var onRecordItemMoved: ((String, Double, Double, Double, Double) -> Void)?
     public var onRecordItemResized: ((String, Double, Double, Double, Double) -> Void)?
+    public var onRecordItemSnappedFromInk: ((CanvasItem, InkStroke, Int) -> Void)?
+
+    // Shape Snapping & Alignment Guides State
+    public var activeShapeSnapPreview: CanvasShapeRecognizer.RecognizedShape? = nil
+    public var preSnapStrokePoints: [InkPoint] = []
+    public var activeAlignmentGuides: [CanvasAlignmentGuide] = []
 
     // Click-to-Place & Drag-to-Size Shape Creation State
     public var pendingShapeToPlace: CanvasShapeType? = nil {
@@ -929,13 +935,35 @@ public final class InkCanvasViewportNSView: NSView {
             return
         }
 
-        // Canvas Item Dragging
+        // Canvas Item Dragging with Smart Alignment & Grid Snapping
         if isDraggingItem, let itemId = selectedItemId {
-            let newX = Double(canvasPoint.x - itemDragOffset.x)
-            let newY = Double(canvasPoint.y - itemDragOffset.y)
             if let idx = canvasItems.firstIndex(where: { $0.id == itemId }) {
-                canvasItems[idx].x = newX
-                canvasItems[idx].y = newY
+                let currentItem = canvasItems[idx]
+                let candRect = CGRect(
+                    x: canvasPoint.x - itemDragOffset.x,
+                    y: canvasPoint.y - itemDragOffset.y,
+                    width: CGFloat(currentItem.width),
+                    height: CGFloat(currentItem.height)
+                )
+
+                let disableSnapping = event.modifierFlags.contains(.command)
+                if !disableSnapping {
+                    let snapResult = CanvasSnappingService.snap(
+                        rect: candRect,
+                        against: canvasItems,
+                        excludingItemId: itemId,
+                        gridSize: 20.0,
+                        threshold: 6.0,
+                        snapToGrid: true
+                    )
+                    canvasItems[idx].x = Double(snapResult.rect.minX)
+                    canvasItems[idx].y = Double(snapResult.rect.minY)
+                    self.activeAlignmentGuides = snapResult.guides
+                } else {
+                    canvasItems[idx].x = Double(candRect.minX)
+                    canvasItems[idx].y = Double(candRect.minY)
+                    self.activeAlignmentGuides.removeAll()
+                }
             }
             needsDisplay = true
             return
@@ -1174,6 +1202,7 @@ public final class InkCanvasViewportNSView: NSView {
         // Commit Canvas Item Dragging
         if isDraggingItem, let itemId = selectedItemId {
             isDraggingItem = false
+            activeAlignmentGuides.removeAll()
             if let item = canvasItems.first(where: { $0.id == itemId }) {
                 onUpdateCanvasItemPosition?(item.id, item.x, item.y)
                 let dist = hypot(item.x - Double(itemInitialPosition.x), item.y - Double(itemInitialPosition.y))
@@ -1270,6 +1299,38 @@ public final class InkCanvasViewportNSView: NSView {
             isDrawing = false
             livePoints.removeAll()
             return
+        }
+
+        // Commit recognized held shape as real CanvasItem
+        if let preview = activeShapeSnapPreview {
+            activeShapeSnapPreview = nil
+            let rawPoints = preSnapStrokePoints.isEmpty ? livePoints : preSnapStrokePoints
+            preSnapStrokePoints.removeAll()
+            livePoints.removeAll()
+            isDrawing = false
+
+            let rawStroke = InkStroke(
+                tool: activeTool,
+                colorHex: activeColor.toHex(),
+                baseWidth: activeWidth,
+                opacity: activeOpacity,
+                points: rawPoints,
+                pattern: activePattern,
+                isTapeRevealed: false
+            )
+
+            if let item = preview.toCanvasItem(
+                canvasDocId: docId,
+                strokeColorHex: activeColor.toHex(),
+                fillColorHex: "#EFF6FF",
+                strokeWidth: activeWidth
+            ) {
+                onAddCanvasItem?(item)
+                selectedItemId = item.id
+                onRecordItemSnappedFromInk?(item, rawStroke, activeDrawingPageIndex)
+                needsDisplay = true
+                return
+            }
         }
 
         let isTape = (activeTool == .tape)
@@ -1609,6 +1670,14 @@ public final class InkCanvasViewportNSView: NSView {
         if activeTool == .lasso || !selectedStrokeIds.isEmpty {
             drawLassoOverlay(in: context, strokes: strokes)
         }
+
+        // Render smart alignment guide lines
+        CanvasSnappingService.drawGuides(activeAlignmentGuides, in: context, zoomScale: zoomScale)
+
+        // Render hold-to-snap preview outline if active
+        if isDrawing, let snapPreview = activeShapeSnapPreview {
+            drawShapeSnapPreview(snapPreview, in: context)
+        }
     }
 
     private func drawCanvasNoteCards(in context: CGContext) {
@@ -1818,6 +1887,14 @@ public final class InkCanvasViewportNSView: NSView {
             let isDeepDetail = (zoomScale >= 1.0)
 
             // 2. Render Base Shape / Frame
+            let isRotated = abs(item.rotationDegrees) > 0.01
+            if isRotated {
+                context.saveGState()
+                context.translateBy(x: itemRect.midX, y: itemRect.midY)
+                context.rotate(by: CGFloat(item.rotationDegrees * .pi / 180.0))
+                context.translateBy(x: -itemRect.midX, y: -itemRect.midY)
+            }
+
             context.saveGState()
 
             // Drop Shadow
@@ -1878,6 +1955,10 @@ public final class InkCanvasViewportNSView: NSView {
             if isSelected {
                 drawItemResizeHandle(for: item, in: context)
             }
+
+            if isRotated {
+                context.restoreGState()
+            }
         }
     }
 
@@ -1899,6 +1980,12 @@ public final class InkCanvasViewportNSView: NSView {
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) // Right
             path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY)) // Bottom
             path.addLine(to: CGPoint(x: rect.minX, y: rect.midY)) // Left
+            path.closeSubpath()
+        case .triangle:
+            // Triangle Node
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY)) // Apex
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY)) // Bottom-Right
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY)) // Bottom-Left
             path.closeSubpath()
         }
         return path
@@ -2666,11 +2753,73 @@ public final class InkCanvasViewportNSView: NSView {
 
     private func checkShapeHoldTrigger() {
         guard isDrawing && isShapeSnappingEnabled && livePoints.count >= 6 else { return }
-        if let shape = InkGeometry.fitPrimitive(from: livePoints) {
-            let fitted = InkGeometry.generatePoints(for: shape, basePressure: livePoints.last?.pressure ?? 0.6)
-            self.livePoints = fitted
+        if let shape = CanvasShapeRecognizer.recognize(inkPoints: livePoints) {
+            self.activeShapeSnapPreview = shape
+            self.preSnapStrokePoints = self.livePoints
+            self.livePoints = shape.toFittedPoints(basePressure: livePoints.last?.pressure ?? 0.6)
             self.needsDisplay = true
         }
+    }
+
+    private func drawShapeSnapPreview(_ shape: CanvasShapeRecognizer.RecognizedShape, in context: CGContext) {
+        context.saveGState()
+        context.setStrokeColor(activeColor.withAlphaComponent(0.85).cgColor)
+        context.setLineWidth((activeWidth + 1.0) / zoomScale)
+        let dashes: [CGFloat] = [6.0 / zoomScale, 3.0 / zoomScale]
+        context.setLineDash(phase: 0, lengths: dashes)
+
+        switch shape {
+        case .line(let s, let e):
+            context.beginPath()
+            context.move(to: s)
+            context.addLine(to: e)
+            context.strokePath()
+        case .circle(let center, let radius):
+            let r = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2.0, height: radius * 2.0)
+            context.strokeEllipse(in: r)
+        case .ellipse(let rect):
+            context.strokeEllipse(in: rect)
+        case .rectangle(let rect, let rot):
+            if abs(rot) > 0.01 {
+                context.saveGState()
+                context.translateBy(x: rect.midX, y: rect.midY)
+                context.rotate(by: CGFloat(rot * .pi / 180.0))
+                context.stroke(CGRect(x: -rect.width / 2.0, y: -rect.height / 2.0, width: rect.width, height: rect.height))
+                context.restoreGState()
+            } else {
+                context.stroke(rect)
+            }
+        case .roundedRectangle(let rect, let cr):
+            let path = CGPath(roundedRect: rect, cornerWidth: cr, cornerHeight: cr, transform: nil)
+            context.addPath(path)
+            context.strokePath()
+        case .diamond(let rect):
+            context.beginPath()
+            context.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            context.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            context.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            context.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+            context.closePath()
+            context.strokePath()
+        case .triangle(let p1, let p2, let p3, _):
+            context.beginPath()
+            context.move(to: p1)
+            context.addLine(to: p2)
+            context.addLine(to: p3)
+            context.closePath()
+            context.strokePath()
+        case .polygon(let vertices):
+            guard let first = vertices.first else { break }
+            context.beginPath()
+            context.move(to: first)
+            for v in vertices.dropFirst() {
+                context.addLine(to: v)
+            }
+            context.closePath()
+            context.strokePath()
+        }
+
+        context.restoreGState()
     }
 
     // MARK: - Z-Index Ordering

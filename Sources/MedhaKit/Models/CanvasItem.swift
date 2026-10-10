@@ -17,6 +17,7 @@ public enum CanvasShapeType: String, Codable, Sendable, CaseIterable {
     case roundedRectangle
     case diamond
     case ellipse
+    case triangle
     case group
 }
 
@@ -183,4 +184,5 @@ public enum CanvasUndoCommand: Equatable, Sendable {
     case itemDeleted(item: CanvasItem)
     case itemMoved(id: String, oldX: Double, oldY: Double, newX: Double, newY: Double)
     case itemResized(id: String, oldWidth: Double, oldHeight: Double, newWidth: Double, newHeight: Double)
+    case itemSnappedFromInk(item: CanvasItem, originalStroke: InkStroke, pageIndex: Int)
 }

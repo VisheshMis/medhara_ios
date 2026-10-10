@@ -145,9 +145,11 @@ public final class BlockStore: ObservableObject {
     @Published public var activeInkTemplate: InkTemplateType = .lined
     @Published public var activeStrokePattern: StrokePattern = .solid
     @Published public var isRulerActive: Bool = false
-    @Published public var rulerAngle: CGFloat = 0.0
-    @Published public var isShapeSnappingEnabled: Bool = true
-    @Published public var isNewInkDocumentSheetPresented: Bool = false
+    @Published public var isShapeSnappingEnabled: Bool = UserDefaults.standard.object(forKey: "medha.canvas.shape_snapping_enabled") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(isShapeSnappingEnabled, forKey: "medha.canvas.shape_snapping_enabled")
+        }
+    }
     @Published public var pendingNewInkNotebookId: String? = nil
     @Published public var pendingNewInkParentDocId: String? = nil
     @Published public var isInkFocusMode: Bool = false
@@ -1420,6 +1422,11 @@ public final class BlockStore: ObservableObject {
         pushCanvasUndoCommand(.itemResized(id: id, oldWidth: oldWidth, oldHeight: oldHeight, newWidth: newWidth, newHeight: newHeight))
     }
 
+    public func getStrokes(forPage pageIndex: Int) -> [InkStroke] {
+        guard let page = inkPages.first(where: { $0.pageIndex == pageIndex }) else { return [] }
+        return InkPagePayload.deserialize(from: page.strokesData).strokes
+    }
+
     @discardableResult
     public func performCanvasUndo() -> Bool {
         guard let cmd = canvasUndoStack.popLast() else { return false }
@@ -1436,6 +1443,12 @@ public final class BlockStore: ObservableObject {
         case .itemResized(let id, let oldW, let oldH, let newW, let newH):
             updateCanvasItemSize(id: id, width: oldW, height: oldH)
             canvasRedoStack.append(.itemResized(id: id, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH))
+        case .itemSnappedFromInk(let item, let originalStroke, let pageIndex):
+            deleteCanvasItem(id: item.id, recordUndo: false)
+            var currentStrokes = getStrokes(forPage: pageIndex)
+            currentStrokes.append(originalStroke)
+            saveInkPageStrokes(pageIndex: pageIndex, strokes: currentStrokes)
+            canvasRedoStack.append(.itemSnappedFromInk(item: item, originalStroke: originalStroke, pageIndex: pageIndex))
         }
         return true
     }
@@ -1456,6 +1469,12 @@ public final class BlockStore: ObservableObject {
         case .itemResized(let id, let oldW, let oldH, let newW, let newH):
             updateCanvasItemSize(id: id, width: newW, height: newH)
             canvasUndoStack.append(.itemResized(id: id, oldWidth: oldW, oldHeight: oldH, newWidth: newW, newHeight: newH))
+        case .itemSnappedFromInk(let item, let originalStroke, let pageIndex):
+            var currentStrokes = getStrokes(forPage: pageIndex)
+            currentStrokes.removeAll(where: { $0.id == originalStroke.id })
+            saveInkPageStrokes(pageIndex: pageIndex, strokes: currentStrokes)
+            addCanvasItem(item, recordUndo: false)
+            canvasUndoStack.append(.itemSnappedFromInk(item: item, originalStroke: originalStroke, pageIndex: pageIndex))
         }
         return true
     }

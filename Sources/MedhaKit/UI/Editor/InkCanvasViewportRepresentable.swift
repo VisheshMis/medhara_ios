@@ -36,6 +36,7 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
     public let onDeleteCanvasItem: ((String) -> Void)?
     public let onRecordItemMoved: ((String, Double, Double, Double, Double) -> Void)?
     public let onRecordItemResized: ((String, Double, Double, Double, Double) -> Void)?
+    public let onRecordItemSnappedFromInk: ((CanvasItem, InkStroke, Int) -> Void)?
     public let onAddCanvasConnector: ((String, CanvasPortPosition, String, CanvasPortPosition, ConnectorRoutingType, String?) -> Void)?
     public let onUpdateCanvasConnectorLabel: ((String, String?) -> Void)?
     public let onDeleteCanvasConnector: ((String) -> Void)?
@@ -85,6 +86,7 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         onDeleteCanvasItem: ((String) -> Void)? = nil,
         onRecordItemMoved: ((String, Double, Double, Double, Double) -> Void)? = nil,
         onRecordItemResized: ((String, Double, Double, Double, Double) -> Void)? = nil,
+        onRecordItemSnappedFromInk: ((CanvasItem, InkStroke, Int) -> Void)? = nil,
         onAddCanvasConnector: ((String, CanvasPortPosition, String, CanvasPortPosition, ConnectorRoutingType, String?) -> Void)? = nil,
         onUpdateCanvasConnectorLabel: ((String, String?) -> Void)? = nil,
         onDeleteCanvasConnector: ((String) -> Void)? = nil,
@@ -133,6 +135,7 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         self.onDeleteCanvasItem = onDeleteCanvasItem
         self.onRecordItemMoved = onRecordItemMoved
         self.onRecordItemResized = onRecordItemResized
+        self.onRecordItemSnappedFromInk = onRecordItemSnappedFromInk
         self.onAddCanvasConnector = onAddCanvasConnector
         self.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         self.onDeleteCanvasConnector = onDeleteCanvasConnector
@@ -178,6 +181,7 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         view.onDeleteCanvasItem = onDeleteCanvasItem
         view.onRecordItemMoved = onRecordItemMoved
         view.onRecordItemResized = onRecordItemResized
+        view.onRecordItemSnappedFromInk = onRecordItemSnappedFromInk
         view.onAddCanvasConnector = onAddCanvasConnector
         view.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         view.onDeleteCanvasConnector = onDeleteCanvasConnector
@@ -234,6 +238,7 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         nsView.onDeleteCanvasItem = onDeleteCanvasItem
         nsView.onRecordItemMoved = onRecordItemMoved
         nsView.onRecordItemResized = onRecordItemResized
+        nsView.onRecordItemSnappedFromInk = onRecordItemSnappedFromInk
         nsView.onAddCanvasConnector = onAddCanvasConnector
         nsView.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         nsView.onDeleteCanvasConnector = onDeleteCanvasConnector
