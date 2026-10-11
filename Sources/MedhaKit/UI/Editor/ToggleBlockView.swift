@@ -44,7 +44,7 @@ public struct ToggleBlockView: View {
                 ),
                 isFocused: isFocused,
                 font: .systemFont(ofSize: 14 * store.editorZoomLevel, weight: .semibold),
-                textColor: .labelColor,
+                textColor: block.resolvedTextColor,
                 placeholder: block.type.placeholder,
                 onCommitReturn: onCommitReturn,
                 onDeleteEmpty: onDeleteEmpty,

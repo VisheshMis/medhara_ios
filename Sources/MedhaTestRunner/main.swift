@@ -3959,7 +3959,7 @@ struct TestRunner {
         if case .rectangle(_, let rot) = rec25 {
             assert(abs(rot - 25.0) < 6.0, "Failed: Rotated rect (25°) must preserve angle (got \(rot))")
         } else {
-            fatalError("Failed: Expected rotated rectangle")
+            fatalError("Failed: Expected rotated rectangle, got \(String(describing: rec25))")
         }
 
         // 50.3: Session Persistence for Shape Snapping Toggle
@@ -4046,9 +4046,46 @@ struct TestRunner {
         assert(store.canvasItems.contains(where: { $0.id == snappedItem.id }), "Failed: Snapped item must be restored on redo")
         assert(!store.getStrokes(forPage: 0).contains(where: { $0.id == initialRawStroke.id }), "Failed: Original stroke must be removed on redo")
 
-        print("✅ testSmartShapeRecognitionAndSnappingSuite passed")
+        // ==========================================
+        // 51. NOTION-STYLE BLOCK OPTIONS & CLEAN NOTES SUITE
+        // ==========================================
+        print("\n--- 51. NOTION-STYLE BLOCK OPTIONS & CLEAN NOTES SUITE ---")
+        let cleanDoc = store.createDocument(title: "Notion Clean Workspace")
+        store.selectDocument(id: cleanDoc.id)
 
-        print("\n🎉 ALL 50 TEST SUITES PASSED SUCCESSFULLY!")
+        let b1 = store.createBlock(type: .paragraph, content: "Hello world")
+        assert(b1.content == "Hello world", "Block 1 content matches")
+        assert(b1.resolvedTextColor == .labelColor, "Default text color is labelColor")
+        assert(b1.resolvedBgColor == nil, "Default background is nil")
+
+        // Test Text Color Resolution
+        store.setBlockColorTint(id: b1.id, tint: "pink")
+        let updatedB1 = store.getBlock(id: b1.id)!
+        assert(updatedB1.colorTint == "pink", "Block tint persisted as pink")
+        assert(updatedB1.resolvedTextColor != .labelColor, "Resolved text color reflects pink tint")
+
+        // Test Background Color Resolution
+        store.setBlockColorTint(id: b1.id, tint: "bg-pink")
+        let bgB1 = store.getBlock(id: b1.id)!
+        assert(bgB1.colorTint == "bg-pink", "Block tint persisted as bg-pink")
+        assert(bgB1.resolvedBgColor != nil, "Resolved background reflects bg-pink")
+
+        // Test Duplicate Block
+        let clonedB1 = store.duplicateBlock(id: b1.id)
+        assert(clonedB1 != nil, "Block duplication returns new block")
+        assert(clonedB1?.content == b1.content, "Cloned block retains content")
+        assert(clonedB1?.type == b1.type, "Cloned block retains type")
+        assert(clonedB1?.colorTint == "bg-pink", "Cloned block retains colorTint")
+        assert(clonedB1?.sortOrder == b1.sortOrder + 1, "Cloned block sortOrder is incremented")
+
+        // Test Block Type Conversion
+        store.convertBlockType(id: clonedB1!.id, to: .heading2)
+        let convertedBlock = store.getBlock(id: clonedB1!.id)!
+        assert(convertedBlock.type == .heading2, "Block converted to heading2")
+
+        print("✅ testNotionBlockOptionsAndCleanNotesSuite passed")
+
+        print("\n🎉 ALL 51 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

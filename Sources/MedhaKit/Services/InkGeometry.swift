@@ -316,8 +316,10 @@ public enum InkGeometry {
         switch recognized {
         case .line(let s, let e):
             return .line(start: s, end: e)
-        case .rectangle(let r, _), .roundedRectangle(let r, _), .diamond(let r), .polygon:
+        case .rectangle(let r, _), .roundedRectangle(let r, _), .diamond(let r):
             return .rectangle(r)
+        case .polygon(let vertices):
+            return .rectangle(CanvasShapeRecognizer.boundingBox(of: vertices))
         case .circle(let c, let rad):
             return .circle(center: c, radius: rad)
         case .ellipse(let r):

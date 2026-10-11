@@ -310,7 +310,7 @@ public struct CanvasShapeRecognizer: Sendable {
             if straightness >= config.lineStraightnessThreshold {
                 let maxPerp = maxDistanceToSegment(points: resampled, s: start, e: end)
                 if maxPerp <= max(14.0, config.lineMaxPerpResidualRatio * chord) {
-                    var s = start
+                    let s = start
                     var e = end
                     // Snap to horizontal / vertical if within 6 degrees
                     let dx = e.x - s.x
@@ -337,10 +337,10 @@ public struct CanvasShapeRecognizer: Sendable {
         guard diag >= 15.0 else { return nil }
 
         // Corner Detection on Closed Loop
-        let corners = findCorners(closedPoints: closedPoints, k: 4, minAngleDegrees: 38.0)
+        let corners = findCorners(closedPoints: closedPoints, k: 4, minAngleDegrees: 52.0)
 
         switch corners.count {
-        case 0, 1:
+        case 0, 1, 2:
             // Circle or Ellipse candidate
             let center = CGPoint(x: bbox.midX, y: bbox.midY)
             let a = max(5.0, bbox.width / 2.0)
@@ -378,14 +378,26 @@ public struct CanvasShapeRecognizer: Sendable {
             let leftMid = CGPoint(x: bbox.minX, y: bbox.midY)
             let diamondMids = [topMid, rightMid, botMid, leftMid]
 
-            var diamondScore: CGFloat = 0
+            var matchedMids = Set<Int>()
+            var maxCornerToMidDist: CGFloat = 0
             for corner in v {
-                let closestMidDist = diamondMids.map { distance(corner, $0) }.min() ?? diag
-                diamondScore += closestMidDist
+                var bestIdx = -1
+                var bestDist: CGFloat = .infinity
+                for (idx, mid) in diamondMids.enumerated() {
+                    let d = distance(corner, mid)
+                    if d < bestDist {
+                        bestDist = d
+                        bestIdx = idx
+                    }
+                }
+                if bestIdx >= 0 {
+                    matchedMids.insert(bestIdx)
+                    maxCornerToMidDist = max(maxCornerToMidDist, bestDist)
+                }
             }
-            diamondScore /= 4.0
 
-            let isDiamond = diamondScore <= (0.24 * diag)
+            // An upright diamond must have all 4 unique midpoints matched within 12% of diagonal
+            let isDiamond = (matchedMids.count == 4) && (maxCornerToMidDist <= 0.12 * diag)
 
             if isDiamond {
                 let meanRes = meanDistanceToPolygon(points: closedPoints, vertices: diamondMids)
@@ -406,15 +418,16 @@ public struct CanvasShapeRecognizer: Sendable {
                 rotationDegrees = Double(normAngle)
             }
 
-            let rectEdges = [
-                CGPoint(x: bbox.minX, y: bbox.minY),
-                CGPoint(x: bbox.maxX, y: bbox.minY),
-                CGPoint(x: bbox.maxX, y: bbox.maxY),
-                CGPoint(x: bbox.minX, y: bbox.maxY)
-            ]
-            let meanRes = meanDistanceToPolygon(points: closedPoints, vertices: rectEdges)
+            let meanRes = meanDistanceToPolygon(points: closedPoints, vertices: v)
             if meanRes <= config.polygonMaxMeanResidualRatio * diag {
-                return .rectangle(rect: bbox, rotationDegrees: rotationDegrees)
+                if rotationDegrees == 0.0 {
+                    return .rectangle(rect: bbox, rotationDegrees: 0.0)
+                } else {
+                    let edgeLen1 = distance(v[0], v[1])
+                    let edgeLen2 = distance(v[1], v[2])
+                    let rotRect = CGRect(x: bbox.midX - edgeLen1 / 2.0, y: bbox.midY - edgeLen2 / 2.0, width: edgeLen1, height: edgeLen2)
+                    return .rectangle(rect: rotRect, rotationDegrees: rotationDegrees)
+                }
             }
             return nil
 

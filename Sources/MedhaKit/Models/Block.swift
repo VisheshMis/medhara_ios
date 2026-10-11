@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import AppKit
 import GRDB
 
 public enum BlockType: String, Codable, CaseIterable, Sendable {
@@ -220,6 +222,43 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
     public var tablePayload: TableBlockPayload? {
         guard type == .table else { return nil }
         return TableBlockPayload.deserialize(from: content)
+    }
+
+    public var resolvedTextColor: NSColor {
+        guard let tint = colorTint?.lowercased(), !tint.hasPrefix("bg-") else {
+            return .labelColor
+        }
+        switch tint {
+        case "gray": return NSColor(calibratedRed: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)
+        case "brown": return NSColor(calibratedRed: 0.62, green: 0.42, blue: 0.33, alpha: 1.0)
+        case "orange": return NSColor(calibratedRed: 0.85, green: 0.45, blue: 0.05, alpha: 1.0)
+        case "yellow": return NSColor(calibratedRed: 0.80, green: 0.57, blue: 0.18, alpha: 1.0)
+        case "green": return NSColor(calibratedRed: 0.27, green: 0.51, blue: 0.38, alpha: 1.0)
+        case "blue": return NSColor(calibratedRed: 0.20, green: 0.49, blue: 0.66, alpha: 1.0)
+        case "purple": return NSColor(calibratedRed: 0.56, green: 0.40, blue: 0.69, alpha: 1.0)
+        case "pink": return NSColor(calibratedRed: 0.76, green: 0.30, blue: 0.54, alpha: 1.0)
+        case "red": return NSColor(calibratedRed: 0.83, green: 0.30, blue: 0.28, alpha: 1.0)
+        default: return .labelColor
+        }
+    }
+
+    public var resolvedBgColor: Color? {
+        guard let tint = colorTint?.lowercased(), tint.hasPrefix("bg-") else {
+            return nil
+        }
+        let clean = String(tint.dropFirst(3))
+        switch clean {
+        case "gray": return Color(red: 0.5, green: 0.5, blue: 0.5).opacity(0.18)
+        case "brown": return Color(red: 0.62, green: 0.42, blue: 0.33).opacity(0.18)
+        case "orange": return Color(red: 0.85, green: 0.45, blue: 0.05).opacity(0.18)
+        case "yellow": return Color(red: 0.80, green: 0.57, blue: 0.18).opacity(0.18)
+        case "green": return Color(red: 0.27, green: 0.51, blue: 0.38).opacity(0.18)
+        case "blue": return Color(red: 0.20, green: 0.49, blue: 0.66).opacity(0.18)
+        case "purple": return Color(red: 0.56, green: 0.40, blue: 0.69).opacity(0.18)
+        case "pink": return Color(red: 0.76, green: 0.30, blue: 0.54).opacity(0.18)
+        case "red": return Color(red: 0.83, green: 0.30, blue: 0.28).opacity(0.18)
+        default: return nil
+        }
     }
 }
 

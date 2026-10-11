@@ -145,11 +145,13 @@ public final class BlockStore: ObservableObject {
     @Published public var activeInkTemplate: InkTemplateType = .lined
     @Published public var activeStrokePattern: StrokePattern = .solid
     @Published public var isRulerActive: Bool = false
+    @Published public var rulerAngle: CGFloat = 0.0
     @Published public var isShapeSnappingEnabled: Bool = UserDefaults.standard.object(forKey: "medha.canvas.shape_snapping_enabled") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(isShapeSnappingEnabled, forKey: "medha.canvas.shape_snapping_enabled")
         }
     }
+    @Published public var isNewInkDocumentSheetPresented: Bool = false
     @Published public var pendingNewInkNotebookId: String? = nil
     @Published public var pendingNewInkParentDocId: String? = nil
     @Published public var isInkFocusMode: Bool = false
@@ -2251,6 +2253,46 @@ public final class BlockStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func duplicateBlock(id: String) -> Block? {
+        guard let index = blocks.firstIndex(where: { $0.id == id }), let docId = selectedDocId else { return nil }
+        let sourceBlock = blocks[index]
+        let newSortOrder = sourceBlock.sortOrder + 1
+        let now = Date()
+
+        let clone = Block(
+            id: Block.generateId(),
+            rootDocId: docId,
+            parentId: sourceBlock.parentId,
+            type: sourceBlock.type,
+            content: sourceBlock.content,
+            sortOrder: newSortOrder,
+            isCompleted: sourceBlock.isCompleted,
+            refTargetId: sourceBlock.refTargetId,
+            createdAt: now,
+            updatedAt: now,
+            isCollapsed: sourceBlock.isCollapsed,
+            icon: sourceBlock.icon,
+            colorTint: sourceBlock.colorTint
+        )
+
+        do {
+            try dbManager.dbWriter.write { db in
+                try db.execute(
+                    sql: "UPDATE block SET sortOrder = sortOrder + 1 WHERE rootDocId = ? AND sortOrder >= ? AND id != ?",
+                    arguments: [docId, newSortOrder, clone.id]
+                )
+                try clone.insert(db)
+            }
+            reloadBlocks()
+            focusedBlockId = clone.id
+            return clone
+        } catch {
+            print("Error duplicating block: \(error)")
+            return nil
+        }
+    }
+
     public func updateTableBlock(id: String, payload: TableBlockPayload) {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
         let json = payload.serialize()
@@ -3072,6 +3114,19 @@ public final class BlockStore: ObservableObject {
         } catch {
             print("Error loading flashcards: \(error)")
         }
+    }
+
+    @discardableResult
+    public func createFlashcard(_ card: Flashcard) -> Flashcard {
+        do {
+            try dbManager.dbWriter.write { db in
+                try card.insert(db)
+            }
+            loadFlashcards()
+        } catch {
+            print("Error creating flashcard: \(error)")
+        }
+        return card
     }
 
     @discardableResult

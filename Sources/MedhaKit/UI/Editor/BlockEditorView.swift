@@ -123,14 +123,36 @@ public struct BlockEditorView: View {
                                 }
                             }
 
-                            // Clickable bottom buffer to add new block
+                            // Clickable bottom buffer to add new block (Screenshot 1: Notion clean style)
                             if !store.isCurrentDocLocked {
-                                Color.clear
-                                    .frame(height: 40)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Button(action: {
+                                        store.createDocument(notebookId: doc.notebookId, parentDocId: doc.id)
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "doc.text")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(.secondary)
+                                            Text("New page")
+                                                .font(.system(size: 13, weight: .medium))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .padding(.vertical, 2)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    HStack(spacing: 4) {
+                                        Text("Press 'space' for AI or '/' for commands")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Color.secondary.opacity(0.45))
+                                    }
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         store.createBlock(type: .paragraph, content: "")
                                     }
+                                }
+                                .padding(.top, 8)
+                                .padding(.bottom, 24)
                             } else {
                                 HStack {
                                     Image(systemName: "lock.fill")
