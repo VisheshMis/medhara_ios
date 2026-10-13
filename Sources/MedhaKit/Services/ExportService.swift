@@ -49,6 +49,29 @@ public enum ExportService {
                     }
                     lines.append("")
                 }
+            case .subPage:
+                lines.append("\(indentLevel)[📄 \(block.content)](medha://doc/\(block.subPageDocId ?? ""))")
+                lines.append("")
+            case .columnList, .column:
+                continue
+            case .mathEquation:
+                lines.append("\n$$\n\(block.content)\n$$\n")
+            case .subjectCard:
+                if let payload = block.subjectCardPayload {
+                    lines.append("\(indentLevel)> 🎓 **\(payload.courseCode): \(payload.subjectName)** (\(payload.status))")
+                    lines.append("\(indentLevel)> *\(payload.instructor) • \(payload.scheduleRoom)*\n")
+                } else {
+                    lines.append("\(indentLevel)> 🎓 \(block.content)\n")
+                }
+            case .calendarEmbed:
+                if let payload = block.calendarEmbedPayload {
+                    lines.append("\(indentLevel)### 📅 \(payload.calendarTitle)")
+                    for ev in payload.events {
+                        let check = ev.isCompleted ? "x" : " "
+                        lines.append("\(indentLevel)- [\(check)] **\(ev.dateString) \(ev.timeString)**: \(ev.title) [\(ev.tag)]")
+                    }
+                    lines.append("")
+                }
             }
         }
         return lines.joined(separator: "\n")

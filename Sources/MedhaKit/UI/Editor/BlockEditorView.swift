@@ -35,6 +35,9 @@ public struct BlockEditorView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 16) {
+                                // Notion Cover Banner & Floating Icon
+                                PageCoverHeaderView(store: store, doc: doc)
+
                                 // Document Header
                                 VStack(alignment: .leading, spacing: 8) {
                                     // Breadcrumbs & Header Actions

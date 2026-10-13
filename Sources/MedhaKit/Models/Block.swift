@@ -18,6 +18,12 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
     case blockRef
     case toggle
     case table
+    case subPage
+    case columnList
+    case column
+    case mathEquation
+    case subjectCard
+    case calendarEmbed
 
     public var displayName: String {
         switch self {
@@ -35,6 +41,12 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
         case .blockRef: return "Block Reference"
         case .toggle: return "Toggle List"
         case .table: return "Table"
+        case .subPage: return "Sub-page"
+        case .columnList: return "2 Columns"
+        case .column: return "Column"
+        case .mathEquation: return "Math Equation"
+        case .subjectCard: return "Subject Box"
+        case .calendarEmbed: return "Google Calendar Hub"
         }
     }
 
@@ -54,6 +66,12 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
         case .blockRef: return "link"
         case .toggle: return "chevron.right"
         case .table: return "tablecells"
+        case .subPage: return "doc.badge.plus"
+        case .columnList: return "rectangle.split.2x1"
+        case .column: return "rectangle.portrait"
+        case .mathEquation: return "function"
+        case .subjectCard: return "graduationcap.fill"
+        case .calendarEmbed: return "calendar.badge.clock"
         }
     }
 
@@ -73,6 +91,12 @@ public enum BlockType: String, Codable, CaseIterable, Sendable {
         case .blockRef: return "Select a block to reference..."
         case .toggle: return "Toggle section..."
         case .table: return ""
+        case .subPage: return "Sub-page title..."
+        case .columnList: return ""
+        case .column: return ""
+        case .mathEquation: return "E = mc^2"
+        case .subjectCard: return "Subject Title..."
+        case .calendarEmbed: return ""
         }
     }
 }
@@ -120,6 +144,133 @@ public struct TableBlockPayload: Codable, Equatable, Sendable {
     }
 }
 
+public struct SubjectCardLink: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var title: String
+    public var targetDocId: String?
+    public var icon: String
+
+    public init(id: String = UUID().uuidString, title: String, targetDocId: String? = nil, icon: String = "doc.text") {
+        self.id = id
+        self.title = title
+        self.targetDocId = targetDocId
+        self.icon = icon
+    }
+}
+
+public struct SubjectCardPayload: Codable, Equatable, Sendable {
+    public var subjectName: String
+    public var courseCode: String
+    public var instructor: String
+    public var scheduleRoom: String
+    public var status: String // "Active", "Completed", "Upcoming"
+    public var colorTheme: String // "green", "purple", "blue", "orange", "pink"
+    public var bannerUrl: String?
+    public var linkedDocId: String?
+    public var quickLinks: [SubjectCardLink]
+
+    public init(
+        subjectName: String = "Subject / Course",
+        courseCode: String = "CS 101",
+        instructor: String = "Prof. Smith",
+        scheduleRoom: String = "MWF 10:00 AM • Hall B",
+        status: String = "Active",
+        colorTheme: String = "blue",
+        bannerUrl: String? = nil,
+        linkedDocId: String? = nil,
+        quickLinks: [SubjectCardLink] = [
+            SubjectCardLink(title: "Lectures & Notes", icon: "book.fill"),
+            SubjectCardLink(title: "Assignments & Labs", icon: "checklist"),
+            SubjectCardLink(title: "Exam Prep & Flashcards", icon: "brain.head.profile")
+        ]
+    ) {
+        self.subjectName = subjectName
+        self.courseCode = courseCode
+        self.instructor = instructor
+        self.scheduleRoom = scheduleRoom
+        self.status = status
+        self.colorTheme = colorTheme
+        self.bannerUrl = bannerUrl
+        self.linkedDocId = linkedDocId
+        self.quickLinks = quickLinks
+    }
+
+    public func serialize() -> String {
+        if let data = try? JSONEncoder().encode(self), let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return ""
+    }
+
+    public static func deserialize(from json: String) -> SubjectCardPayload {
+        guard let data = json.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(SubjectCardPayload.self, from: data) else {
+            return SubjectCardPayload()
+        }
+        return payload
+    }
+}
+
+public struct StudyCalendarEvent: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var title: String
+    public var dateString: String // YYYY-MM-DD
+    public var timeString: String // e.g. "10:00 AM"
+    public var tag: String // "Exam", "Lecture", "Assignment", "Study"
+    public var isCompleted: Bool
+
+    public init(
+        id: String = UUID().uuidString,
+        title: String,
+        dateString: String,
+        timeString: String = "10:00 AM",
+        tag: String = "Study",
+        isCompleted: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.dateString = dateString
+        self.timeString = timeString
+        self.tag = tag
+        self.isCompleted = isCompleted
+    }
+}
+
+public struct CalendarEmbedPayload: Codable, Equatable, Sendable {
+    public var googleCalendarUrl: String?
+    public var calendarTitle: String
+    public var events: [StudyCalendarEvent]
+
+    public init(
+        googleCalendarUrl: String? = nil,
+        calendarTitle: String = "Academic & Study Calendar",
+        events: [StudyCalendarEvent] = [
+            StudyCalendarEvent(title: "Linear Algebra Midterm", dateString: "2026-10-20", tag: "Exam"),
+            StudyCalendarEvent(title: "Operating Systems Lab Due", dateString: "2026-10-24", tag: "Assignment"),
+            StudyCalendarEvent(title: "Deep Learning Study Session", dateString: "2026-10-26", tag: "Study")
+        ]
+    ) {
+        self.googleCalendarUrl = googleCalendarUrl
+        self.calendarTitle = calendarTitle
+        self.events = events
+    }
+
+    public func serialize() -> String {
+        if let data = try? JSONEncoder().encode(self), let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return ""
+    }
+
+    public static func deserialize(from json: String) -> CalendarEmbedPayload {
+        guard let data = json.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(CalendarEmbedPayload.self, from: data) else {
+            return CalendarEmbedPayload()
+        }
+        return payload
+    }
+}
+
 public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, Equatable, Sendable {
     public var id: String            // Stable UUID: "b-\(UUID().uuidString)"
     public var rootDocId: String     // ID of document block
@@ -143,6 +294,10 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
     public var verifiedBy: String?   // Who certified this note
     public var isLocked: Bool?       // Egress read-only protection
     public var pinnedPropertiesData: String? // JSON metadata for pinned chips
+    public var coverUrl: String?     // Cover image URL or local cached file path
+    public var coverY: Double?       // Vertical reposition offset (0.0 ... 1.0)
+    public var subPageDocId: String? // Target document ID if this is a sub-page block
+    public var columnRatio: Double?  // Width ratio if inside a column layout
 
     public init(
         id: String = Block.generateId(),
@@ -164,7 +319,11 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
         verifiedExpiresAt: Date? = nil,
         verifiedBy: String? = nil,
         isLocked: Bool? = nil,
-        pinnedPropertiesData: String? = nil
+        pinnedPropertiesData: String? = nil,
+        coverUrl: String? = nil,
+        coverY: Double? = nil,
+        subPageDocId: String? = nil,
+        columnRatio: Double? = nil
     ) {
         self.id = id
         self.rootDocId = rootDocId
@@ -186,6 +345,10 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
         self.verifiedBy = verifiedBy
         self.isLocked = isLocked
         self.pinnedPropertiesData = pinnedPropertiesData
+        self.coverUrl = coverUrl
+        self.coverY = coverY
+        self.subPageDocId = subPageDocId
+        self.columnRatio = columnRatio
     }
 
     public static func generateId() -> String {
@@ -222,6 +385,16 @@ public struct Block: Identifiable, Codable, FetchableRecord, PersistableRecord, 
     public var tablePayload: TableBlockPayload? {
         guard type == .table else { return nil }
         return TableBlockPayload.deserialize(from: content)
+    }
+
+    public var subjectCardPayload: SubjectCardPayload? {
+        guard type == .subjectCard else { return nil }
+        return SubjectCardPayload.deserialize(from: content)
+    }
+
+    public var calendarEmbedPayload: CalendarEmbedPayload? {
+        guard type == .calendarEmbed else { return nil }
+        return CalendarEmbedPayload.deserialize(from: content)
     }
 
     public var resolvedTextColor: NSColor {
@@ -287,5 +460,9 @@ extension Block {
         public static let verifiedBy = Column(CodingKeys.verifiedBy)
         public static let isLocked = Column(CodingKeys.isLocked)
         public static let pinnedPropertiesData = Column(CodingKeys.pinnedPropertiesData)
+        public static let coverUrl = Column(CodingKeys.coverUrl)
+        public static let coverY = Column(CodingKeys.coverY)
+        public static let subPageDocId = Column(CodingKeys.subPageDocId)
+        public static let columnRatio = Column(CodingKeys.columnRatio)
     }
 }

@@ -148,6 +148,33 @@ public struct CanvasItem: Identifiable, Codable, FetchableRecord, PersistableRec
         }
         return (closest, closestPt, minDistance)
     }
+    /// Stroke IDs bound to this shape (e.g. handwriting or drawings made inside/over the shape)
+    public var boundStrokeIds: [String] {
+        get {
+            guard let json = metadataJson, let data = json.data(using: .utf8) else { return [] }
+            guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let ids = dict["boundStrokeIds"] as? [String] else { return [] }
+            return ids
+        }
+        set {
+            var dict: [String: Any] = [:]
+            if let json = metadataJson, let data = json.data(using: .utf8),
+               let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                dict = existing
+            }
+            if newValue.isEmpty {
+                dict.removeValue(forKey: "boundStrokeIds")
+            } else {
+                dict["boundStrokeIds"] = newValue
+            }
+            if dict.isEmpty {
+                metadataJson = nil
+            } else if let data = try? JSONSerialization.data(withJSONObject: dict),
+                      let str = String(data: data, encoding: .utf8) {
+                metadataJson = str
+            }
+        }
+    }
 }
 
 extension CanvasItem {
@@ -185,4 +212,5 @@ public enum CanvasUndoCommand: Equatable, Sendable {
     case itemMoved(id: String, oldX: Double, oldY: Double, newX: Double, newY: Double)
     case itemResized(id: String, oldWidth: Double, oldHeight: Double, newWidth: Double, newHeight: Double)
     case itemSnappedFromInk(item: CanvasItem, originalStroke: InkStroke, pageIndex: Int)
+    case itemRestyled(id: String, oldItem: CanvasItem, newItem: CanvasItem)
 }

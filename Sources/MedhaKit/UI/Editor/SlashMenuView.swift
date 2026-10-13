@@ -63,9 +63,20 @@ public struct SlashMenuView: View {
     }
 
     private var filteredTypes: [BlockType] {
-        let types = BlockType.allCases.filter { $0 != .doc && $0 != .inkDoc }
+        let types = BlockType.allCases.filter { $0 != .doc && $0 != .inkDoc && $0 != .column }
         if filterText.isEmpty { return types }
-        return types.filter { $0.displayName.localizedCaseInsensitiveContains(filterText) }
+        let q = filterText.lowercased()
+        return types.filter { type in
+            if type.displayName.localizedCaseInsensitiveContains(q) { return true }
+            switch type {
+            case .subjectCard:
+                return q.contains("sub") || q.contains("course") || q.contains("class") || q.contains("box") || "subject course class box hub".contains(q)
+            case .calendarEmbed:
+                return q.contains("cal") || q.contains("gcal") || q.contains("google") || q.contains("schedule") || q.contains("agenda") || "calendar google schedule agenda".contains(q)
+            default:
+                return false
+            }
+        }
     }
 
     public var body: some View {
@@ -174,11 +185,29 @@ public struct SlashMenuView: View {
 
                         ForEach(filteredTypes, id: \.self) { type in
                             Button(action: {
-                                store.convertBlockType(id: blockId, to: type)
                                 cleanSlashFromBlock()
-                                if type == .blockRef {
-                                    store.blockPendingRefId = blockId
-                                    store.isBlockPickerPresented = true
+                                if type == .subPage {
+                                    if let currentDocId = store.selectedDocId {
+                                        let child = store.createDocument(title: "Untitled Sub-page", parentDocId: currentDocId)
+                                        store.convertBlockType(id: blockId, to: .subPage)
+                                        if let idx = store.blocks.firstIndex(where: { $0.id == blockId }) {
+                                            store.blocks[idx].subPageDocId = child.id
+                                            store.blocks[idx].content = "Untitled Sub-page"
+                                            let bToSave = store.blocks[idx]
+                                            try? store.dbManager.dbWriter.write { db in try bToSave.update(db) }
+                                        }
+                                    }
+                                } else if type == .columnList {
+                                    if let currentDocId = store.selectedDocId {
+                                        store.deleteBlock(id: blockId)
+                                        store.createColumnList(inDocId: currentDocId, columnCount: 2)
+                                    }
+                                } else {
+                                    store.convertBlockType(id: blockId, to: type)
+                                    if type == .blockRef {
+                                        store.blockPendingRefId = blockId
+                                        store.isBlockPickerPresented = true
+                                    }
                                 }
                                 onDismiss()
                             }) {

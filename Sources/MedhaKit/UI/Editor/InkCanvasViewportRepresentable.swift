@@ -40,6 +40,12 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
     public let onAddCanvasConnector: ((String, CanvasPortPosition, String, CanvasPortPosition, ConnectorRoutingType, String?) -> Void)?
     public let onUpdateCanvasConnectorLabel: ((String, String?) -> Void)?
     public let onDeleteCanvasConnector: ((String) -> Void)?
+    public let onUpdateCanvasItemContent: ((String, String?, String?) -> Void)?
+    public let onUpdateCanvasItemStyling: ((String, String?, String?, Double?, Double?, CanvasShapeType?) -> Void)?
+    public let onUpdateCanvasItemLinkedNote: ((String, String?) -> Void)?
+    public let onBindStrokeToCanvasItem: ((String, String) -> Void)?
+    public let onTranslateBoundStrokes: ((String, Double, Double, Int) -> Void)?
+    public let onRequestLinkNotePicker: ((String) -> Void)?
     public let onSelectReferencedNote: ((String) -> Void)?
     public let onUpdatePDFPageLayout: ((Int, Double, Double, Double?, Double?) -> Void)?
     public let onUpdatePDFPageCrop: ((Int, CGRect?) -> Void)?
@@ -90,6 +96,12 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         onAddCanvasConnector: ((String, CanvasPortPosition, String, CanvasPortPosition, ConnectorRoutingType, String?) -> Void)? = nil,
         onUpdateCanvasConnectorLabel: ((String, String?) -> Void)? = nil,
         onDeleteCanvasConnector: ((String) -> Void)? = nil,
+        onUpdateCanvasItemContent: ((String, String?, String?) -> Void)? = nil,
+        onUpdateCanvasItemStyling: ((String, String?, String?, Double?, Double?, CanvasShapeType?) -> Void)? = nil,
+        onUpdateCanvasItemLinkedNote: ((String, String?) -> Void)? = nil,
+        onBindStrokeToCanvasItem: ((String, String) -> Void)? = nil,
+        onTranslateBoundStrokes: ((String, Double, Double, Int) -> Void)? = nil,
+        onRequestLinkNotePicker: ((String) -> Void)? = nil,
         onSelectReferencedNote: ((String) -> Void)? = nil,
         onUpdatePDFPageLayout: ((Int, Double, Double, Double?, Double?) -> Void)? = nil,
         onUpdatePDFPageCrop: ((Int, CGRect?) -> Void)? = nil,
@@ -139,6 +151,12 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         self.onAddCanvasConnector = onAddCanvasConnector
         self.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         self.onDeleteCanvasConnector = onDeleteCanvasConnector
+        self.onUpdateCanvasItemContent = onUpdateCanvasItemContent
+        self.onUpdateCanvasItemStyling = onUpdateCanvasItemStyling
+        self.onUpdateCanvasItemLinkedNote = onUpdateCanvasItemLinkedNote
+        self.onBindStrokeToCanvasItem = onBindStrokeToCanvasItem
+        self.onTranslateBoundStrokes = onTranslateBoundStrokes
+        self.onRequestLinkNotePicker = onRequestLinkNotePicker
         self.onSelectReferencedNote = onSelectReferencedNote
         self.onUpdatePDFPageLayout = onUpdatePDFPageLayout
         self.onUpdatePDFPageCrop = onUpdatePDFPageCrop
@@ -185,6 +203,12 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         view.onAddCanvasConnector = onAddCanvasConnector
         view.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         view.onDeleteCanvasConnector = onDeleteCanvasConnector
+        view.onUpdateCanvasItemContent = onUpdateCanvasItemContent
+        view.onUpdateCanvasItemStyling = onUpdateCanvasItemStyling
+        view.onUpdateCanvasItemLinkedNote = onUpdateCanvasItemLinkedNote
+        view.onBindStrokeToCanvasItem = onBindStrokeToCanvasItem
+        view.onTranslateBoundStrokes = onTranslateBoundStrokes
+        view.onRequestLinkNotePicker = onRequestLinkNotePicker
         view.onSelectReferencedNote = onSelectReferencedNote
         view.onUpdatePDFPageLayout = onUpdatePDFPageLayout
         view.onUpdatePDFPageCrop = onUpdatePDFPageCrop
@@ -242,6 +266,12 @@ public struct InkCanvasViewportRepresentable: NSViewRepresentable {
         nsView.onAddCanvasConnector = onAddCanvasConnector
         nsView.onUpdateCanvasConnectorLabel = onUpdateCanvasConnectorLabel
         nsView.onDeleteCanvasConnector = onDeleteCanvasConnector
+        nsView.onUpdateCanvasItemContent = onUpdateCanvasItemContent
+        nsView.onUpdateCanvasItemStyling = onUpdateCanvasItemStyling
+        nsView.onUpdateCanvasItemLinkedNote = onUpdateCanvasItemLinkedNote
+        nsView.onBindStrokeToCanvasItem = onBindStrokeToCanvasItem
+        nsView.onTranslateBoundStrokes = onTranslateBoundStrokes
+        nsView.onRequestLinkNotePicker = onRequestLinkNotePicker
         nsView.onSelectReferencedNote = onSelectReferencedNote
         nsView.onUpdatePDFPageLayout = onUpdatePDFPageLayout
         nsView.onUpdatePDFPageCrop = onUpdatePDFPageCrop

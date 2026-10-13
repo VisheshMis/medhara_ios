@@ -46,6 +46,9 @@ public struct InkNoteEditorView: View {
     // Unified Infinite Canvas State
     @State private var isConnectorToolActive: Bool = false
     @State private var connectorRoutingMode: ConnectorRoutingType = .orthogonal
+    @State private var isShowingNoteLinkPicker: Bool = false
+    @State private var targetItemForLinking: String? = nil
+    @State private var noteLinkSearchQuery: String = ""
 
     public init(store: BlockStore, doc: Block) {
         self.store = store
@@ -321,6 +324,35 @@ public struct InkNoteEditorView: View {
             onDeleteCanvasConnector: { connectorId in
                 store.deleteCanvasConnector(id: connectorId)
             },
+            onUpdateCanvasItemContent: { itemId, title, markdown in
+                store.updateCanvasItemContent(id: itemId, title: title, markdownContent: markdown)
+            },
+            onUpdateCanvasItemStyling: { itemId, fillColor, strokeColor, strokeWidth, cornerRadius, shapeType in
+                store.updateCanvasItemStyling(
+                    id: itemId,
+                    fillColorHex: fillColor,
+                    strokeColorHex: strokeColor,
+                    strokeWidth: strokeWidth,
+                    cornerRadius: cornerRadius,
+                    shapeType: shapeType
+                )
+            },
+            onUpdateCanvasItemLinkedNote: { itemId, linkedNoteDocId in
+                store.updateCanvasItemLinkedNote(id: itemId, linkedNoteDocId: linkedNoteDocId)
+            },
+            onBindStrokeToCanvasItem: { itemId, strokeId in
+                store.bindStrokeToCanvasItem(itemId: itemId, strokeId: strokeId)
+            },
+            onTranslateBoundStrokes: { itemId, deltaX, deltaY, pageIndex in
+                store.translateBoundStrokes(forItemId: itemId, deltaX: deltaX, deltaY: deltaY, pageIndex: pageIndex)
+            },
+            onRequestLinkNotePicker: { itemId in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    targetItemForLinking = itemId
+                    noteLinkSearchQuery = ""
+                    isShowingNoteLinkPicker = true
+                }
+            },
             onSelectReferencedNote: { noteDocId in
                 store.selectDocument(id: noteDocId)
             },
@@ -468,6 +500,125 @@ public struct InkNoteEditorView: View {
                                 }
                             }
                         )
+                        .background(Color(NSColor.windowBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: Color.black.opacity(0.35), radius: 24, x: 0, y: 12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                        )
+                        .transition(.scale(scale: 0.95).combined(with: .opacity))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .zIndex(100)
+                }
+
+                // Note Link Picker Modal Overlay
+                if isShowingNoteLinkPicker, let itemId = targetItemForLinking {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .edgesIgnoringSafeArea(.all)
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    isShowingNoteLinkPicker = false
+                                    targetItemForLinking = nil
+                                }
+                            }
+
+                        VStack(spacing: 0) {
+                            // Header
+                            HStack {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "link")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(.accentColor)
+                                    Text("Link Note to Block")
+                                        .font(.system(size: 14, weight: .bold))
+                                }
+                                Spacer()
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isShowingNoteLinkPicker = false
+                                        targetItemForLinking = nil
+                                    }
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color(NSColor.controlBackgroundColor))
+
+                            Divider()
+
+                            // Search bar
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.secondary)
+                                TextField("Search notes to link...", text: $noteLinkSearchQuery)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 13))
+                            }
+                            .padding(8)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(6)
+                            .padding(12)
+
+                            // Document List
+                            let filtered = store.documents.filter {
+                                $0.id != doc.id && (noteLinkSearchQuery.isEmpty || $0.content.localizedCaseInsensitiveContains(noteLinkSearchQuery))
+                            }
+
+                            if filtered.isEmpty {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.secondary)
+                                    Text("No matching notes found")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .padding()
+                            } else {
+                                ScrollView {
+                                    VStack(spacing: 4) {
+                                        ForEach(filtered) { candidate in
+                                            Button(action: {
+                                                store.updateCanvasItemLinkedNote(id: itemId, linkedNoteDocId: candidate.id)
+                                                withAnimation(.easeInOut(duration: 0.15)) {
+                                                    isShowingNoteLinkPicker = false
+                                                    targetItemForLinking = nil
+                                                }
+                                            }) {
+                                                HStack(spacing: 8) {
+                                                    Image(systemName: candidate.canvasMode != nil ? "pencil.tip" : "doc.text")
+                                                        .foregroundColor(.accentColor)
+                                                    Text(candidate.content.isEmpty ? "Untitled Note" : candidate.content)
+                                                        .font(.system(size: 13, weight: .medium))
+                                                        .foregroundColor(.primary)
+                                                    Spacer()
+                                                    Text("Link")
+                                                        .font(.system(size: 11, weight: .semibold))
+                                                        .foregroundColor(.accentColor)
+                                                }
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 8)
+                                                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                                                .cornerRadius(6)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.bottom, 12)
+                                }
+                            }
+                        }
+                        .frame(width: 380, height: 320)
                         .background(Color(NSColor.windowBackgroundColor))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .shadow(color: Color.black.opacity(0.35), radius: 24, x: 0, y: 12)

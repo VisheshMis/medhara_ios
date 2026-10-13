@@ -121,6 +121,24 @@ public struct BlockRowView: View {
                             if block.type == .table { Image(systemName: "checkmark") }
                         }
                     }
+                    Button(action: { store.convertBlockType(id: block.id, to: .mathEquation) }) {
+                        HStack {
+                            Label("Math equation", systemImage: "function")
+                            if block.type == .mathEquation { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button(action: { store.convertBlockType(id: block.id, to: .subjectCard) }) {
+                        HStack {
+                            Label("Subject Box", systemImage: "graduationcap.fill")
+                            if block.type == .subjectCard { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button(action: { store.convertBlockType(id: block.id, to: .calendarEmbed) }) {
+                        HStack {
+                            Label("Calendar Hub", systemImage: "calendar.badge.clock")
+                            if block.type == .calendarEmbed { Image(systemName: "checkmark") }
+                        }
+                    }
                 }
 
                 // Color > (Screenshot 4)
@@ -365,6 +383,41 @@ public struct BlockRowView: View {
                             store: store,
                             block: block,
                             isFocused: isFocused
+                        )
+                    case .subPage:
+                        SubPageBlockView(
+                            store: store,
+                            block: block,
+                            isFocused: isFocused
+                        )
+                    case .mathEquation:
+                        MathEquationBlockView(
+                            store: store,
+                            block: block,
+                            isFocused: isFocused,
+                            onCommitReturn: handleCommitReturn,
+                            onDeleteEmpty: handleDeleteEmpty
+                        )
+                    case .columnList:
+                        ColumnListBlockView(
+                            store: store,
+                            block: block,
+                            isFocused: isFocused
+                        )
+                    case .column:
+                        EmptyView()
+                    case .subjectCard:
+                        SubjectCardBlockView(
+                            store: store,
+                            block: block,
+                            onSelectDoc: { docId in
+                                store.selectDocument(id: docId)
+                            }
+                        )
+                    case .calendarEmbed:
+                        CalendarEmbedBlockView(
+                            store: store,
+                            block: block
                         )
                     }
                 }

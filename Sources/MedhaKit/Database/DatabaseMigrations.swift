@@ -452,6 +452,13 @@ public enum DatabaseMigrations {
             try db.create(index: "idx_canvas_connectors_fromItemId", on: "canvas_connectors", columns: ["fromItemId"])
             try db.create(index: "idx_canvas_connectors_toItemId", on: "canvas_connectors", columns: ["toItemId"])
         }
+
+        migrator.registerMigration("v18_notion_cover_and_subpages") { db in
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN coverUrl TEXT;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN coverY DOUBLE;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN subPageDocId TEXT;")
+            try db.execute(sql: "ALTER TABLE block ADD COLUMN columnRatio DOUBLE;")
+        }
     }
 }
 

@@ -6,7 +6,7 @@ import PDFKit
 // MARK: - Native Interactive Canvas Viewport for macOS
 /// Handles high-performance vector rendering, smooth trackpad pinch-to-zoom,
 /// two-finger pan, Spacebar Hand Tool, and multiple canvas modes (A4, Infinite Vertical, Infinite 2D).
-public final class InkCanvasViewportNSView: NSView {
+public final class InkCanvasViewportNSView: NSView, NSTextViewDelegate {
     public var docId: String
     public var canvasMode: InkCanvasMode
     public var templateType: InkTemplateType
@@ -81,11 +81,13 @@ public final class InkCanvasViewportNSView: NSView {
     public var zoomScale: CGFloat = 1.0 {
         didSet {
             zoomScale = min(max(zoomScale, 0.02), 20.0)
+            updateInlineEditorFrame()
             needsDisplay = true
         }
     }
     public var panOffset: CGPoint = CGPoint(x: 40, y: 40) {
         didSet {
+            updateInlineEditorFrame()
             needsDisplay = true
         }
     }
@@ -123,6 +125,17 @@ public final class InkCanvasViewportNSView: NSView {
     public var onRecordItemMoved: ((String, Double, Double, Double, Double) -> Void)?
     public var onRecordItemResized: ((String, Double, Double, Double, Double) -> Void)?
     public var onRecordItemSnappedFromInk: ((CanvasItem, InkStroke, Int) -> Void)?
+    public var onUpdateCanvasItemContent: ((String, String?, String?) -> Void)?
+    public var onUpdateCanvasItemStyling: ((String, String?, String?, Double?, Double?, CanvasShapeType?) -> Void)?
+    public var onUpdateCanvasItemLinkedNote: ((String, String?) -> Void)?
+    public var onBindStrokeToCanvasItem: ((String, String) -> Void)?
+    public var onTranslateBoundStrokes: ((String, Double, Double, Int) -> Void)?
+    public var onRequestLinkNotePicker: ((String) -> Void)?
+
+    // Inline Text Editing State
+    private var inlineEditorScrollView: NSScrollView?
+    private var inlineEditorTextView: NSTextView?
+    public private(set) var inlineEditorItemId: String?
 
     // Shape Snapping & Alignment Guides State
     public var activeShapeSnapPreview: CanvasShapeRecognizer.RecognizedShape? = nil
@@ -666,6 +679,16 @@ public final class InkCanvasViewportNSView: NSView {
                 return
             }
 
+            // 1. Note Link Badge Hit-Testing (top priority)
+            if let noteDocId = item.linkedNoteDocId, !noteDocId.isEmpty {
+                let badgeRect = linkBadgeRect(for: item)
+                if badgeRect.contains(canvasPoint) {
+                    endInlineTextEditing(commit: true)
+                    onSelectReferencedNote?(noteDocId)
+                    return
+                }
+            }
+
             // 2. Shape / Item Body Hit-Testing
             let shapePath = createShapePath(for: item, rect: rect)
             let isFilled = (item.fillColorHex != nil && item.fillColorHex != "clear")
@@ -682,10 +705,15 @@ public final class InkCanvasViewportNSView: NSView {
                 hitAnyItem = true
                 selectedItemId = item.id
 
-                // Double click to jump to referenced note if linked
-                if event.clickCount >= 2, let noteDocId = item.linkedNoteDocId, !noteDocId.isEmpty {
-                    onSelectReferencedNote?(noteDocId)
+                // Double click outside the link badge activates inline text editing
+                if event.clickCount >= 2 {
+                    beginInlineTextEditing(for: item)
                     return
+                }
+
+                // If editing another item, commit it
+                if inlineEditorItemId != item.id {
+                    endInlineTextEditing(commit: true)
                 }
 
                 // Item Dragging
@@ -697,10 +725,13 @@ public final class InkCanvasViewportNSView: NSView {
             }
         }
 
-        // If user clicked empty space without hitting any item and active tool is ballpoint, clear item selection
-        if !hitAnyItem && selectedItemId != nil && activeTool == .ballpoint {
-            selectedItemId = nil
-            needsDisplay = true
+        // If user clicked empty space without hitting any item
+        if !hitAnyItem {
+            endInlineTextEditing(commit: true)
+            if selectedItemId != nil && (activeTool == .ballpoint || activeTool == .lasso) {
+                selectedItemId = nil
+                needsDisplay = true
+            }
         }
 
         // Check for click/interaction on Canvas Note Cards (reverse order for top-most)
@@ -950,6 +981,8 @@ public final class InkCanvasViewportNSView: NSView {
                 )
 
                 let disableSnapping = event.modifierFlags.contains(.command)
+                let newX: Double
+                let newY: Double
                 if !disableSnapping {
                     let snapResult = CanvasSnappingService.snap(
                         rect: candRect,
@@ -959,14 +992,20 @@ public final class InkCanvasViewportNSView: NSView {
                         threshold: 6.0,
                         snapToGrid: true
                     )
-                    canvasItems[idx].x = Double(snapResult.rect.minX)
-                    canvasItems[idx].y = Double(snapResult.rect.minY)
+                    newX = Double(snapResult.rect.minX)
+                    newY = Double(snapResult.rect.minY)
                     self.activeAlignmentGuides = snapResult.guides
                 } else {
-                    canvasItems[idx].x = Double(candRect.minX)
-                    canvasItems[idx].y = Double(candRect.minY)
+                    newX = Double(candRect.minX)
+                    newY = Double(candRect.minY)
                     self.activeAlignmentGuides.removeAll()
                 }
+
+                let stepDx = newX - canvasItems[idx].x
+                let stepDy = newY - canvasItems[idx].y
+                canvasItems[idx].x = newX
+                canvasItems[idx].y = newY
+                translateBoundStrokesLive(forItemId: itemId, deltaX: stepDx, deltaY: stepDy)
             }
             needsDisplay = true
             return
@@ -1208,9 +1247,12 @@ public final class InkCanvasViewportNSView: NSView {
             activeAlignmentGuides.removeAll()
             if let item = canvasItems.first(where: { $0.id == itemId }) {
                 onUpdateCanvasItemPosition?(item.id, item.x, item.y)
-                let dist = hypot(item.x - Double(itemInitialPosition.x), item.y - Double(itemInitialPosition.y))
+                let totalDx = item.x - Double(itemInitialPosition.x)
+                let totalDy = item.y - Double(itemInitialPosition.y)
+                let dist = hypot(totalDx, totalDy)
                 if dist > 0.5 {
                     onRecordItemMoved?(item.id, Double(itemInitialPosition.x), Double(itemInitialPosition.y), item.x, item.y)
+                    onTranslateBoundStrokes?(item.id, totalDx, totalDy, activeDrawingPageIndex)
                 }
             }
             needsDisplay = true
@@ -1352,6 +1394,24 @@ public final class InkCanvasViewportNSView: NSView {
         pagesStrokes[activeDrawingPageIndex] = pageList
         livePoints.removeAll()
         isDrawing = false
+
+        // Automatically bind newly completed stroke to flowchart block if drawn inside/over it
+        let sb = newStroke.boundingRect
+        let strokeBounds = CGRect(x: sb.minX, y: sb.minY, width: max(1.0, sb.maxX - sb.minX), height: max(1.0, sb.maxY - sb.minY))
+        for item in canvasItems {
+            let itemRect = item.boundingRect
+            if itemRect.intersects(strokeBounds) {
+                onBindStrokeToCanvasItem?(item.id, newStroke.id)
+                if let idx = canvasItems.firstIndex(where: { $0.id == item.id }) {
+                    var bound = canvasItems[idx].boundStrokeIds
+                    if !bound.contains(newStroke.id) {
+                        bound.append(newStroke.id)
+                        canvasItems[idx].boundStrokeIds = bound
+                    }
+                }
+                break
+            }
+        }
 
         recalculateInfiniteVerticalHeight()
         needsDisplay = true
@@ -1995,23 +2055,81 @@ public final class InkCanvasViewportNSView: NSView {
     }
 
     private func drawShapeContent(item: CanvasItem, rect: CGRect, isMacro: Bool, isDeepDetail: Bool, in context: CGContext) {
-        guard let title = item.title, !title.isEmpty else { return }
+        // If this shape is currently being edited with the live inline text view, suppress static rendering
+        if inlineEditorItemId == item.id {
+            return
+        }
 
-        let fontSize: CGFloat = isMacro ? max(12, min(24, 18 / zoomScale)) : 14.0
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+        let title = item.title ?? ""
+        let bodyNotes = item.markdownContent ?? ""
+        guard !title.isEmpty || !bodyNotes.isEmpty else { return }
+
         let textColor = Self.adaptiveTextColor(forFillHex: item.fillColorHex)
-        let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor
-        ]
-
-        let titleStr = title as NSString
-        let textSize = titleStr.size(withAttributes: titleAttrs)
-        let textRect = CGRect(x: rect.midX - textSize.width / 2.0, y: rect.midY - textSize.height / 2.0, width: textSize.width, height: textSize.height)
+        let secondaryColor = textColor.withAlphaComponent(0.72)
 
         context.saveGState()
         context.clip(to: rect)
-        titleStr.draw(in: textRect, withAttributes: titleAttrs)
+
+        let pad: CGFloat = max(10.0, 14.0 / zoomScale)
+        let availableWidth = max(20.0, rect.width - pad * 2.0)
+
+        if isMacro {
+            let fontSize: CGFloat = max(12, min(24, 18 / zoomScale))
+            let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: textColor
+            ]
+            let displayStr = (title.isEmpty ? bodyNotes : title) as NSString
+            let textSize = displayStr.size(withAttributes: titleAttrs)
+            let textRect = CGRect(x: rect.midX - textSize.width / 2.0, y: rect.midY - textSize.height / 2.0, width: textSize.width, height: textSize.height)
+            displayStr.draw(in: textRect, withAttributes: titleAttrs)
+            context.restoreGState()
+            return
+        }
+
+        if !title.isEmpty && !bodyNotes.isEmpty {
+            // Title at top, multiline notes body below
+            let titleFont = NSFont.systemFont(ofSize: 13.0, weight: .bold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: titleFont,
+                .foregroundColor: textColor
+            ]
+            let titleStr = title as NSString
+            let titleRect = CGRect(x: rect.minX + pad, y: rect.minY + pad, width: availableWidth, height: 20.0)
+            titleStr.draw(in: titleRect, withAttributes: titleAttrs)
+
+            let bodyFont = NSFont.systemFont(ofSize: 11.5, weight: .regular)
+            let bodyAttrs: [NSAttributedString.Key: Any] = [
+                .font: bodyFont,
+                .foregroundColor: secondaryColor
+            ]
+            let bodyStr = bodyNotes as NSString
+            let bodyRect = CGRect(x: rect.minX + pad, y: rect.minY + pad + 22.0, width: availableWidth, height: max(20.0, rect.height - pad * 2.0 - 22.0))
+            bodyStr.draw(in: bodyRect, withAttributes: bodyAttrs)
+        } else if !title.isEmpty {
+            // Centered title
+            let font = NSFont.systemFont(ofSize: 14.0, weight: .bold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: textColor
+            ]
+            let titleStr = title as NSString
+            let textSize = titleStr.size(withAttributes: titleAttrs)
+            let textRect = CGRect(x: rect.midX - textSize.width / 2.0, y: rect.midY - textSize.height / 2.0, width: textSize.width, height: textSize.height)
+            titleStr.draw(in: textRect, withAttributes: titleAttrs)
+        } else {
+            // Centered notes body
+            let bodyFont = NSFont.systemFont(ofSize: 12.0, weight: .regular)
+            let bodyAttrs: [NSAttributedString.Key: Any] = [
+                .font: bodyFont,
+                .foregroundColor: textColor
+            ]
+            let bodyStr = bodyNotes as NSString
+            let bodyRect = CGRect(x: rect.minX + pad, y: rect.minY + pad, width: availableWidth, height: max(20.0, rect.height - pad * 2.0))
+            bodyStr.draw(in: bodyRect, withAttributes: bodyAttrs)
+        }
+
         context.restoreGState()
     }
 
@@ -2142,8 +2260,12 @@ public final class InkCanvasViewportNSView: NSView {
         }
     }
 
+    public func linkBadgeRect(for item: CanvasItem) -> CGRect {
+        CGRect(x: item.x + item.width - 32.0, y: item.y + 8.0, width: 24.0, height: 24.0)
+    }
+
     private func drawNoteLinkBadge(item: CanvasItem, in context: CGContext) {
-        let badgeRect = CGRect(x: item.x + item.width - 32.0, y: item.y + 8.0, width: 24.0, height: 24.0)
+        let badgeRect = linkBadgeRect(for: item)
         context.saveGState()
         context.setFillColor(NSColor.systemIndigo.withAlphaComponent(0.88).cgColor)
         context.fillEllipse(in: badgeRect)
@@ -3103,6 +3225,314 @@ public final class InkCanvasViewportNSView: NSView {
         onAddNoteCard?(noteDocId, cardX, cardY)
         needsDisplay = true
         return true
+    }
+
+    // MARK: - Flowchart Block Inline Editing & Note Linking
+    public func beginInlineTextEditing(for item: CanvasItem) {
+        endInlineTextEditing(commit: true)
+        selectedItemId = item.id
+        inlineEditorItemId = item.id
+
+        let itemCanvasRect = item.boundingRect
+        let originInView = viewPointFrom(canvasPoint: itemCanvasRect.origin)
+        let widthInView = itemCanvasRect.width * zoomScale
+        let heightInView = itemCanvasRect.height * zoomScale
+        let pad: CGFloat = 8.0
+        let frame = CGRect(
+            x: originInView.x + pad,
+            y: originInView.y + pad,
+            width: max(80.0, widthInView - pad * 2.0),
+            height: max(40.0, heightInView - pad * 2.0)
+        )
+
+        let sv = NSScrollView(frame: frame)
+        sv.hasVerticalScroller = true
+        sv.hasHorizontalScroller = false
+        sv.drawsBackground = false
+        sv.autohidesScrollers = true
+
+        let tv = NSTextView(frame: NSRect(origin: .zero, size: frame.size))
+        tv.delegate = self
+        tv.isRichText = false
+        tv.importsGraphics = false
+        tv.allowsUndo = true
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
+        tv.drawsBackground = false
+
+        let textColor = Self.adaptiveTextColor(forFillHex: item.fillColorHex)
+        tv.textColor = textColor
+        tv.insertionPointColor = textColor
+        tv.font = NSFont.systemFont(ofSize: max(12.0, 14.0 * zoomScale), weight: .medium)
+
+        let initialContent: String
+        if let title = item.title, !title.isEmpty, let body = item.markdownContent, !body.isEmpty {
+            initialContent = "\(title)\n\(body)"
+        } else if let title = item.title, !title.isEmpty {
+            initialContent = title
+        } else if let body = item.markdownContent, !body.isEmpty {
+            initialContent = body
+        } else {
+            initialContent = ""
+        }
+        tv.string = initialContent
+        tv.selectAll(nil)
+
+        sv.documentView = tv
+        addSubview(sv)
+
+        self.inlineEditorScrollView = sv
+        self.inlineEditorTextView = tv
+        window?.makeFirstResponder(tv)
+        needsDisplay = true
+    }
+
+    public func endInlineTextEditing(commit: Bool) {
+        guard let itemId = inlineEditorItemId else { return }
+        if commit, let tv = inlineEditorTextView {
+            let fullText = tv.string
+            let lines = fullText.components(separatedBy: "\n")
+            let firstLine = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let remaining = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let newTitle: String? = firstLine.isEmpty ? nil : firstLine
+            let newMarkdown: String? = remaining.isEmpty ? nil : remaining
+
+            if let idx = canvasItems.firstIndex(where: { $0.id == itemId }) {
+                canvasItems[idx].title = newTitle
+                canvasItems[idx].markdownContent = newMarkdown
+            }
+            onUpdateCanvasItemContent?(itemId, newTitle, newMarkdown)
+        }
+
+        inlineEditorScrollView?.removeFromSuperview()
+        inlineEditorScrollView = nil
+        inlineEditorTextView = nil
+        inlineEditorItemId = nil
+        window?.makeFirstResponder(self)
+        needsDisplay = true
+    }
+
+    private func updateInlineEditorFrame() {
+        guard let itemId = inlineEditorItemId,
+              let item = canvasItems.first(where: { $0.id == itemId }),
+              let sv = inlineEditorScrollView else { return }
+        let itemCanvasRect = item.boundingRect
+        let originInView = viewPointFrom(canvasPoint: itemCanvasRect.origin)
+        let widthInView = itemCanvasRect.width * zoomScale
+        let heightInView = itemCanvasRect.height * zoomScale
+        let pad: CGFloat = 8.0
+        sv.frame = CGRect(
+            x: originInView.x + pad,
+            y: originInView.y + pad,
+            width: max(80.0, widthInView - pad * 2.0),
+            height: max(40.0, heightInView - pad * 2.0)
+        )
+        if let tv = inlineEditorTextView {
+            tv.font = NSFont.systemFont(ofSize: max(12.0, 14.0 * zoomScale), weight: .medium)
+        }
+    }
+
+    public func textDidEndEditing(_ notification: Notification) {
+        endInlineTextEditing(commit: true)
+    }
+
+    private func translateBoundStrokesLive(forItemId itemId: String, deltaX: Double, deltaY: Double) {
+        guard let item = canvasItems.first(where: { $0.id == itemId }) else { return }
+        let boundIds = Set(item.boundStrokeIds)
+        guard !boundIds.isEmpty else { return }
+        for (pageIdx, strokes) in pagesStrokes {
+            var updated = strokes
+            var modified = false
+            for (sIdx, stroke) in strokes.enumerated() {
+                if boundIds.contains(stroke.id) {
+                    let translatedPoints = stroke.points.map { pt in
+                        InkPoint(x: pt.x + deltaX, y: pt.y + deltaY, pressure: pt.pressure, timeOffset: pt.timeOffset)
+                    }
+                    var updatedStroke = stroke
+                    updatedStroke.points = translatedPoints
+                    updated[sIdx] = updatedStroke
+                    modified = true
+                }
+            }
+            if modified {
+                pagesStrokes[pageIdx] = updated
+            }
+        }
+    }
+
+    // MARK: - Right-Click Context Menu for Flowchart Blocks
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        let locInView = convert(event.locationInWindow, from: nil)
+        let canvasPoint = canvasPointFrom(viewPoint: locInView)
+
+        // Find right-clicked canvas item (if any)
+        guard let item = canvasItems.sorted(by: { $0.zIndex > $1.zIndex }).first(where: { it in
+            let path = createShapePath(for: it, rect: it.boundingRect)
+            return path.contains(canvasPoint) || it.boundingRect.contains(canvasPoint)
+        }) else {
+            return super.menu(for: event)
+        }
+
+        selectedItemId = item.id
+        needsDisplay = true
+
+        let menu = NSMenu(title: "Block Options")
+
+        // 1. Edit Text & Notes
+        let editItem = NSMenuItem(title: "Edit Text & Notes", action: #selector(contextMenuEditText(_:)), keyEquivalent: "")
+        editItem.target = self
+        editItem.representedObject = item.id
+        menu.addItem(editItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 2. Shape Submenu
+        let shapeMenu = NSMenu(title: "Change Shape")
+        let shapes: [(CanvasShapeType, String)] = [
+            (.roundedRectangle, "Rounded Rectangle"),
+            (.rectangle, "Rectangle"),
+            (.ellipse, "Circle / Oval"),
+            (.diamond, "Diamond (Decision)"),
+            (.triangle, "Triangle")
+        ]
+        for (sType, title) in shapes {
+            let sItem = NSMenuItem(title: title, action: #selector(contextMenuChangeShape(_:)), keyEquivalent: "")
+            sItem.target = self
+            sItem.representedObject = (itemId: item.id, shape: sType)
+            if item.shapeType == sType {
+                sItem.state = .on
+            }
+            shapeMenu.addItem(sItem)
+        }
+        let shapeParent = NSMenuItem(title: "Shape", action: nil, keyEquivalent: "")
+        shapeParent.submenu = shapeMenu
+        menu.addItem(shapeParent)
+
+        // 3. Color Submenu
+        let colorMenu = NSMenu(title: "Fill Color")
+        let colors: [(String?, String)] = [
+            ("#EFF6FF", "Light Blue"),
+            ("#FEF3C7", "Amber / Note"),
+            ("#E0E7FF", "Indigo"),
+            ("#ECFDF5", "Mint Green"),
+            ("#FFF1F2", "Soft Rose"),
+            ("#F1F5F9", "Neutral Slate"),
+            ("clear", "Transparent")
+        ]
+        for (hex, title) in colors {
+            let cItem = NSMenuItem(title: title, action: #selector(contextMenuChangeColor(_:)), keyEquivalent: "")
+            cItem.target = self
+            cItem.representedObject = (itemId: item.id, colorHex: hex)
+            if item.fillColorHex == hex {
+                cItem.state = .on
+            }
+            colorMenu.addItem(cItem)
+        }
+        let colorParent = NSMenuItem(title: "Fill Color", action: nil, keyEquivalent: "")
+        colorParent.submenu = colorMenu
+        menu.addItem(colorParent)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 4. Note Linking Options
+        if let docId = item.linkedNoteDocId, !docId.isEmpty {
+            let jumpItem = NSMenuItem(title: "Open Linked Note ↗", action: #selector(contextMenuJumpToNote(_:)), keyEquivalent: "")
+            jumpItem.target = self
+            jumpItem.representedObject = docId
+            menu.addItem(jumpItem)
+
+            let unlinkItem = NSMenuItem(title: "Unlink Note", action: #selector(contextMenuUnlinkNote(_:)), keyEquivalent: "")
+            unlinkItem.target = self
+            unlinkItem.representedObject = item.id
+            menu.addItem(unlinkItem)
+        } else {
+            let linkItem = NSMenuItem(title: "Link to Existing Note...", action: #selector(contextMenuLinkNotePicker(_:)), keyEquivalent: "")
+            linkItem.target = self
+            linkItem.representedObject = item.id
+            menu.addItem(linkItem)
+        }
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 5. Duplicate
+        let dupItem = NSMenuItem(title: "Duplicate Block", action: #selector(contextMenuDuplicateItem(_:)), keyEquivalent: "d")
+        dupItem.target = self
+        dupItem.representedObject = item.id
+        menu.addItem(dupItem)
+
+        // 6. Delete
+        let delItem = NSMenuItem(title: "Delete Block", action: #selector(contextMenuDeleteItem(_:)), keyEquivalent: "")
+        delItem.target = self
+        delItem.representedObject = item.id
+        menu.addItem(delItem)
+
+        return menu
+    }
+
+    @objc private func contextMenuEditText(_ sender: NSMenuItem) {
+        guard let itemId = sender.representedObject as? String,
+              let item = canvasItems.first(where: { $0.id == itemId }) else { return }
+        beginInlineTextEditing(for: item)
+    }
+
+    @objc private func contextMenuChangeShape(_ sender: NSMenuItem) {
+        guard let pair = sender.representedObject as? (itemId: String, shape: CanvasShapeType) else { return }
+        if let idx = canvasItems.firstIndex(where: { $0.id == pair.itemId }) {
+            canvasItems[idx].shapeType = pair.shape
+        }
+        onUpdateCanvasItemStyling?(pair.itemId, nil, nil, nil, nil, pair.shape)
+        needsDisplay = true
+    }
+
+    @objc private func contextMenuChangeColor(_ sender: NSMenuItem) {
+        guard let pair = sender.representedObject as? (itemId: String, colorHex: String?) else { return }
+        if let idx = canvasItems.firstIndex(where: { $0.id == pair.itemId }) {
+            canvasItems[idx].fillColorHex = pair.colorHex
+        }
+        onUpdateCanvasItemStyling?(pair.itemId, pair.colorHex, nil, nil, nil, nil)
+        needsDisplay = true
+    }
+
+    @objc private func contextMenuJumpToNote(_ sender: NSMenuItem) {
+        guard let docId = sender.representedObject as? String else { return }
+        onSelectReferencedNote?(docId)
+    }
+
+    @objc private func contextMenuLinkNotePicker(_ sender: NSMenuItem) {
+        guard let itemId = sender.representedObject as? String else { return }
+        onRequestLinkNotePicker?(itemId)
+    }
+
+    @objc private func contextMenuUnlinkNote(_ sender: NSMenuItem) {
+        guard let itemId = sender.representedObject as? String else { return }
+        if let idx = canvasItems.firstIndex(where: { $0.id == itemId }) {
+            canvasItems[idx].linkedNoteDocId = nil
+        }
+        onUpdateCanvasItemLinkedNote?(itemId, nil)
+        needsDisplay = true
+    }
+
+    @objc private func contextMenuDuplicateItem(_ sender: NSMenuItem) {
+        guard let itemId = sender.representedObject as? String,
+              let item = canvasItems.first(where: { $0.id == itemId }) else { return }
+        var dup = item
+        dup.id = "ci-\(UUID().uuidString.lowercased())"
+        dup.x += 20.0
+        dup.y += 20.0
+        dup.createdAt = Date()
+        dup.updatedAt = Date()
+        onAddCanvasItem?(dup)
+        selectedItemId = dup.id
+        needsDisplay = true
+    }
+
+    @objc private func contextMenuDeleteItem(_ sender: NSMenuItem) {
+        guard let itemId = sender.representedObject as? String else { return }
+        onDeleteCanvasItem?(itemId)
+        if selectedItemId == itemId { selectedItemId = nil }
+        needsDisplay = true
     }
 
 }

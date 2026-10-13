@@ -4085,7 +4085,172 @@ struct TestRunner {
 
         print("✅ testNotionBlockOptionsAndCleanNotesSuite passed")
 
-        print("\n🎉 ALL 51 TEST SUITES PASSED SUCCESSFULLY!")
+        // ==========================================
+        // 52. NOTION COVER, REPOSITIONING, SUB-PAGES & ASSET CACHE SUITE
+        // ==========================================
+        print("\n--- 52. NOTION COVER, REPOSITIONING, SUB-PAGES & ASSET CACHE SUITE ---")
+        
+        // 1. Cover URL and Repositioning Offset
+        store.setDocumentCover(docId: cleanDoc.id, coverUrl: "https://images.unsplash.com/photo-ghibli-bus-stop", coverY: 0.45)
+        let docWithCover = store.documents.first(where: { $0.id == cleanDoc.id })!
+        assert(docWithCover.coverUrl == "https://images.unsplash.com/photo-ghibli-bus-stop", "Cover URL persisted on document")
+        assert(abs((docWithCover.coverY ?? 0) - 0.45) < 0.001, "Cover vertical offset persisted as 0.45")
+
+        // Test Vertical Drag Clamping
+        store.setDocumentCoverY(docId: cleanDoc.id, coverY: 1.4)
+        let docClampedTop = store.documents.first(where: { $0.id == cleanDoc.id })!
+        assert(docClampedTop.coverY == 1.0, "Cover offset clamped to 1.0 maximum")
+
+        store.setDocumentCoverY(docId: cleanDoc.id, coverY: -0.3)
+        let docClampedBottom = store.documents.first(where: { $0.id == cleanDoc.id })!
+        assert(docClampedBottom.coverY == 0.0, "Cover offset clamped to 0.0 minimum")
+
+        // 2. Document Icon (Emoji & Symbols)
+        store.setDocumentIcon(docId: cleanDoc.id, icon: "🌿")
+        let docWithIcon = store.documents.first(where: { $0.id == cleanDoc.id })!
+        assert(docWithIcon.icon == "🌿", "Document icon persisted as emoji")
+
+        // 3. Sub-page Block Creation
+        let subPageBlock = store.createSubPageBlock(inDocId: cleanDoc.id, title: "Operating Systems Fundamentals")
+        assert(subPageBlock != nil, "Sub-page block created successfully")
+        assert(subPageBlock?.type == .subPage, "Block type is .subPage")
+        assert(subPageBlock?.subPageDocId != nil, "Sub-page block links to target child document")
+        let childDocId = subPageBlock!.subPageDocId!
+        assert(store.documents.contains(where: { $0.id == childDocId }), "Child document exists in documents tree")
+        let childDoc = store.documents.first(where: { $0.id == childDocId })!
+        assert(childDoc.parentId == cleanDoc.id, "Child document parentId matches parent doc")
+        assert(childDoc.content == "Operating Systems Fundamentals", "Child document title matches")
+
+        // 4. Multi-Column Layout Creation
+        store.createColumnList(inDocId: cleanDoc.id, columnCount: 2)
+        let colListBlock = store.blocks.first(where: { $0.type == .columnList })
+        assert(colListBlock != nil, "Column list block created")
+        let childColumns = store.blocks.filter { $0.parentId == colListBlock!.id && $0.type == .column }
+        assert(childColumns.count == 2, "Created exactly 2 child columns")
+        assert(childColumns.allSatisfy { abs(($0.columnRatio ?? 0) - 0.5) < 0.001 }, "Child columns have 0.5 width ratio")
+
+        // 5. Math Equation Block
+        let mathBlock = store.createBlock(type: .mathEquation, content: "\\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}")
+        assert(mathBlock.type == .mathEquation, "Math block type is .mathEquation")
+        assert(mathBlock.content.contains("\\int"), "Math block content contains LaTeX formula")
+
+        // 6. Offline Asset Cache Service
+        let assetCache = AssetCacheService.shared
+        let testUrl = "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600"
+        let cachedPath = assetCache.localCachedURL(for: testUrl)
+        assert(cachedPath.path.contains("CachedAssets"), "Local cached path resides in CachedAssets directory")
+        assert(assetCache.curatedPresets.count >= 16, "Curated presets library contains at least 16 aesthetic banners")
+        assert(assetCache.curatedPresets.contains(where: { $0.category == .ghibli }), "Curated presets include Studio Ghibli collection")
+        assert(assetCache.curatedPresets.contains(where: { $0.category == .darkAcademia }), "Curated presets include Dark Academia collection")
+
+        print("✅ testNotionCoverRepositioningSubPagesAndAssetCacheSuite passed")
+
+        // ==========================================
+        // 53. FLOWCHART BLOCK FORMATTING, DRAWING BINDING & OPTIONAL NOTE LINKING SUITE
+        // ==========================================
+        print("\n--- 53. FLOWCHART BLOCK FORMATTING, DRAWING BINDING & OPTIONAL NOTE LINKING SUITE ---")
+
+        // 1. Create a Flowchart Block CanvasItem
+        let flowDoc = store.createDocument(title: "Architecture Flowchart", notebookId: "nb-default")
+        store.selectDocument(id: flowDoc.id)
+        let blockItem = CanvasItem(
+            canvasDocId: flowDoc.id,
+            itemType: .shape,
+            shapeType: .roundedRectangle,
+            x: 100.0,
+            y: 100.0,
+            width: 160.0,
+            height: 90.0,
+            fillColorHex: "#EFF6FF",
+            strokeColorHex: "#3B82F6",
+            strokeWidth: 2.0,
+            cornerRadius: 12.0,
+            title: "Client App"
+        )
+        store.addCanvasItem(blockItem)
+        assert(store.canvasItems.contains(where: { $0.id == blockItem.id }), "Block item added to store")
+
+        // 2. Inline Text & Multiline Notes Formatting
+        store.updateCanvasItemContent(
+            id: blockItem.id,
+            title: "Frontend Client",
+            markdownContent: "• macOS Native SwiftUI\n• Handles real-time vector inking\n• Interacts with Local Engine"
+        )
+        let updatedBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(updatedBlock.title == "Frontend Client", "Block title updated to Frontend Client")
+        assert(updatedBlock.markdownContent?.contains("macOS Native SwiftUI") == true, "Block holds multiline body notes")
+
+        // 3. Block Styling & Shape Type Transformation
+        store.updateCanvasItemStyling(
+            id: blockItem.id,
+            fillColorHex: "#FEF3C7",
+            strokeColorHex: "#D97706",
+            strokeWidth: 3.0,
+            cornerRadius: 8.0,
+            shapeType: .diamond
+        )
+        let styledBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(styledBlock.fillColorHex == "#FEF3C7", "Fill color updated to amber")
+        assert(styledBlock.strokeColorHex == "#D97706", "Stroke color updated to amber-600")
+        assert(styledBlock.strokeWidth == 3.0, "Stroke width updated to 3.0")
+        assert(styledBlock.shapeType == .diamond, "Shape type transformed into decision diamond")
+
+        // Test Restyle Undo / Redo
+        assert(!store.canvasUndoStack.isEmpty, "Canvas undo stack holds restyle command")
+        store.performCanvasUndo()
+        let revertedBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(revertedBlock.shapeType == .roundedRectangle, "Undo restored rounded rectangle shape")
+        assert(revertedBlock.fillColorHex == "#EFF6FF", "Undo restored original fill color")
+
+        store.performCanvasRedo()
+        let redoneBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(redoneBlock.shapeType == .diamond, "Redo reapplied diamond shape")
+        assert(redoneBlock.fillColorHex == "#FEF3C7", "Redo reapplied amber fill color")
+
+        // 4. Drawing & Inking Bound to Block
+        let drawingStroke = InkStroke(
+            tool: .ballpoint,
+            colorHex: "#1E293B",
+            baseWidth: 2.5,
+            points: [
+                InkPoint(x: 120.0, y: 120.0),
+                InkPoint(x: 130.0, y: 130.0),
+                InkPoint(x: 140.0, y: 140.0)
+            ]
+        )
+        store.saveInkPageStrokes(pageIndex: 0, strokes: [drawingStroke])
+        store.bindStrokeToCanvasItem(itemId: blockItem.id, strokeId: drawingStroke.id)
+
+        let boundBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(boundBlock.boundStrokeIds.contains(drawingStroke.id), "Stroke is bound to the flowchart block")
+
+        // 5. Translating Bound Strokes with Block Movement
+        store.translateBoundStrokes(forItemId: blockItem.id, deltaX: 40.0, deltaY: 60.0, pageIndex: 0)
+        let pagePayload = InkPagePayload.deserialize(from: store.inkPages.first(where: { $0.pageIndex == 0 })?.strokesData ?? "")
+        let movedStroke = pagePayload.strokes.first(where: { $0.id == drawingStroke.id })!
+        assert(abs(movedStroke.points[0].x - 160.0) < 0.001, "Bound stroke point 0 X translated by +40 (120 -> 160)")
+        assert(abs(movedStroke.points[0].y - 180.0) < 0.001, "Bound stroke point 0 Y translated by +60 (120 -> 180)")
+
+        // 6. Optional Note Linking & Unlinking
+        let separateNote = store.createDocument(title: "Architecture Deep-Dive", notebookId: "nb-default")
+        store.selectDocument(id: flowDoc.id)
+        store.updateCanvasItemLinkedNote(id: blockItem.id, linkedNoteDocId: separateNote.id)
+        let linkedBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(linkedBlock.linkedNoteDocId == separateNote.id, "Flowchart block optionally linked to separate note")
+        assert(store.docLinks.contains(where: { $0.sourceDocId == flowDoc.id && $0.targetDocId == separateNote.id }), "DocLink created between canvas doc and linked note")
+
+        // Unlink note: block remains fully functional with its text and drawings
+        store.updateCanvasItemLinkedNote(id: blockItem.id, linkedNoteDocId: nil)
+        let unlinkedBlock = store.canvasItems.first(where: { $0.id == blockItem.id })!
+        assert(unlinkedBlock.linkedNoteDocId == nil, "Flowchart block unlinked from note")
+        assert(unlinkedBlock.title == "Frontend Client", "Block still retains title")
+        assert(unlinkedBlock.markdownContent?.contains("macOS Native SwiftUI") == true, "Block still retains multiline notes")
+        assert(unlinkedBlock.boundStrokeIds.contains(drawingStroke.id), "Block still retains bound ink strokes")
+        assert(!store.docLinks.contains(where: { $0.sourceDocId == flowDoc.id && $0.targetDocId == separateNote.id }), "DocLink removed when note was unlinked")
+
+        print("✅ testFlowchartBlockFormattingAndNoteLinkingSuite passed")
+
+        print("\n🎉 ALL 53 TEST SUITES PASSED SUCCESSFULLY!")
     }
 }
 

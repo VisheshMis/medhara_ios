@@ -1416,6 +1416,112 @@ public final class BlockStore: ObservableObject {
         }
     }
 
+    public func updateCanvasItemContent(id: String, title: String?, markdownContent: String?, recordUndo: Bool = true) {
+        guard let idx = canvasItems.firstIndex(where: { $0.id == id }) else { return }
+        let oldItem = canvasItems[idx]
+        var updated = oldItem
+        updated.title = title
+        updated.markdownContent = markdownContent
+        updated.updatedAt = Date()
+        canvasItems[idx] = updated
+        if recordUndo {
+            pushCanvasUndoCommand(.itemRestyled(id: id, oldItem: oldItem, newItem: updated))
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                try updated.update(db)
+            }
+        } catch {
+            print("Error updating canvas item content: \(error)")
+        }
+    }
+
+    public func updateCanvasItemStyling(
+        id: String,
+        fillColorHex: String?,
+        strokeColorHex: String?,
+        strokeWidth: Double?,
+        cornerRadius: Double?,
+        shapeType: CanvasShapeType?,
+        recordUndo: Bool = true
+    ) {
+        guard let idx = canvasItems.firstIndex(where: { $0.id == id }) else { return }
+        let oldItem = canvasItems[idx]
+        var updated = oldItem
+        if let fill = fillColorHex { updated.fillColorHex = fill }
+        if let stroke = strokeColorHex { updated.strokeColorHex = stroke }
+        if let width = strokeWidth { updated.strokeWidth = width }
+        if let radius = cornerRadius { updated.cornerRadius = radius }
+        if let shape = shapeType { updated.shapeType = shape }
+        updated.updatedAt = Date()
+        canvasItems[idx] = updated
+        if recordUndo {
+            pushCanvasUndoCommand(.itemRestyled(id: id, oldItem: oldItem, newItem: updated))
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                try updated.update(db)
+            }
+        } catch {
+            print("Error updating canvas item styling: \(error)")
+        }
+    }
+
+    public func updateCanvasItemLinkedNote(id: String, linkedNoteDocId: String?, recordUndo: Bool = true) {
+        guard let idx = canvasItems.firstIndex(where: { $0.id == id }) else { return }
+        let oldItem = canvasItems[idx]
+        var updated = oldItem
+        updated.linkedNoteDocId = linkedNoteDocId
+        updated.updatedAt = Date()
+        canvasItems[idx] = updated
+        if recordUndo {
+            pushCanvasUndoCommand(.itemRestyled(id: id, oldItem: oldItem, newItem: updated))
+        }
+        if let docId = linkedNoteDocId {
+            attachNoteToCanvasItem(itemId: id, noteDocId: docId)
+        } else {
+            detachNoteFromCanvasItem(itemId: id)
+        }
+    }
+
+    public func bindStrokeToCanvasItem(itemId: String, strokeId: String) {
+        guard let idx = canvasItems.firstIndex(where: { $0.id == itemId }) else { return }
+        var item = canvasItems[idx]
+        var strokeIds = item.boundStrokeIds
+        if !strokeIds.contains(strokeId) {
+            strokeIds.append(strokeId)
+            item.boundStrokeIds = strokeIds
+            canvasItems[idx] = item
+            do {
+                try dbManager.dbWriter.write { db in
+                    try item.update(db)
+                }
+            } catch {
+                print("Error binding stroke to canvas item: \(error)")
+            }
+        }
+    }
+
+    public func translateBoundStrokes(forItemId itemId: String, deltaX: Double, deltaY: Double, pageIndex: Int) {
+        guard let item = canvasItems.first(where: { $0.id == itemId }) else { return }
+        let boundIds = Set(item.boundStrokeIds)
+        guard !boundIds.isEmpty else { return }
+
+        var strokes = getStrokes(forPage: pageIndex)
+        var modified = false
+        for i in 0..<strokes.count {
+            if boundIds.contains(strokes[i].id) {
+                strokes[i].points = strokes[i].points.map { pt in
+                    InkPoint(x: pt.x + deltaX, y: pt.y + deltaY, pressure: pt.pressure, timeOffset: pt.timeOffset)
+                }
+                modified = true
+            }
+        }
+        if modified {
+            saveInkPageStrokes(pageIndex: pageIndex, strokes: strokes)
+        }
+    }
+
     public func recordItemMoved(id: String, oldX: Double, oldY: Double, newX: Double, newY: Double) {
         pushCanvasUndoCommand(.itemMoved(id: id, oldX: oldX, oldY: oldY, newX: newX, newY: newY))
     }
@@ -1451,6 +1557,9 @@ public final class BlockStore: ObservableObject {
             currentStrokes.append(originalStroke)
             saveInkPageStrokes(pageIndex: pageIndex, strokes: currentStrokes)
             canvasRedoStack.append(.itemSnappedFromInk(item: item, originalStroke: originalStroke, pageIndex: pageIndex))
+        case .itemRestyled(let id, let oldItem, let newItem):
+            updateCanvasItem(oldItem)
+            canvasRedoStack.append(.itemRestyled(id: id, oldItem: oldItem, newItem: newItem))
         }
         return true
     }
@@ -1477,6 +1586,9 @@ public final class BlockStore: ObservableObject {
             saveInkPageStrokes(pageIndex: pageIndex, strokes: currentStrokes)
             addCanvasItem(item, recordUndo: false)
             canvasUndoStack.append(.itemSnappedFromInk(item: item, originalStroke: originalStroke, pageIndex: pageIndex))
+        case .itemRestyled(let id, let oldItem, let newItem):
+            updateCanvasItem(newItem)
+            canvasUndoStack.append(.itemRestyled(id: id, oldItem: oldItem, newItem: newItem))
         }
         return true
     }
@@ -2125,6 +2237,20 @@ public final class BlockStore: ObservableObject {
         }
     }
 
+    public func updateBlock(_ block: Block) {
+        if let index = blocks.firstIndex(where: { $0.id == block.id }) {
+            blocks[index] = block
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                try block.update(db)
+            }
+            syncLinksForBlock(block)
+        } catch {
+            print("Error updating block: \(error)")
+        }
+    }
+
     // MARK: - Link Synchronization (LINKS_TO)
     public func syncLinksForBlock(_ block: Block) {
         let wikiLinks = LinkParser.extractWikiLinks(from: block.content)
@@ -2192,6 +2318,12 @@ public final class BlockStore: ObservableObject {
         if newType == .table && blocks[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             blocks[index].content = TableBlockPayload.defaultTable().serialize()
         }
+        if newType == .subjectCard && (blocks[index].subjectCardPayload == nil || blocks[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+            blocks[index].content = SubjectCardPayload().serialize()
+        }
+        if newType == .calendarEmbed && (blocks[index].calendarEmbedPayload == nil || blocks[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+            blocks[index].content = CalendarEmbedPayload().serialize()
+        }
         if newType == .toggle && blocks[index].isCollapsed == nil {
             blocks[index].isCollapsed = false
         }
@@ -2250,6 +2382,110 @@ public final class BlockStore: ObservableObject {
             }
         } catch {
             print("Error setting block color tint: \(error)")
+        }
+    }
+
+    public func setDocumentCover(docId: String, coverUrl: String?, coverY: Double? = 0.5) {
+        if selectedDocId == docId {
+            currentDoc?.coverUrl = coverUrl
+            currentDoc?.coverY = coverY
+            currentDoc?.updatedAt = Date()
+        }
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].coverUrl = coverUrl
+            documents[idx].coverY = coverY
+            documents[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.coverUrl = coverUrl
+                    doc.coverY = coverY
+                    doc.updatedAt = Date()
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting document cover: \(error)")
+        }
+    }
+
+    public func setDocumentCoverY(docId: String, coverY: Double) {
+        let clamped = max(0.0, min(1.0, coverY))
+        if selectedDocId == docId {
+            currentDoc?.coverY = clamped
+            currentDoc?.updatedAt = Date()
+        }
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].coverY = clamped
+            documents[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.coverY = clamped
+                    doc.updatedAt = Date()
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting document cover offset: \(error)")
+        }
+    }
+
+    public func setDocumentIcon(docId: String, icon: String?) {
+        if selectedDocId == docId {
+            currentDoc?.icon = icon
+            currentDoc?.updatedAt = Date()
+        }
+        if let idx = documents.firstIndex(where: { $0.id == docId }) {
+            documents[idx].icon = icon
+            documents[idx].updatedAt = Date()
+        }
+        do {
+            try dbManager.dbWriter.write { db in
+                if var doc = try Block.fetchOne(db, key: docId) {
+                    doc.icon = icon
+                    doc.updatedAt = Date()
+                    try doc.update(db)
+                }
+            }
+        } catch {
+            print("Error setting document icon: \(error)")
+        }
+    }
+
+    @discardableResult
+    public func createSubPageBlock(inDocId: String, title: String = "Untitled Sub-page") -> Block? {
+        let childDoc = createDocument(title: title, parentDocId: inDocId)
+        let subPageBlock = createBlock(type: .subPage, content: title)
+        guard let idx = blocks.firstIndex(where: { $0.id == subPageBlock.id }) else { return nil }
+        blocks[idx].subPageDocId = childDoc.id
+        blocks[idx].updatedAt = Date()
+        let toSave = blocks[idx]
+        do {
+            try dbManager.dbWriter.write { db in
+                try toSave.update(db)
+            }
+        } catch {
+            print("Error setting sub-page block docId: \(error)")
+        }
+        return toSave
+    }
+
+    public func createColumnList(inDocId: String, columnCount: Int = 2) {
+        let colListBlock = createBlock(type: .columnList, content: "")
+        let ratio = 1.0 / Double(columnCount)
+        for _ in 0..<columnCount {
+            var colBlock = createBlock(type: .column, content: "")
+            colBlock.parentId = colListBlock.id
+            colBlock.columnRatio = ratio
+            if let idx = blocks.firstIndex(where: { $0.id == colBlock.id }) {
+                blocks[idx] = colBlock
+            }
+            try? dbManager.dbWriter.write { db in
+                try colBlock.update(db)
+            }
         }
     }
 
