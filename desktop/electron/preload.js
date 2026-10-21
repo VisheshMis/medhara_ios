@@ -41,6 +41,30 @@ const apiBridge = {
     fillNoteContent: (nodeTitle, scope, depth, config, evidence) =>
         ipcRenderer.invoke('fill-note-content', { nodeTitle, scope, depth, config, evidence }),
 
+    // Notion Parity Engine (Assets, Covers, Icons & Database Collections)
+    searchUnsplash: (query, page, perPage) =>
+        ipcRenderer.invoke('search-unsplash', { query, page, perPage }),
+    searchGiphy: (query, page, limit) =>
+        ipcRenderer.invoke('search-giphy', { query, page, limit }),
+    cacheRemoteAsset: (url, source, attribution) =>
+        ipcRenderer.invoke('cache-remote-asset', { url, source, attribution }),
+    openImageDialog: () =>
+        ipcRenderer.invoke('open-image-dialog'),
+    getPageMetadata: (docId) =>
+        ipcRenderer.invoke('get-page-metadata', { docId }),
+    savePageMetadata: (metadata) =>
+        ipcRenderer.invoke('save-page-metadata', metadata),
+    getCollection: (collectionId) =>
+        ipcRenderer.invoke('get-collection', { collectionId }),
+    saveCollection: (data) =>
+        ipcRenderer.invoke('save-collection', data),
+    saveCollectionRow: (data) =>
+        ipcRenderer.invoke('save-collection-row', data),
+    deleteCollectionRow: (rowId) =>
+        ipcRenderer.invoke('delete-collection-row', { rowId }),
+    saveCollectionView: (data) =>
+        ipcRenderer.invoke('save-collection-view', data),
+
     // Signal verification
     signalReady: () => ipcRenderer.send('renderer-ready')
 };

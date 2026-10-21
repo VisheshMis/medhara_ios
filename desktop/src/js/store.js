@@ -34,6 +34,12 @@ class BlockStore {
         this.inkUndoStack = [];
         this.inkRedoStack = [];
 
+        // Notion Parity Engine (Page Metadata, Collections & Views)
+        this.pageMetadata = new Map();
+        this.currentMetadata = null;
+        this.collections = [];
+        this.currentCollection = null;
+
         // Subscriptions
         this.listeners = [];
     }
@@ -101,7 +107,7 @@ class BlockStore {
         );
 
         if (this.documents.length > 0 && !this.selectedDocId) {
-            this.selectDocument(this.documents[0].id);
+            await this.selectDocument(this.documents[0].id);
         } else if (this.selectedDocId) {
             await this.loadBlocks(this.selectedDocId);
         }
@@ -112,6 +118,7 @@ class BlockStore {
         this.currentDoc = this.documents.find(d => d.id === docId) || null;
         this.blocks = [];
         if (this.currentDoc) {
+            await this.loadPageMetadata(docId);
             if (this.currentDoc.type === 'inkDoc') {
                 await this.loadInkPages(docId);
             } else {
@@ -127,6 +134,218 @@ class BlockStore {
             [rootDocId, rootDocId]
         );
         this.notify('blocks_loaded');
+    }
+
+    async loadPageMetadata(docId) {
+        if (!docId) return null;
+        const rows = await this.query('SELECT * FROM page_metadata WHERE id = ?', [docId]);
+        let meta = rows && rows.length > 0 ? rows[0] : null;
+        if (!meta) {
+            meta = {
+                id: docId,
+                coverUrl: null,
+                coverY: 0.5,
+                iconType: 'emoji',
+                iconValue: '📄',
+                fontFamily: 'default',
+                isSmallText: 0,
+                isFullWidth: 0,
+                isLocked: 0
+            };
+        }
+        this.pageMetadata.set(docId, meta);
+        this.currentMetadata = meta;
+        this.notify('metadata_loaded', meta);
+        return meta;
+    }
+
+    async savePageMetadata(metadata) {
+        if (!metadata || !metadata.id) return;
+        const now = new Date().toISOString();
+        await this.execute(`
+            INSERT OR REPLACE INTO page_metadata
+            (id, coverUrl, coverY, iconType, iconValue, fontFamily, isSmallText, isFullWidth, isLocked, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            metadata.id,
+            metadata.coverUrl || null,
+            metadata.coverY !== undefined ? metadata.coverY : 0.5,
+            metadata.iconType || 'emoji',
+            metadata.iconValue || '📄',
+            metadata.fontFamily || 'default',
+            metadata.isSmallText ? 1 : 0,
+            metadata.isFullWidth ? 1 : 0,
+            metadata.isLocked ? 1 : 0,
+            now
+        ]);
+        this.pageMetadata.set(metadata.id, metadata);
+        this.currentMetadata = metadata;
+        this.notify('metadata_updated', metadata);
+    }
+
+    // --- Database Collections & Views ---
+    async loadCollection(collectionId) {
+        if (!collectionId) return null;
+        const collections = await this.query('SELECT * FROM database_collection WHERE id = ?', [collectionId]);
+        if (!collections || collections.length === 0) return null;
+        const collection = collections[0];
+        const rows = await this.query('SELECT * FROM database_row WHERE collectionId = ? ORDER BY sortOrder ASC, createdAt ASC', [collectionId]);
+        const views = await this.query('SELECT * FROM database_view WHERE collectionId = ? ORDER BY createdAt ASC', [collectionId]);
+
+        const fullCollection = {
+            ...collection,
+            schema: JSON.parse(collection.schemaJson || '{}'),
+            rows: rows.map(r => ({ ...r, properties: JSON.parse(r.propertiesJson || '{}') })),
+            views: views.map(v => ({
+                ...v,
+                filter: JSON.parse(v.filterJson || '{}'),
+                sort: JSON.parse(v.sortJson || '[]'),
+                format: JSON.parse(v.formatJson || '{}')
+            }))
+        };
+        this.currentCollection = fullCollection;
+        this.notify('collection_loaded', fullCollection);
+        return fullCollection;
+    }
+
+    async saveCollection(id, name, schemaObj, parentDocId = null, workspaceId = null) {
+        const now = new Date().toISOString();
+        const schemaJson = JSON.stringify(schemaObj || {});
+        await this.execute(`
+            INSERT OR REPLACE INTO database_collection
+            (id, workspaceId, parentDocId, name, schemaJson, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, workspaceId, parentDocId, name, schemaJson, now, now]);
+        return { id, name, schema: schemaObj };
+    }
+
+    async saveCollectionRow(collectionId, propertiesObj, docId = null, rowId = null, sortOrder = 0) {
+        const id = rowId || `row-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+        const now = new Date().toISOString();
+        const propsJson = JSON.stringify(propertiesObj || {});
+        await this.execute(`
+            INSERT OR REPLACE INTO database_row
+            (id, collectionId, docId, propertiesJson, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, collectionId, docId, propsJson, sortOrder, now, now]);
+        return { id, collectionId, properties: propertiesObj };
+    }
+
+    async deleteCollectionRow(rowId) {
+        await this.execute('DELETE FROM database_row WHERE id = ?', [rowId]);
+        return true;
+    }
+
+    async saveCollectionView(id, collectionId, name, type, filterObj = {}, sortArr = [], formatObj = {}) {
+        const now = new Date().toISOString();
+        await this.execute(`
+            INSERT OR REPLACE INTO database_view
+            (id, collectionId, name, type, filterJson, sortJson, formatJson, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [id, collectionId, name, type, JSON.stringify(filterObj), JSON.stringify(sortArr), JSON.stringify(formatObj), now]);
+        return { id, collectionId, name, type, filter: filterObj, sort: sortArr, format: formatObj };
+    }
+
+    createSubPageBlock(title = 'Untitled Sub-Page') {
+        if (!this.selectedDocId) return null;
+        const subDocId = `doc-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+        const now = new Date().toISOString();
+        
+        // 1. Create child document block
+        this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, isCompleted, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'doc', ?, 0, 0, ?, ?)
+        `, [subDocId, subDocId, this.selectedDocId, title, now, now]);
+
+        // Default metadata for child doc
+        this.execute(`
+            INSERT INTO page_metadata (id, coverUrl, coverY, iconType, iconValue, fontFamily, updatedAt)
+            VALUES (?, NULL, 0.5, 'emoji', '📄', 'default', ?)
+        `, [subDocId, now]);
+
+        // 2. Create inline subpage reference block in current page
+        const blockId = `b-${Math.random().toString(36).substring(2, 10)}`;
+        const order = this.blocks.length + 1;
+        const newBlock = {
+            id: blockId,
+            rootDocId: this.selectedDocId,
+            parentId: this.selectedDocId,
+            type: 'page',
+            content: title,
+            subPageDocId: subDocId,
+            sortOrder: order,
+            createdAt: now,
+            updatedAt: now
+        };
+
+        this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, subPageDocId, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'page', ?, ?, ?, ?, ?)
+        `, [blockId, this.selectedDocId, this.selectedDocId, title, subDocId, order, now, now]);
+
+        this.blocks.push(newBlock);
+        this.documents.push({
+            id: subDocId,
+            rootDocId: subDocId,
+            parentId: this.selectedDocId,
+            type: 'doc',
+            content: title,
+            createdAt: now,
+            updatedAt: now
+        });
+
+        this.notify('block_created', newBlock);
+        return newBlock;
+    }
+
+    createColumnList(columnsCount = 2) {
+        if (!this.selectedDocId) return null;
+        const listId = `b-${Math.random().toString(36).substring(2, 10)}`;
+        const now = new Date().toISOString();
+        const order = this.blocks.length + 1;
+
+        const listBlock = {
+            id: listId,
+            rootDocId: this.selectedDocId,
+            parentId: this.selectedDocId,
+            type: 'column_list',
+            content: '',
+            sortOrder: order,
+            createdAt: now,
+            updatedAt: now
+        };
+
+        this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'column_list', '', ?, ?, ?)
+        `, [listId, this.selectedDocId, this.selectedDocId, order, now, now]);
+
+        this.blocks.push(listBlock);
+
+        // Create child column blocks
+        const ratio = 1 / columnsCount;
+        for (let i = 0; i < columnsCount; i++) {
+            const colId = `b-${Math.random().toString(36).substring(2, 10)}`;
+            const colBlock = {
+                id: colId,
+                rootDocId: this.selectedDocId,
+                parentId: listId,
+                type: 'column',
+                content: '',
+                columnRatio: ratio,
+                sortOrder: i + 1,
+                createdAt: now,
+                updatedAt: now
+            };
+            this.execute(`
+                INSERT INTO block (id, rootDocId, parentId, type, content, columnRatio, sortOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, 'column', '', ?, ?, ?, ?)
+            `, [colId, this.selectedDocId, listId, ratio, i + 1, now, now]);
+            this.blocks.push(colBlock);
+        }
+
+        this.notify('column_list_created', listBlock);
+        return listBlock;
     }
 
     async loadInkPages(docId) {

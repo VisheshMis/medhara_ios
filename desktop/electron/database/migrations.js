@@ -407,6 +407,91 @@ const DatabaseMigrations = {
                 db.exec("ALTER TABLE block ADD COLUMN pinnedPropertiesData TEXT;");
             }
         });
+
+        // v14: Notion Parity Engine (Page Metadata, Collections, Views, Sub-Pages, Columns & Offline Asset Cache)
+        runMigration('v14_notion_workspace_engine_and_asset_cache', () => {
+            // 1. Page Metadata for Covers, Repositioning, Icons & Typography
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS page_metadata (
+                    id TEXT PRIMARY KEY,
+                    coverUrl TEXT,
+                    coverY REAL NOT NULL DEFAULT 0.5,
+                    iconType TEXT NOT NULL DEFAULT 'emoji',
+                    iconValue TEXT NOT NULL DEFAULT '📄',
+                    fontFamily TEXT NOT NULL DEFAULT 'default',
+                    isSmallText BOOLEAN NOT NULL DEFAULT 0,
+                    isFullWidth BOOLEAN NOT NULL DEFAULT 0,
+                    isLocked BOOLEAN NOT NULL DEFAULT 0,
+                    updatedAt DATETIME NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS database_collection (
+                    id TEXT PRIMARY KEY,
+                    workspaceId TEXT,
+                    parentDocId TEXT,
+                    name TEXT NOT NULL,
+                    schemaJson TEXT NOT NULL,
+                    createdAt DATETIME NOT NULL,
+                    updatedAt DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_collection_parentDocId ON database_collection(parentDocId);
+
+                CREATE TABLE IF NOT EXISTS database_row (
+                    id TEXT PRIMARY KEY,
+                    collectionId TEXT NOT NULL,
+                    docId TEXT,
+                    propertiesJson TEXT NOT NULL,
+                    sortOrder INTEGER NOT NULL DEFAULT 0,
+                    createdAt DATETIME NOT NULL,
+                    updatedAt DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_dbrow_collectionId ON database_row(collectionId);
+                CREATE INDEX IF NOT EXISTS idx_dbrow_docId ON database_row(docId);
+
+                CREATE TABLE IF NOT EXISTS database_view (
+                    id TEXT PRIMARY KEY,
+                    collectionId TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    filterJson TEXT,
+                    sortJson TEXT,
+                    formatJson TEXT,
+                    createdAt DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_dbview_collectionId ON database_view(collectionId);
+
+                CREATE TABLE IF NOT EXISTS asset_cache (
+                    hash TEXT PRIMARY KEY,
+                    originalUrl TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    localPath TEXT NOT NULL,
+                    mimeType TEXT NOT NULL,
+                    fileSize INTEGER NOT NULL,
+                    attributionJson TEXT,
+                    createdAt DATETIME NOT NULL,
+                    lastAccessedAt DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_asset_cache_originalUrl ON asset_cache(originalUrl);
+                CREATE INDEX IF NOT EXISTS idx_asset_cache_source ON asset_cache(source);
+                CREATE INDEX IF NOT EXISTS idx_asset_cache_lastAccessedAt ON asset_cache(lastAccessedAt);
+            `);
+
+            // 2. Extend Block table with column & sub-page properties
+            const cols = db.prepare("PRAGMA table_info(block)").all().map(c => c.name);
+            if (!cols.includes('columnRatio')) {
+                db.exec("ALTER TABLE block ADD COLUMN columnRatio REAL DEFAULT 0.5;");
+            }
+            if (!cols.includes('subPageDocId')) {
+                db.exec("ALTER TABLE block ADD COLUMN subPageDocId TEXT;");
+            }
+            if (!cols.includes('databaseViewId')) {
+                db.exec("ALTER TABLE block ADD COLUMN databaseViewId TEXT;");
+            }
+        });
     }
 };
 

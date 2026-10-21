@@ -28,11 +28,15 @@ class BlockEditorEngine {
             { type: 'heading2', label: 'Heading 2 (Collapsible)', icon: 'H2' },
             { type: 'heading3', label: 'Heading 3 (Collapsible)', icon: 'H3' },
             { type: 'paragraph', label: 'Paragraph', icon: '¶' },
+            { type: 'page', label: 'Sub-Page (Linked Note)', icon: '📄' },
+            { type: 'column_list', label: '2 Columns Layout', icon: '◫' },
+            { type: 'database_view', label: 'Database View (Gallery/Board/Cal/Table)', icon: '🗂️' },
             { type: 'toggle', label: 'Toggle List (Foldable)', icon: '▶' },
             { type: 'table', label: 'Table Matrix Grid', icon: '▦' },
             { type: 'bulletList', label: 'Bullet List', icon: '•' },
             { type: 'taskList', label: 'To-Do Task', icon: '☑' },
             { type: 'codeBlock', label: 'Code Block', icon: '</>' },
+            { type: 'math', label: 'Math Equation (KaTeX)', icon: '∑' },
             { type: 'quote', label: 'Quote', icon: '❞' },
             { type: 'callout', label: 'Callout Note', icon: '💡' }
         ];
@@ -43,8 +47,20 @@ class BlockEditorEngine {
             row.innerHTML = `<span class="slash-item-icon">${it.icon}</span><span>${it.label}</span>`;
             row.addEventListener('click', () => {
                 if (this.activeSlashBlockId) {
-                    if (it.type === 'table') {
-                        // Initialize default table payload if converted to table
+                    if (it.type === 'page') {
+                        this.store.createSubPageBlock('Untitled Sub-Page');
+                        this.store.deleteBlock(this.activeSlashBlockId);
+                    } else if (it.type === 'column_list') {
+                        this.store.createColumnList(2);
+                        this.store.deleteBlock(this.activeSlashBlockId);
+                    } else if (it.type === 'database_view') {
+                        const targetBlock = this.store.blocks.find(b => b.id === this.activeSlashBlockId);
+                        if (targetBlock) {
+                            targetBlock.databaseViewId = `db-${Math.random().toString(36).substring(2, 9)}`;
+                            this.store.execute('UPDATE block SET databaseViewId = ? WHERE id = ?', [targetBlock.databaseViewId, targetBlock.id]);
+                        }
+                        this.store.convertBlockType(this.activeSlashBlockId, 'database_view');
+                    } else if (it.type === 'table') {
                         const defaultTable = {
                             rows: [
                                 ['Header 1', 'Header 2', 'Header 3'],
@@ -55,8 +71,10 @@ class BlockEditorEngine {
                             hasHeaderCol: false
                         };
                         this.store.updateBlockContent(this.activeSlashBlockId, JSON.stringify(defaultTable));
+                        this.store.convertBlockType(this.activeSlashBlockId, it.type);
+                    } else {
+                        this.store.convertBlockType(this.activeSlashBlockId, it.type);
                     }
-                    this.store.convertBlockType(this.activeSlashBlockId, it.type);
                     this.hideSlashMenu();
                     this.renderBlocks();
                 }
@@ -288,8 +306,60 @@ class BlockEditorEngine {
                 row.appendChild(cb);
             }
 
-            // Render Table Matrix Block
-            if (block.type === 'table') {
+            // Render Sub-Page Block (Linked Document)
+            if (block.type === 'page') {
+                const subPageCard = document.createElement('div');
+                subPageCard.className = 'notion-subpage-card';
+                subPageCard.innerHTML = `
+                    <span class="subpage-icon">📄</span>
+                    <span class="subpage-title">${block.content || 'Untitled Sub-Page'}</span>
+                    <span class="subpage-arrow">➔</span>
+                `;
+                subPageCard.addEventListener('click', () => {
+                    if (block.subPageDocId) {
+                        this.store.selectDocument(block.subPageDocId);
+                    }
+                });
+                row.appendChild(subPageCard);
+            } else if (block.type === 'column_list') {
+                // Multi-Column Layout Container
+                const colListWrapper = document.createElement('div');
+                colListWrapper.className = 'notion-column-list-wrapper';
+                const columns = this.store.blocks.filter(b => b.parentId === block.id && b.type === 'column');
+                columns.forEach(colBlock => {
+                    const colEl = document.createElement('div');
+                    colEl.className = 'notion-column-item';
+                    colEl.style.flex = `${colBlock.columnRatio || 0.5} 1 0%`;
+                    colEl.innerHTML = `<div class="column-inner-placeholder">Column Section (${Math.round((colBlock.columnRatio || 0.5) * 100)}%)</div>`;
+                    colListWrapper.appendChild(colEl);
+                });
+                row.appendChild(colListWrapper);
+            } else if (block.type === 'database_view') {
+                // Embedded Relational Database View
+                const dbContainer = document.createElement('div');
+                dbContainer.className = 'notion-database-block-mount';
+                if (typeof DatabaseViewEngine !== 'undefined') {
+                    new DatabaseViewEngine(block.databaseViewId || (`db-${block.id}`), this.store, { container: dbContainer });
+                } else {
+                    dbContainer.innerHTML = '<div class="notion-db-loading">Loading database view...</div>';
+                }
+                row.appendChild(dbContainer);
+            } else if (block.type === 'math') {
+                // KaTeX Math Equation Block
+                const mathBox = document.createElement('div');
+                mathBox.className = 'notion-math-block';
+                mathBox.innerHTML = `<div class="math-rendered">$$ ${block.content || 'E = mc^2'} $$</div>`;
+                if (!isLocked) {
+                    mathBox.addEventListener('click', () => {
+                        const formula = prompt('Edit LaTeX Equation:', block.content || 'E = mc^2');
+                        if (formula !== null) {
+                            this.store.updateBlockContent(block.id, formula);
+                            this.renderBlocks();
+                        }
+                    });
+                }
+                row.appendChild(mathBox);
+            } else if (block.type === 'table') {
                 const tablePayload = this.parseTablePayload(block.content);
                 const tableContainer = document.createElement('div');
                 tableContainer.className = 'table-block-container';

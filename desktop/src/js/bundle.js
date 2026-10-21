@@ -61,6 +61,10 @@ var __MedhaModulesBundle = (() => {
           this.inkPages = [];
           this.inkUndoStack = [];
           this.inkRedoStack = [];
+          this.pageMetadata = /* @__PURE__ */ new Map();
+          this.currentMetadata = null;
+          this.collections = [];
+          this.currentCollection = null;
           this.listeners = [];
         }
         subscribe(fn) {
@@ -132,6 +136,7 @@ var __MedhaModulesBundle = (() => {
           this.currentDoc = this.documents.find((d) => d.id === docId) || null;
           this.blocks = [];
           if (this.currentDoc) {
+            await this.loadPageMetadata(docId);
             if (this.currentDoc.type === "inkDoc") {
               await this.loadInkPages(docId);
             } else {
@@ -146,6 +151,193 @@ var __MedhaModulesBundle = (() => {
             [rootDocId, rootDocId]
           );
           this.notify("blocks_loaded");
+        }
+        async loadPageMetadata(docId) {
+          if (!docId) return null;
+          const rows = await this.query("SELECT * FROM page_metadata WHERE id = ?", [docId]);
+          let meta = rows && rows.length > 0 ? rows[0] : null;
+          if (!meta) {
+            meta = {
+              id: docId,
+              coverUrl: null,
+              coverY: 0.5,
+              iconType: "emoji",
+              iconValue: "\u{1F4C4}",
+              fontFamily: "default",
+              isSmallText: 0,
+              isFullWidth: 0,
+              isLocked: 0
+            };
+          }
+          this.pageMetadata.set(docId, meta);
+          this.currentMetadata = meta;
+          this.notify("metadata_loaded", meta);
+          return meta;
+        }
+        async savePageMetadata(metadata) {
+          if (!metadata || !metadata.id) return;
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          await this.execute(`
+            INSERT OR REPLACE INTO page_metadata
+            (id, coverUrl, coverY, iconType, iconValue, fontFamily, isSmallText, isFullWidth, isLocked, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            metadata.id,
+            metadata.coverUrl || null,
+            metadata.coverY !== void 0 ? metadata.coverY : 0.5,
+            metadata.iconType || "emoji",
+            metadata.iconValue || "\u{1F4C4}",
+            metadata.fontFamily || "default",
+            metadata.isSmallText ? 1 : 0,
+            metadata.isFullWidth ? 1 : 0,
+            metadata.isLocked ? 1 : 0,
+            now
+          ]);
+          this.pageMetadata.set(metadata.id, metadata);
+          this.currentMetadata = metadata;
+          this.notify("metadata_updated", metadata);
+        }
+        // --- Database Collections & Views ---
+        async loadCollection(collectionId) {
+          if (!collectionId) return null;
+          const collections = await this.query("SELECT * FROM database_collection WHERE id = ?", [collectionId]);
+          if (!collections || collections.length === 0) return null;
+          const collection = collections[0];
+          const rows = await this.query("SELECT * FROM database_row WHERE collectionId = ? ORDER BY sortOrder ASC, createdAt ASC", [collectionId]);
+          const views = await this.query("SELECT * FROM database_view WHERE collectionId = ? ORDER BY createdAt ASC", [collectionId]);
+          const fullCollection = {
+            ...collection,
+            schema: JSON.parse(collection.schemaJson || "{}"),
+            rows: rows.map((r) => ({ ...r, properties: JSON.parse(r.propertiesJson || "{}") })),
+            views: views.map((v) => ({
+              ...v,
+              filter: JSON.parse(v.filterJson || "{}"),
+              sort: JSON.parse(v.sortJson || "[]"),
+              format: JSON.parse(v.formatJson || "{}")
+            }))
+          };
+          this.currentCollection = fullCollection;
+          this.notify("collection_loaded", fullCollection);
+          return fullCollection;
+        }
+        async saveCollection(id, name, schemaObj, parentDocId = null, workspaceId = null) {
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          const schemaJson = JSON.stringify(schemaObj || {});
+          await this.execute(`
+            INSERT OR REPLACE INTO database_collection
+            (id, workspaceId, parentDocId, name, schemaJson, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, workspaceId, parentDocId, name, schemaJson, now, now]);
+          return { id, name, schema: schemaObj };
+        }
+        async saveCollectionRow(collectionId, propertiesObj, docId = null, rowId = null, sortOrder = 0) {
+          const id = rowId || `row-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          const propsJson = JSON.stringify(propertiesObj || {});
+          await this.execute(`
+            INSERT OR REPLACE INTO database_row
+            (id, collectionId, docId, propertiesJson, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, collectionId, docId, propsJson, sortOrder, now, now]);
+          return { id, collectionId, properties: propertiesObj };
+        }
+        async deleteCollectionRow(rowId) {
+          await this.execute("DELETE FROM database_row WHERE id = ?", [rowId]);
+          return true;
+        }
+        async saveCollectionView(id, collectionId, name, type, filterObj = {}, sortArr = [], formatObj = {}) {
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          await this.execute(`
+            INSERT OR REPLACE INTO database_view
+            (id, collectionId, name, type, filterJson, sortJson, formatJson, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [id, collectionId, name, type, JSON.stringify(filterObj), JSON.stringify(sortArr), JSON.stringify(formatObj), now]);
+          return { id, collectionId, name, type, filter: filterObj, sort: sortArr, format: formatObj };
+        }
+        createSubPageBlock(title = "Untitled Sub-Page") {
+          if (!this.selectedDocId) return null;
+          const subDocId = `doc-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, isCompleted, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'doc', ?, 0, 0, ?, ?)
+        `, [subDocId, subDocId, this.selectedDocId, title, now, now]);
+          this.execute(`
+            INSERT INTO page_metadata (id, coverUrl, coverY, iconType, iconValue, fontFamily, updatedAt)
+            VALUES (?, NULL, 0.5, 'emoji', '\u{1F4C4}', 'default', ?)
+        `, [subDocId, now]);
+          const blockId = `b-${Math.random().toString(36).substring(2, 10)}`;
+          const order = this.blocks.length + 1;
+          const newBlock = {
+            id: blockId,
+            rootDocId: this.selectedDocId,
+            parentId: this.selectedDocId,
+            type: "page",
+            content: title,
+            subPageDocId: subDocId,
+            sortOrder: order,
+            createdAt: now,
+            updatedAt: now
+          };
+          this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, subPageDocId, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'page', ?, ?, ?, ?, ?)
+        `, [blockId, this.selectedDocId, this.selectedDocId, title, subDocId, order, now, now]);
+          this.blocks.push(newBlock);
+          this.documents.push({
+            id: subDocId,
+            rootDocId: subDocId,
+            parentId: this.selectedDocId,
+            type: "doc",
+            content: title,
+            createdAt: now,
+            updatedAt: now
+          });
+          this.notify("block_created", newBlock);
+          return newBlock;
+        }
+        createColumnList(columnsCount = 2) {
+          if (!this.selectedDocId) return null;
+          const listId = `b-${Math.random().toString(36).substring(2, 10)}`;
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          const order = this.blocks.length + 1;
+          const listBlock = {
+            id: listId,
+            rootDocId: this.selectedDocId,
+            parentId: this.selectedDocId,
+            type: "column_list",
+            content: "",
+            sortOrder: order,
+            createdAt: now,
+            updatedAt: now
+          };
+          this.execute(`
+            INSERT INTO block (id, rootDocId, parentId, type, content, sortOrder, createdAt, updatedAt)
+            VALUES (?, ?, ?, 'column_list', '', ?, ?, ?)
+        `, [listId, this.selectedDocId, this.selectedDocId, order, now, now]);
+          this.blocks.push(listBlock);
+          const ratio = 1 / columnsCount;
+          for (let i = 0; i < columnsCount; i++) {
+            const colId = `b-${Math.random().toString(36).substring(2, 10)}`;
+            const colBlock = {
+              id: colId,
+              rootDocId: this.selectedDocId,
+              parentId: listId,
+              type: "column",
+              content: "",
+              columnRatio: ratio,
+              sortOrder: i + 1,
+              createdAt: now,
+              updatedAt: now
+            };
+            this.execute(`
+                INSERT INTO block (id, rootDocId, parentId, type, content, columnRatio, sortOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, 'column', '', ?, ?, ?, ?)
+            `, [colId, this.selectedDocId, listId, ratio, i + 1, now, now]);
+            this.blocks.push(colBlock);
+          }
+          this.notify("column_list_created", listBlock);
+          return listBlock;
         }
         async loadInkPages(docId) {
           this.inkPages = await this.query(
@@ -621,11 +813,15 @@ var __MedhaModulesBundle = (() => {
             { type: "heading2", label: "Heading 2 (Collapsible)", icon: "H2" },
             { type: "heading3", label: "Heading 3 (Collapsible)", icon: "H3" },
             { type: "paragraph", label: "Paragraph", icon: "\xB6" },
+            { type: "page", label: "Sub-Page (Linked Note)", icon: "\u{1F4C4}" },
+            { type: "column_list", label: "2 Columns Layout", icon: "\u25EB" },
+            { type: "database_view", label: "Database View (Gallery/Board/Cal/Table)", icon: "\u{1F5C2}\uFE0F" },
             { type: "toggle", label: "Toggle List (Foldable)", icon: "\u25B6" },
             { type: "table", label: "Table Matrix Grid", icon: "\u25A6" },
             { type: "bulletList", label: "Bullet List", icon: "\u2022" },
             { type: "taskList", label: "To-Do Task", icon: "\u2611" },
             { type: "codeBlock", label: "Code Block", icon: "</>" },
+            { type: "math", label: "Math Equation (KaTeX)", icon: "\u2211" },
             { type: "quote", label: "Quote", icon: "\u275E" },
             { type: "callout", label: "Callout Note", icon: "\u{1F4A1}" }
           ];
@@ -635,7 +831,20 @@ var __MedhaModulesBundle = (() => {
             row.innerHTML = `<span class="slash-item-icon">${it.icon}</span><span>${it.label}</span>`;
             row.addEventListener("click", () => {
               if (this.activeSlashBlockId) {
-                if (it.type === "table") {
+                if (it.type === "page") {
+                  this.store.createSubPageBlock("Untitled Sub-Page");
+                  this.store.deleteBlock(this.activeSlashBlockId);
+                } else if (it.type === "column_list") {
+                  this.store.createColumnList(2);
+                  this.store.deleteBlock(this.activeSlashBlockId);
+                } else if (it.type === "database_view") {
+                  const targetBlock = this.store.blocks.find((b) => b.id === this.activeSlashBlockId);
+                  if (targetBlock) {
+                    targetBlock.databaseViewId = `db-${Math.random().toString(36).substring(2, 9)}`;
+                    this.store.execute("UPDATE block SET databaseViewId = ? WHERE id = ?", [targetBlock.databaseViewId, targetBlock.id]);
+                  }
+                  this.store.convertBlockType(this.activeSlashBlockId, "database_view");
+                } else if (it.type === "table") {
                   const defaultTable = {
                     rows: [
                       ["Header 1", "Header 2", "Header 3"],
@@ -646,8 +855,10 @@ var __MedhaModulesBundle = (() => {
                     hasHeaderCol: false
                   };
                   this.store.updateBlockContent(this.activeSlashBlockId, JSON.stringify(defaultTable));
+                  this.store.convertBlockType(this.activeSlashBlockId, it.type);
+                } else {
+                  this.store.convertBlockType(this.activeSlashBlockId, it.type);
                 }
-                this.store.convertBlockType(this.activeSlashBlockId, it.type);
                 this.hideSlashMenu();
                 this.renderBlocks();
               }
@@ -830,7 +1041,56 @@ var __MedhaModulesBundle = (() => {
               });
               row.appendChild(cb);
             }
-            if (block.type === "table") {
+            if (block.type === "page") {
+              const subPageCard = document.createElement("div");
+              subPageCard.className = "notion-subpage-card";
+              subPageCard.innerHTML = `
+                    <span class="subpage-icon">\u{1F4C4}</span>
+                    <span class="subpage-title">${block.content || "Untitled Sub-Page"}</span>
+                    <span class="subpage-arrow">\u2794</span>
+                `;
+              subPageCard.addEventListener("click", () => {
+                if (block.subPageDocId) {
+                  this.store.selectDocument(block.subPageDocId);
+                }
+              });
+              row.appendChild(subPageCard);
+            } else if (block.type === "column_list") {
+              const colListWrapper = document.createElement("div");
+              colListWrapper.className = "notion-column-list-wrapper";
+              const columns = this.store.blocks.filter((b) => b.parentId === block.id && b.type === "column");
+              columns.forEach((colBlock) => {
+                const colEl = document.createElement("div");
+                colEl.className = "notion-column-item";
+                colEl.style.flex = `${colBlock.columnRatio || 0.5} 1 0%`;
+                colEl.innerHTML = `<div class="column-inner-placeholder">Column Section (${Math.round((colBlock.columnRatio || 0.5) * 100)}%)</div>`;
+                colListWrapper.appendChild(colEl);
+              });
+              row.appendChild(colListWrapper);
+            } else if (block.type === "database_view") {
+              const dbContainer = document.createElement("div");
+              dbContainer.className = "notion-database-block-mount";
+              if (typeof DatabaseViewEngine !== "undefined") {
+                new DatabaseViewEngine(block.databaseViewId || `db-${block.id}`, this.store, { container: dbContainer });
+              } else {
+                dbContainer.innerHTML = '<div class="notion-db-loading">Loading database view...</div>';
+              }
+              row.appendChild(dbContainer);
+            } else if (block.type === "math") {
+              const mathBox = document.createElement("div");
+              mathBox.className = "notion-math-block";
+              mathBox.innerHTML = `<div class="math-rendered">$$ ${block.content || "E = mc^2"} $$</div>`;
+              if (!isLocked) {
+                mathBox.addEventListener("click", () => {
+                  const formula = prompt("Edit LaTeX Equation:", block.content || "E = mc^2");
+                  if (formula !== null) {
+                    this.store.updateBlockContent(block.id, formula);
+                    this.renderBlocks();
+                  }
+                });
+              }
+              row.appendChild(mathBox);
+            } else if (block.type === "table") {
               const tablePayload = this.parseTablePayload(block.content);
               const tableContainer = document.createElement("div");
               tableContainer.className = "table-block-container";

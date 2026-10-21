@@ -1,5 +1,5 @@
 // Medha Windows Desktop — Main Process
-const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { DatabaseManager } = require('./database/db');
@@ -7,10 +7,26 @@ const { AnkiImporter } = require('./services/ankiImporter');
 const { APICatalog } = require('./services/apiCatalog');
 const { AIService } = require('./services/aiService');
 const { ExportService } = require('./services/exportService');
+const { AssetService } = require('./services/assetService');
 const { fsrs } = require('../src/js/flashcards/fsrs');
 
 let mainWindow = null;
 let dbManager = null;
+let assetService = null;
+
+// Register custom asset protocol scheme as privileged before app is ready
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: 'medha-asset',
+        privileges: {
+            standard: true,
+            secure: true,
+            supportFetchAPI: true,
+            corsEnabled: true,
+            stream: true
+        }
+    }
+]);
 
 function createWindow() {
     // Position on active screen with mouse cursor
@@ -42,7 +58,12 @@ function createWindow() {
         }
     });
 
-    mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
+    const rendererDist = path.join(__dirname, '../dist-renderer/index.html');
+    if (fs.existsSync(rendererDist)) {
+        mainWindow.loadFile(rendererDist);
+    } else {
+        mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
+    }
 
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -51,6 +72,29 @@ function createWindow() {
 
 app.whenReady().then(() => {
     dbManager = new DatabaseManager();
+    assetService = new AssetService(dbManager);
+
+    // Register protocol handler for medha-asset://<hash>
+    protocol.handle('medha-asset', async (request) => {
+        try {
+            const hash = request.url.replace('medha-asset://', '').replace(/[\/\?#].*$/, '');
+            const record = assetService.getAsset(hash);
+            if (record && fs.existsSync(record.localPath)) {
+                return net.fetch(`file://${record.localPath}`);
+            }
+            // Fallback gradient SVG
+            const fallbackSvg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+                    <rect width="800" height="400" fill="#1e293b"/>
+                </svg>
+            `.trim();
+            return new Response(fallbackSvg, { headers: { 'Content-Type': 'image/svg+xml' } });
+        } catch (e) {
+            console.error('medha-asset protocol error:', e);
+            return new Response('', { status: 404 });
+        }
+    });
+
     setupIPC();
     createWindow();
 
@@ -286,6 +330,161 @@ function setupIPC() {
         try {
             const res = await AIService.fillNoteContent({ nodeTitle, scope, depth, providerConfig: config, evidence });
             return { success: true, data: res };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // Asset Management IPC
+    ipcMain.handle('search-unsplash', async (event, { query, page, perPage }) => {
+        try {
+            const results = await assetService.searchUnsplash(query, page, perPage);
+            return { success: true, data: results };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('search-giphy', async (event, { query, page, limit }) => {
+        try {
+            const results = await assetService.searchGiphy(query, page, limit);
+            return { success: true, data: results };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('cache-remote-asset', async (event, { url, source, attribution }) => {
+        try {
+            const res = await assetService.cacheAssetFromUrl(url, source, attribution);
+            return { success: true, data: res };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('open-image-dialog', async () => {
+        try {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                title: 'Select Cover Image or GIF',
+                filters: [
+                    { name: 'Images & GIFs', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'] }
+                ],
+                properties: ['openFile']
+            });
+            if (result.canceled || result.filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+            const filePath = result.filePaths[0];
+            const cached = await assetService.cacheAssetFromUrl(filePath, 'upload');
+            return { success: true, data: cached };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // Page Metadata IPC
+    ipcMain.handle('get-page-metadata', (event, { docId }) => {
+        try {
+            const meta = dbManager.queryOne('SELECT * FROM page_metadata WHERE id = ?', [docId]);
+            return { success: true, data: meta || null };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('save-page-metadata', (event, metadata) => {
+        try {
+            dbManager.run(`
+                INSERT OR REPLACE INTO page_metadata
+                (id, coverUrl, coverY, iconType, iconValue, fontFamily, isSmallText, isFullWidth, isLocked, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `, [
+                metadata.id,
+                metadata.coverUrl || null,
+                metadata.coverY !== undefined ? metadata.coverY : 0.5,
+                metadata.iconType || 'emoji',
+                metadata.iconValue || '📄',
+                metadata.fontFamily || 'default',
+                metadata.isSmallText ? 1 : 0,
+                metadata.isFullWidth ? 1 : 0,
+                metadata.isLocked ? 1 : 0
+            ]);
+            return { success: true, data: metadata };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // Database Collections & Views IPC
+    ipcMain.handle('get-collection', (event, { collectionId }) => {
+        try {
+            const collection = dbManager.queryOne('SELECT * FROM database_collection WHERE id = ?', [collectionId]);
+            if (!collection) return { success: false, error: 'Collection not found' };
+            const rows = dbManager.query('SELECT * FROM database_row WHERE collectionId = ? ORDER BY sortOrder ASC, createdAt ASC', [collectionId]);
+            const views = dbManager.query('SELECT * FROM database_view WHERE collectionId = ? ORDER BY createdAt ASC', [collectionId]);
+            return {
+                success: true,
+                data: {
+                    ...collection,
+                    schema: JSON.parse(collection.schemaJson || '{}'),
+                    rows: rows.map(r => ({ ...r, properties: JSON.parse(r.propertiesJson || '{}') })),
+                    views: views.map(v => ({
+                        ...v,
+                        filter: JSON.parse(v.filterJson || '{}'),
+                        sort: JSON.parse(v.sortJson || '[]'),
+                        format: JSON.parse(v.formatJson || '{}')
+                    }))
+                }
+            };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('save-collection', (event, { id, name, schemaJson, parentDocId, workspaceId }) => {
+        try {
+            dbManager.run(`
+                INSERT OR REPLACE INTO database_collection
+                (id, workspaceId, parentDocId, name, schemaJson, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `, [id, workspaceId || null, parentDocId || null, name, schemaJson]);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('save-collection-row', (event, { id, collectionId, docId, propertiesJson, sortOrder }) => {
+        try {
+            dbManager.run(`
+                INSERT OR REPLACE INTO database_row
+                (id, collectionId, docId, propertiesJson, sortOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `, [id, collectionId, docId || null, propertiesJson, sortOrder || 0]);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('delete-collection-row', (event, { rowId }) => {
+        try {
+            dbManager.run('DELETE FROM database_row WHERE id = ?', [rowId]);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('save-collection-view', (event, { id, collectionId, name, type, filterJson, sortJson, formatJson }) => {
+        try {
+            dbManager.run(`
+                INSERT OR REPLACE INTO database_view
+                (id, collectionId, name, type, filterJson, sortJson, formatJson, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `, [id, collectionId, name, type, filterJson || '{}', sortJson || '[]', formatJson || '{}']);
+            return { success: true };
         } catch (e) {
             return { success: false, error: e.message };
         }

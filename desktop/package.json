@@ -5,10 +5,11 @@
   "description": "Offline-First Cognitive Retention Engine & Spatial PKM for Windows",
   "main": "electron/main.js",
   "scripts": {
-    "build:renderer": "esbuild src/js/modules.js --bundle --format=iife --global-name=__MedhaModulesBundle --outfile=src/js/bundle.js",
+    "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
     "start": "npm run build:renderer && electron electron/main.js",
-    "test": "node tests/runner.js && node tests/v2_features.test.js",
+    "test": "node tests/runner.js && node tests/v2_features.test.js && node tests/notion_engine.test.js",
+    "test:notion": "node tests/notion_engine.test.js",
     "test:v2": "node tests/v2_features.test.js",
     "test:db": "node tests/database.test.js",
     "test:fsrs": "node tests/fsrs.test.js",
@@ -38,14 +39,24 @@
     "adm-zip": "^0.6.1",
     "better-sqlite3": "^13.0.3",
     "fzstd": "^0.1.1",
-    "sql.js": "^1.14.2"
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sql.js": "^1.14.2",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
   },
   "build": {
     "appId": "com.medha.desktop",

@@ -224,6 +224,11 @@ class MedhaDesktopApp {
     }
 
     initUI() {
+        const headerMount = document.getElementById('notion-page-header-mount');
+        if (headerMount && typeof PageHeaderView !== 'undefined') {
+            this.pageHeaderView = new PageHeaderView(headerMount, this.store);
+        }
+
         const editorContainer = document.getElementById('blocks-editor-target');
         if (editorContainer) {
             this.editorEngine = new BlockEditorEngine(editorContainer, this.store);
@@ -235,11 +240,21 @@ class MedhaDesktopApp {
         if (!doc) return;
 
         if (doc.type === 'inkDoc') {
+            const hMount = document.getElementById('notion-page-header-mount');
+            if (hMount) hMount.style.display = 'none';
             document.getElementById('blocks-editor-target').style.display = 'none';
             document.getElementById('view-ink').style.display = 'flex';
             this.initInkView(doc);
         } else {
             document.getElementById('view-ink').style.display = 'none';
+            const hMount = document.getElementById('notion-page-header-mount');
+            if (hMount) {
+                hMount.style.display = 'block';
+                if (this.pageHeaderView) {
+                    this.pageHeaderView.docId = doc.id;
+                    this.pageHeaderView.render();
+                }
+            }
             document.getElementById('blocks-editor-target').style.display = 'flex';
             if (this.editorEngine) this.editorEngine.renderBlocks();
         }
